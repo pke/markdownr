@@ -1,0 +1,30 @@
+app_identifier("dev.dudesoft.markdownr")
+
+metadata_path("./fastlane/metadata")
+
+screenshots_path("./fastlane/screenshots")
+
+skip_binary_upload(true)
+
+force(false)
+
+primary_category("UTILITIES")
+secondary_category("REFERENCE")
+
+automatic_release(false)
+
+phased_release(true)
+
+submission_information(
+  add_id_info_uses_idfa: false,
+  export_compliance_uses_encryption: false,
+  export_compliance_is_exempt: true,
+  content_rights_contains_third_party_content: false,
+  content_rights_has_rights: true
+)
+
+app_rating_config_path("./fastlane/rating_config.json")
+
+precheck_include_in_app_purchases(false)
+
+run_precheck_before_submit(true)

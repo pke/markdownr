@@ -1,0 +1,9 @@
+Erstveroeffentlichung von Markdownr.
+
+- Natives Hochleistungs-Markdown-Rendering
+- Dunkel- und Hellmodus mit automatischer Systemerkennung
+- Fuenf Farbthemen: Standard, Ozean, Wald, Sonnenuntergang, Lavendel
+- Inhaltsverzeichnis-Leiste fuer schnelle Navigation
+- Volltextsuche mit Hervorhebung
+- YAML-Front-Matter-Anzeige
+- Dateien aus der Dateien-App oder beliebigen Quellen oeffnen

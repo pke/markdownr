@@ -1,0 +1,117 @@
+appId: dev.dudesoft.markdownr.dev
+---
+
+# Close TOC drawer if open (from previous flow)
+- swipe:
+    start: 75%, 50%
+    end: 1%, 50%
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+
+# Switch to dark mode via in-app toggle
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "darkModeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+
+# Cycle to default theme (tap 5 times to wrap around)
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+
+# Close menu
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+
+# Dark mode, default theme
+- takeScreenshot: 09-viewer-dark-default
+
+# Ocean dark
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 10-viewer-dark-ocean
+
+# Forest dark
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 11-viewer-dark-forest
+
+# Sunset dark
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 12-viewer-dark-sunset
+
+# Lavender dark
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 13-viewer-dark-lavender

@@ -1,0 +1,9 @@
+Initial release of Markdownr.
+
+- High-performance native Markdown rendering
+- Dark and light mode with automatic system detection
+- Five colour themes: Default, Ocean, Forest, Sunset, Lavender
+- Table of contents drawer for quick navigation
+- Full-text search with highlighting
+- YAML front matter display
+- Open files from the Files app or any source

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="1024" height="1024">
+  <rect width="48" height="48" fill="#1a0029"/>
+  <g transform="translate(6, 6) scale(0.75)">
+    <!-- Rounded rectangle frame - darker purple -->
+    <rect x="-0.003" y="5.998" width="48" height="36" rx="3.5" ry="3.5" fill="#0d0015"/>
+    <!-- M shape - white -->
+    <path fill="#ffffff" d="M5.99699 34.4977V13.4979h5.99991l4.5 7.4999 4.4999-7.4999h5.9999v20.9998h-5.9999V23.9978l-4.4999 5.9999-4.5-5.9999v10.4999H5.99699Z"/>
+    <!-- Down arrow - white -->
+    <path fill="#ffffff" d="M35.9966 34.4977l-7.4999-10.4999h4.5046l-.0047-10.4999h5.9999v10.4999h4.5l-7.4999 10.4999Z"/>
+  </g>
+</svg>

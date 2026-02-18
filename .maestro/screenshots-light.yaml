@@ -1,0 +1,130 @@
+appId: dev.dudesoft.markdownr.dev
+---
+
+# Set to light mode via in-app toggle, then relaunch for clean XCTest session
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- tapOn:
+    id: "darkModeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+
+# Relaunch to get a clean XCTest session — settings are persisted
+- stopApp
+- launchApp
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+
+# 1. Default theme, light mode
+- takeScreenshot: 01-viewer-light-default
+
+# Ocean
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 02-viewer-light-ocean
+
+# Forest
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 03-viewer-light-forest
+
+# Sunset
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 04-viewer-light-sunset
+
+# Lavender
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 05-viewer-light-lavender
+
+# Menu screenshot (cycle back to default first)
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 06-menu-open
+
+# Search screen
+- tapOn:
+    id: "searchButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 07-search-screen
+
+# Go back to viewer
+- tapOn: "Cancel"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+
+# Close the menu
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+
+# Table of contents drawer
+- swipe:
+    start: 1%, 50%
+    end: 75%, 50%
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 08-toc-drawer

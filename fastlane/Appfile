@@ -1,0 +1,5 @@
+app_identifier("dev.dudesoft.markdownr")
+
+apple_id(ENV["APPLE_ID"])
+
+team_id("K9VADMGRA7")

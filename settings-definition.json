@@ -1,0 +1,46 @@
+{
+  "title": "Markdownr Settings",
+  "groups": [
+    {
+      "title": "Appearance",
+      "titleDe": "Darstellung",
+      "settings": [
+        {
+          "key": "colorMode",
+          "type": "multiValue",
+          "title": "Color Mode",
+          "titleDe": "Farbmodus",
+          "defaultValue": "system",
+          "values": ["system", "light", "dark"],
+          "titles": ["System", "Light", "Dark"],
+          "titlesDe": ["System", "Hell", "Dunkel"]
+        },
+        {
+          "key": "theme",
+          "type": "multiValue",
+          "title": "Theme",
+          "titleDe": "Thema",
+          "defaultValue": "default",
+          "values": ["default", "ocean", "forest", "sunset", "lavender"],
+          "titles": ["Default", "Ocean", "Forest", "Sunset", "Lavender"],
+          "titlesDe": ["Standard", "Ozean", "Wald", "Sonnenuntergang", "Lavendel"]
+        }
+      ]
+    },
+    {
+      "title": "Document Display",
+      "titleDe": "Dokumentenanzeige",
+      "footer": "YAML front matter metadata will be displayed at the top of documents when enabled.",
+      "footerDe": "YAML-Metadaten werden am Anfang von Dokumenten angezeigt, wenn aktiviert.",
+      "settings": [
+        {
+          "key": "showFrontMatter",
+          "type": "toggle",
+          "title": "Show Meta Data",
+          "titleDe": "Zeige Meta Informationen",
+          "defaultValue": true
+        }
+      ]
+    }
+  ]
+}

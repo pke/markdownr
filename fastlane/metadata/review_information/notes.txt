@@ -1,0 +1,24 @@
+Markdownr is a full-featured Markdown document viewer designed as a native companion to the iOS Files app. It registers as a document handler for .md and .markdown files, allowing users to open Markdown documents from Files, Mail, Safari, Messages, or any app that supports the share sheet.
+
+HOW TO TEST:
+
+1. Open the Files app on the device.
+2. Navigate to any .md or .markdown file (e.g. a README from a downloaded project).
+3. Tap the file — it opens in Markdownr with full native rendering.
+4. Alternatively, launch Markdownr directly and use the file picker (folder icon in the floating menu) to browse and open files from device storage or iCloud Drive.
+
+KEY FUNCTIONALITY BEYOND BASIC VIEWING:
+
+- Document handler integration: Markdownr registers for net.daringfireball.markdown and public.text UTIs. Users can set it as the default viewer for Markdown files system-wide.
+- Table of contents: Swipe from the left edge to open an auto-generated navigation drawer listing all headings. Tap any heading to jump directly to that section.
+- Full-text search: Tap the search icon to find any text in the document. Results are highlighted inline with match-by-match navigation (previous/next arrows).
+- Five colour themes (Default, Ocean, Forest, Sunset, Lavender) plus seasonal themes (Winter, Spring, Summer, Autumn) and holiday themes (Christmas, Easter) — each with full light and dark mode variants. Users cycle themes via the palette icon.
+- Front matter support: YAML front matter (title, author, date, tags, etc.) is parsed and displayed as a styled metadata header. Documents can specify a preferred theme via the "theme:" field.
+- Theme suggestions: When a document specifies a theme in its front matter, a banner offers to apply it. Seasonal themes are suggested based on the user's locale and hemisphere.
+- Math rendering: Inline ($...$) and block ($$...$$) LaTeX expressions are rendered via KaTeX.
+- Pinch-to-zoom: Users can pinch to zoom into any part of the rendered document.
+- Dark/light mode: Follows the system setting automatically, or can be toggled manually from the floating menu.
+- iPad support: Full adaptive layout with sidebar navigation on larger screens.
+- Localisation: The app is localised in English and German.
+
+This app serves the same purpose as a PDF viewer but for Markdown files — a document format widely used by developers, writers, researchers, and note-taking app users. There is no native Markdown viewer on iOS, so users currently have no way to read .md files without a full editor app.

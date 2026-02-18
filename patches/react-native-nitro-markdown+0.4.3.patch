@@ -1,0 +1,342 @@
+diff --git a/node_modules/react-native-nitro-markdown/lib/typescript/commonjs/index.d.ts b/node_modules/react-native-nitro-markdown/lib/typescript/commonjs/index.d.ts
+index 20b04cf..682bf58 100644
+--- a/node_modules/react-native-nitro-markdown/lib/typescript/commonjs/index.d.ts
++++ b/node_modules/react-native-nitro-markdown/lib/typescript/commonjs/index.d.ts
+@@ -1,5 +1,6 @@
+ export * from "./headless";
+ export { Markdown } from "./markdown";
++export type { MarkdownProps, AstTransform } from "./markdown";
+ export { MarkdownStream } from "./markdown-stream";
+ export { useMarkdownContext, MarkdownContext } from "./MarkdownContext";
+ export type { CustomRenderer, CustomRenderers, CustomRendererProps, NodeRendererProps, BaseCustomRendererProps, EnhancedRendererProps, HeadingRendererProps, LinkRendererProps, ImageRendererProps, CodeBlockRendererProps, InlineCodeRendererProps, ListRendererProps, TaskListItemRendererProps, LinkPressHandler, MarkdownContextValue, } from "./MarkdownContext";
+diff --git a/node_modules/react-native-nitro-markdown/lib/typescript/commonjs/markdown.d.ts b/node_modules/react-native-nitro-markdown/lib/typescript/commonjs/markdown.d.ts
+index cafb61c..3db494b 100644
+--- a/node_modules/react-native-nitro-markdown/lib/typescript/commonjs/markdown.d.ts
++++ b/node_modules/react-native-nitro-markdown/lib/typescript/commonjs/markdown.d.ts
+@@ -4,6 +4,7 @@ import { type MarkdownNode } from "./headless";
+ import type { ParserOptions } from "./Markdown.nitro";
+ import { type CustomRenderers, type LinkPressHandler } from "./MarkdownContext";
+ import { type PartialMarkdownTheme, type NodeStyleOverrides, type StylingStrategy } from "./theme";
++export type AstTransform = (ast: MarkdownNode) => MarkdownNode;
+ export type MarkdownProps = {
+     /**
+      * The markdown string to parse and render.
+@@ -13,6 +14,10 @@ export type MarkdownProps = {
+      * Parser options to enable GFM or Math support.
+      */
+     options?: ParserOptions;
++    /**
++     * Optional transform function applied to the parsed AST before rendering.
++     */
++    astTransform?: AstTransform;
+     /**
+      * Callback fired when parsing begins.
+      */
+diff --git a/node_modules/react-native-nitro-markdown/lib/typescript/module/index.d.ts b/node_modules/react-native-nitro-markdown/lib/typescript/module/index.d.ts
+index 20b04cf..682bf58 100644
+--- a/node_modules/react-native-nitro-markdown/lib/typescript/module/index.d.ts
++++ b/node_modules/react-native-nitro-markdown/lib/typescript/module/index.d.ts
+@@ -1,5 +1,6 @@
+ export * from "./headless";
+ export { Markdown } from "./markdown";
++export type { MarkdownProps, AstTransform } from "./markdown";
+ export { MarkdownStream } from "./markdown-stream";
+ export { useMarkdownContext, MarkdownContext } from "./MarkdownContext";
+ export type { CustomRenderer, CustomRenderers, CustomRendererProps, NodeRendererProps, BaseCustomRendererProps, EnhancedRendererProps, HeadingRendererProps, LinkRendererProps, ImageRendererProps, CodeBlockRendererProps, InlineCodeRendererProps, ListRendererProps, TaskListItemRendererProps, LinkPressHandler, MarkdownContextValue, } from "./MarkdownContext";
+diff --git a/node_modules/react-native-nitro-markdown/lib/typescript/module/markdown.d.ts b/node_modules/react-native-nitro-markdown/lib/typescript/module/markdown.d.ts
+index cafb61c..3db494b 100644
+--- a/node_modules/react-native-nitro-markdown/lib/typescript/module/markdown.d.ts
++++ b/node_modules/react-native-nitro-markdown/lib/typescript/module/markdown.d.ts
+@@ -4,6 +4,7 @@ import { type MarkdownNode } from "./headless";
+ import type { ParserOptions } from "./Markdown.nitro";
+ import { type CustomRenderers, type LinkPressHandler } from "./MarkdownContext";
+ import { type PartialMarkdownTheme, type NodeStyleOverrides, type StylingStrategy } from "./theme";
++export type AstTransform = (ast: MarkdownNode) => MarkdownNode;
+ export type MarkdownProps = {
+     /**
+      * The markdown string to parse and render.
+@@ -13,6 +14,10 @@ export type MarkdownProps = {
+      * Parser options to enable GFM or Math support.
+      */
+     options?: ParserOptions;
++    /**
++     * Optional transform function applied to the parsed AST before rendering.
++     */
++    astTransform?: AstTransform;
+     /**
+      * Callback fired when parsing begins.
+      */
+diff --git a/node_modules/react-native-nitro-markdown/src/index.ts b/node_modules/react-native-nitro-markdown/src/index.ts
+index 19f1876..9754e07 100644
+--- a/node_modules/react-native-nitro-markdown/src/index.ts
++++ b/node_modules/react-native-nitro-markdown/src/index.ts
+@@ -1,7 +1,9 @@
+ export * from "./headless";
+ 
+ export { Markdown } from "./markdown";
++export type { MarkdownProps, AstTransform } from "./markdown";
+ export { MarkdownStream } from "./markdown-stream";
++export type { MarkdownStreamProps } from "./markdown-stream";
+ 
+ export { useMarkdownContext, MarkdownContext } from "./MarkdownContext";
+ export type {
+diff --git a/node_modules/react-native-nitro-markdown/src/markdown.tsx b/node_modules/react-native-nitro-markdown/src/markdown.tsx
+index f7ab49c..af42179 100644
+--- a/node_modules/react-native-nitro-markdown/src/markdown.tsx
++++ b/node_modules/react-native-nitro-markdown/src/markdown.tsx
+@@ -51,6 +51,13 @@ import {
+ 
+ const baseStylesCache = new WeakMap<MarkdownTheme, BaseStyles>();
+ 
++/**
++ * A function that receives a parsed MarkdownNode AST and returns
++ * a (possibly modified) AST. May mutate in-place or return a new tree.
++ * Wrap in useCallback to avoid unnecessary re-parses.
++ */
++export type AstTransform = (ast: MarkdownNode) => MarkdownNode;
++
+ export type MarkdownProps = {
+   /**
+    * The markdown string to parse and render.
+@@ -60,6 +67,14 @@ export type MarkdownProps = {
+    * Parser options to enable GFM or Math support.
+    */
+   options?: ParserOptions;
++  /**
++   * Optional transform function applied to the parsed AST before rendering.
++   * Receives the parsed MarkdownNode tree and must return a MarkdownNode tree.
++   * The returned tree is what gets rendered and what onParseComplete receives.
++   *
++   * **Important:** Wrap in `useCallback` to avoid re-parsing on every render.
++   */
++  astTransform?: AstTransform;
+   /**
+    * Callback fired when parsing begins.
+    */
+@@ -112,6 +127,7 @@ export type MarkdownProps = {
+ export const Markdown: FC<MarkdownProps> = ({
+   children,
+   options,
++  astTransform,
+   renderers = {},
+   theme: userTheme,
+   styles: nodeStyles,
+@@ -130,6 +146,10 @@ export const Markdown: FC<MarkdownProps> = ({
+         ast = parseMarkdown(children);
+       }
+ 
++      if (astTransform) {
++        ast = astTransform(ast);
++      }
++
+       return {
+         ast,
+         text: getFlattenedText(ast),
+@@ -140,7 +160,7 @@ export const Markdown: FC<MarkdownProps> = ({
+         text: "",
+       };
+     }
+-  }, [children, options]);
++  }, [children, options, astTransform]);
+ 
+   useEffect(() => {
+     onParsingInProgress?.();
+diff --git a/node_modules/react-native-nitro-markdown/src/renderers/table.tsx b/node_modules/react-native-nitro-markdown/src/renderers/table.tsx
+index d88d41d..6cde78d 100644
+--- a/node_modules/react-native-nitro-markdown/src/renderers/table.tsx
++++ b/node_modules/react-native-nitro-markdown/src/renderers/table.tsx
+@@ -1,8 +1,7 @@
+ import {
+-  useEffect,
++  useState,
+   useMemo,
+   useRef,
+-  useReducer,
+   useCallback,
+   type FC,
+   type ComponentType,
+@@ -65,16 +64,6 @@ type TableRendererProps = {
+   style?: ViewStyle;
+ };
+ 
+-type ColumnWidthsAction = {
+-  type: "SET_WIDTHS";
+-  payload: number[];
+-};
+-
+-const columnWidthsReducer = (state: number[], action: ColumnWidthsAction) => {
+-  if (action.type === "SET_WIDTHS") return action.payload;
+-  return state;
+-};
+-
+ export const TableRenderer: FC<TableRendererProps> = ({
+   node,
+   Renderer,
+@@ -89,73 +78,36 @@ export const TableRenderer: FC<TableRendererProps> = ({
+   const columnCount = headers.length;
+   const styles = useMemo(() => createTableStyles(theme), [theme]);
+ 
+-  const [columnWidths, dispatch] = useReducer(columnWidthsReducer, []);
+-  const measuredWidths = useRef<Map<string, number>>(new Map());
+-  const measuredCells = useRef<Set<string>>(new Set());
+-  const widthsCalculated = useRef(false);
+-
+-  const expectedCellKeys = useMemo(() => {
+-    const keys: string[] = [];
+-
+-    headers.forEach((_, colIndex) => {
+-      keys.push(`header-${colIndex}`);
+-    });
+-
+-    rows.forEach((row, rowIndex) => {
+-      row.forEach((_, colIndex) => {
+-        keys.push(`cell-${rowIndex}-${colIndex}`);
+-      });
+-    });
+-
+-    return keys;
+-  }, [headers, rows]);
+-
+-  useEffect(() => {
+-    measuredWidths.current.clear();
+-    measuredCells.current.clear();
+-    widthsCalculated.current = false;
+-    dispatch({ type: "SET_WIDTHS", payload: [] });
+-  }, [expectedCellKeys]);
++  const [columnWidths, setColumnWidths] = useState<number[] | null>(null);
++  const widthMap = useRef<Map<string, number>>(new Map());
++  const totalCells = columnCount + rows.length * columnCount;
++  const measuredCount = useRef(0);
++  const done = useRef(false);
+ 
+   const onCellLayout = useCallback(
+     (cellKey: string, width: number) => {
+-      if (widthsCalculated.current) return;
+-
+-      measuredWidths.current.set(cellKey, width);
+-      if (!measuredCells.current.has(cellKey)) {
+-        measuredCells.current.add(cellKey);
++      if (done.current) return;
++      if (!widthMap.current.has(cellKey)) {
++        measuredCount.current++;
+       }
++      widthMap.current.set(cellKey, width);
+ 
+-      if (measuredCells.current.size < expectedCellKeys.length) return;
+-
+-      const allCellsMeasured = expectedCellKeys.every((key) =>
+-        measuredCells.current.has(key),
+-      );
+-      if (!allCellsMeasured) return;
++      if (measuredCount.current < totalCells) return;
+ 
+       const maxWidths: number[] = new Array(columnCount).fill(0);
+-
+       for (let col = 0; col < columnCount; col++) {
+-        const headerWidth = measuredWidths.current.get(`header-${col}`);
+-        if (headerWidth && headerWidth > 0) {
+-          maxWidths[col] = Math.max(maxWidths[col], headerWidth);
+-        }
+-
++        const hw = widthMap.current.get(`h-${col}`) ?? 0;
++        maxWidths[col] = hw;
+         for (let row = 0; row < rows.length; row++) {
+-          if (col >= rows[row].length) continue;
+-          const cellWidth = measuredWidths.current.get(`cell-${row}-${col}`);
+-          if (cellWidth && cellWidth > 0) {
+-            maxWidths[col] = Math.max(maxWidths[col], cellWidth);
+-          }
++          const cw = widthMap.current.get(`c-${row}-${col}`) ?? 0;
++          if (cw > maxWidths[col]) maxWidths[col] = cw;
+         }
+-
+         maxWidths[col] = Math.max(maxWidths[col] + 8, 60);
+       }
+-
+-      widthsCalculated.current = true;
+-      dispatch({ type: "SET_WIDTHS", payload: maxWidths });
++      done.current = true;
++      setColumnWidths(maxWidths);
+     },
+-    [columnCount, expectedCellKeys, rows],
++    [columnCount, rows.length, totalCells],
+   );
+ 
+   const getAlignment = (
+@@ -169,20 +121,34 @@ export const TableRenderer: FC<TableRendererProps> = ({
+ 
+   if (columnCount === 0) return null;
+ 
+-  const hasWidths = columnWidths.length === columnCount;
++  const hasWidths = columnWidths !== null;
+ 
+   return (
+     <View style={[styles.container, style]}>
+-      {!hasWidths && (
+-        <View style={styles.measurementContainer}>
+-          <View style={styles.measurementRow}>
+-            {headers.map((cell, colIndex) => (
++      {/* Hidden measurement layer — always rendered */}
++      <View style={styles.measurementContainer}>
++        <View style={styles.measurementRow}>
++          {headers.map((cell, colIndex) => (
++            <View
++              key={`mh-${colIndex}`}
++              style={styles.measurementCell}
++              onLayout={(e: LayoutChangeEvent) => {
++                onCellLayout(`h-${colIndex}`, e.nativeEvent.layout.width);
++              }}
++            >
++              <CellContent node={cell} Renderer={Renderer} styles={styles} />
++            </View>
++          ))}
++        </View>
++        {rows.map((row, rowIndex) => (
++          <View key={`mr-${rowIndex}`} style={styles.measurementRow}>
++            {row.map((cell, colIndex) => (
+               <View
+-                key={`measure-header-${colIndex}`}
++                key={`mc-${rowIndex}-${colIndex}`}
+                 style={styles.measurementCell}
+                 onLayout={(e: LayoutChangeEvent) => {
+                   onCellLayout(
+-                    `header-${colIndex}`,
++                    `c-${rowIndex}-${colIndex}`,
+                     e.nativeEvent.layout.width,
+                   );
+                 }}
+@@ -191,31 +157,10 @@ export const TableRenderer: FC<TableRendererProps> = ({
+               </View>
+             ))}
+           </View>
+-          {rows.map((row, rowIndex) => (
+-            <View key={`measure-row-${rowIndex}`} style={styles.measurementRow}>
+-              {row.map((cell, colIndex) => (
+-                <View
+-                  key={`measure-cell-${rowIndex}-${colIndex}`}
+-                  style={styles.measurementCell}
+-                  onLayout={(e: LayoutChangeEvent) => {
+-                    onCellLayout(
+-                      `cell-${rowIndex}-${colIndex}`,
+-                      e.nativeEvent.layout.width,
+-                    );
+-                  }}
+-                >
+-                  <CellContent
+-                    node={cell}
+-                    Renderer={Renderer}
+-                    styles={styles}
+-                  />
+-                </View>
+-              ))}
+-            </View>
+-          ))}
+-        </View>
+-      )}
++        ))}
++      </View>
+ 
++      {/* Actual table — only shown once widths are known */}
+       {hasWidths ? (
+         <ScrollView
+           horizontal

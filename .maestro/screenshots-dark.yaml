@@ -1,0 +1,84 @@
+appId: dev.dudesoft.markdownr.dev
+---
+
+# Launch app fresh — defaults to dark via system appearance
+- stopApp
+- launchApp:
+    clearState: true
+
+# Wait for the viewer to render
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+
+# Dark mode, default theme
+- takeScreenshot: 09-viewer-dark-default
+
+# Ocean dark
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 10-viewer-dark-ocean
+
+# Forest dark
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 11-viewer-dark-forest
+
+# Sunset dark
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 12-viewer-dark-sunset
+
+# Lavender dark
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "cycleThemeButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: 13-viewer-dark-lavender

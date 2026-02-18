@@ -1,0 +1,34 @@
+Markdownr is a powerful, native Markdown viewer that turns your iPhone and iPad into the best way to read .md files. Open Markdown documents directly from the Files app, Mail, Safari, or any app — Markdownr registers as a system-wide document handler so your files always look beautiful.
+
+WHY MARKDOWNR
+
+iOS has no built-in Markdown viewer. Markdownr fills that gap with blazing-fast native rendering, rich theming, and document navigation features that make reading long Markdown documents a pleasure.
+
+DOCUMENT HANDLING
+
+- Open .md and .markdown files from the Files app, email attachments, Safari downloads, or any app that shares documents
+- Browse and open files from device storage or iCloud Drive with the built-in file picker
+- Set Markdownr as your default Markdown viewer system-wide
+
+READING & NAVIGATION
+
+- Table of Contents: Swipe from the left to open an auto-generated navigation drawer with all headings — tap to jump to any section
+- Full-Text Search: Find any text instantly with highlighted results and match-by-match navigation
+- Pinch to Zoom: Zoom into any part of your document for a closer look
+- Front Matter: View YAML metadata (title, author, date, tags) in a clean styled header
+
+THEMES & APPEARANCE
+
+- 13 colour themes: Default, Ocean, Forest, Sunset, Lavender, Winter, Spring, Summer, Autumn, Christmas, Easter, and more — each with light and dark variants
+- Dark & Light Mode: Follows your system setting automatically, or toggle manually
+- Theme Suggestions: Documents can request a specific theme via front matter, and seasonal themes are suggested based on your locale
+- Particle overlays and decorative elements for seasonal and holiday themes
+
+ADVANCED FEATURES
+
+- Math Support: Inline and block LaTeX expressions rendered via KaTeX
+- Custom theme URLs: Load themes from remote JSON files specified in front matter
+- Full iPad support with adaptive layout
+- Localised in English and German
+
+Markdownr is for developers reading READMEs, writers reviewing drafts, students reading notes, and anyone who works with Markdown files. It does one thing — view Markdown — and it does it exceptionally well.
