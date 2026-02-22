@@ -1,10 +1,25 @@
+const fs = require('fs');
+const path = require('path');
+
+function getVersion() {
+  const props = fs.readFileSync(path.join(__dirname, 'version.properties'), 'utf8');
+  const major = props.match(/VERSION_MAJOR=(\d+)/)[1];
+  const minor = props.match(/VERSION_MINOR=(\d+)/)[1];
+  const patch = props.match(/VERSION_PATCH=(\d+)/)[1];
+  return {
+    version: `${major}.${minor}.${patch}`,
+    buildNumber: String(Number(major) * 10000 + Number(minor) * 100 + Number(patch)),
+  };
+}
+
 const IS_DEV = process.env.APP_VARIANT === 'development';
+const { version, buildNumber } = getVersion();
 
 export default {
   expo: {
     name: IS_DEV ? 'Markdownr Dev' : 'Markdownr',
     slug: 'markdownr',
-    version: '1.1.0',
+    version,
     orientation: 'default',
     icon: IS_DEV ? './assets/icon-dev.png' : './assets/icon.png',
     userInterfaceStyle: 'automatic',
@@ -17,7 +32,7 @@ export default {
     ios: {
       supportsTablet: true,
       appleTeamId: 'K9VADMGRA7',
-      buildNumber: '2',
+      buildNumber,
       bundleIdentifier: IS_DEV
         ? 'dev.dudesoft.markdownr.dev'
         : 'dev.dudesoft.markdownr',
