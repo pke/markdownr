@@ -13,6 +13,17 @@ def asc_api_key
   )
 end
 
+def read_version
+  props = File.read("version.properties")
+  major = props[/VERSION_MAJOR=(\d+)/, 1].to_i
+  minor = props[/VERSION_MINOR=(\d+)/, 1].to_i
+  patch = props[/VERSION_PATCH=(\d+)/, 1].to_i
+  {
+    version: "#{major}.#{minor}.#{patch}",
+    build_number: (major * 10000 + minor * 100 + patch).to_s
+  }
+end
+
 platform :ios do
 
   desc "Upload metadata to App Store Connect (without screenshots)"
@@ -57,6 +68,104 @@ platform :ios do
       force: true,
       overwrite_screenshots: true
     )
+  end
+
+  desc "Generate release notes from git commits since last tag. Review and edit before running release."
+  lane :generate_release_notes do
+    v = read_version
+    version = v[:version]
+
+    # Find the previous tag to get commits since last release
+    tags = sh("git tag --sort=-version:refname -l 'v*'", log: false).strip.split("\n")
+    if tags.length >= 2
+      prev_tag = tags[1] # Second most recent tag (current release tag is first)
+      commits = sh("git log #{prev_tag}..HEAD --pretty=format:'- %s' --no-merges", log: false).strip
+    elsif tags.length == 1
+      commits = sh("git log #{tags[0]}..HEAD --pretty=format:'- %s' --no-merges", log: false).strip
+      commits = sh("git log --pretty=format:'- %s' --no-merges", log: false).strip if commits.empty?
+    else
+      commits = sh("git log --pretty=format:'- %s' --no-merges", log: false).strip
+    end
+
+    # Filter to only version-bumping commits (feat, fix, perf, refactor)
+    meaningful = commits.split("\n").select { |line|
+      line =~ /^- (feat|fix|perf|refactor)(\(.+?\))?[!]?:/i
+    }.join("\n")
+
+    meaningful = commits if meaningful.empty? # Fall back to all commits
+
+    UI.header("Commits for v#{version} release notes")
+    UI.message(meaningful)
+    UI.message("")
+    UI.important("Write release notes in:")
+    UI.message("  fastlane/metadata/en-GB/release_notes.txt")
+    UI.message("  fastlane/metadata/de-DE/release_notes.txt")
+    UI.message("")
+    UI.important("Then run: bundle exec fastlane ios release")
+  end
+
+  desc "Full release: prebuild, build, upload to TestFlight, upload metadata, and submit for review"
+  lane :release do
+    v = read_version
+    version = v[:version]
+    build_number = v[:build_number]
+
+    UI.header("Releasing Markdownr v#{version} (build #{build_number})")
+
+    # Verify release notes exist and aren't empty
+    %w[en-GB de-DE].each do |locale|
+      notes_path = "fastlane/metadata/#{locale}/release_notes.txt"
+      UI.user_error!("Missing release notes: #{notes_path}") unless File.exist?(notes_path)
+      content = File.read(notes_path).strip
+      UI.user_error!("Empty release notes: #{notes_path}") if content.empty?
+    end
+
+    # Verify git is clean
+    status = sh("git status --porcelain", log: false).strip
+    unless status.empty?
+      UI.user_error!("Git working directory is not clean. Commit or stash changes first.\n#{status}")
+    end
+
+    # Step 1: Expo prebuild for production
+    UI.header("Step 1/5: Expo prebuild")
+    sh("npx expo prebuild --clean 2>&1")
+
+    # Step 2: Build
+    UI.header("Step 2/5: Building Markdownr v#{version}")
+    build_app(
+      workspace: "ios/Markdownr.xcworkspace",
+      scheme: "Markdownr",
+      configuration: "Release",
+      export_method: "app-store",
+      export_team_id: "K9VADMGRA7",
+      output_directory: "ios/build",
+      xcargs: "-allowProvisioningUpdates"
+    )
+
+    # Step 3: Upload to TestFlight
+    UI.header("Step 3/5: Uploading to TestFlight")
+    pilot(
+      api_key: asc_api_key,
+      app_identifier: APP_IDENTIFIER,
+      skip_waiting_for_build_processing: false
+    )
+
+    # Step 4: Upload metadata + submit for review
+    UI.header("Step 4/5: Uploading metadata")
+    deliver(
+      api_key: asc_api_key,
+      app_identifier: APP_IDENTIFIER,
+      skip_screenshots: true,
+      force: true,
+      submit_for_review: true,
+      automatic_release: false,
+      phased_release: true,
+      precheck_include_in_app_purchases: false
+    )
+
+    # Step 5: Done
+    UI.header("Step 5/5: Complete!")
+    UI.success("Markdownr v#{version} (build #{build_number}) submitted for review!")
   end
 
   error do |lane, exception|
