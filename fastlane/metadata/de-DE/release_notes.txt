@@ -1,9 +1,7 @@
-Erstveroeffentlichung von Markdownr.
+Markdownr merkt sich jetzt alles! Schluss mit "Welche Datei war das nochmal?"
 
-- Natives Hochleistungs-Markdown-Rendering
-- Dunkel- und Hellmodus mit automatischer Systemerkennung
-- Fuenf Farbthemen: Standard, Ozean, Wald, Sonnenuntergang, Lavendel
-- Inhaltsverzeichnis-Leiste fuer schnelle Navigation
-- Volltextsuche mit Hervorhebung
-- YAML-Front-Matter-Anzeige
-- Dateien aus der Dateien-App oder beliebigen Quellen oeffnen
+- Zuletzt geöffnet: Deine letzten 10 Dateien werden zwischengespeichert. Wischen zum Löschen, tippen zum Öffnen.
+- Nahtloser Neustart: Die App lädt beim Start automatisch deine letzte Datei. Kein Willkommensbildschirm mehr jeden Morgen.
+- Schnellzugriff im Drawer: Deine zwei neuesten Dateien sind in der Seitenleiste, nur einen Tipp entfernt.
+- Egal woher: Teilen-Menü, Dateiauswahl, Deep Links — alles landet automatisch in deinen letzten Dateien.
+- Privatsphäre zuerst: Zwischengespeicherte Dateien bleiben auf deinem Gerät und werden nicht mit iCloud synchronisiert.

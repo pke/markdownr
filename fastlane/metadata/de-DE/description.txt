@@ -1,34 +1,34 @@
-Markdownr ist ein leistungsstarker, nativer Markdown-Betrachter, der dein iPhone und iPad in die beste Moeglichkeit verwandelt, .md-Dateien zu lesen. Oeffne Markdown-Dokumente direkt aus der Dateien-App, Mail, Safari oder jeder anderen App — Markdownr registriert sich als systemweiter Dokumenten-Handler, damit deine Dateien immer ansprechend aussehen.
+Markdownr ist ein leistungsstarker, nativer Markdown-Betrachter, der dein iPhone und iPad in die beste Möglichkeit verwandelt, .md-Dateien zu lesen. Öffne Markdown-Dokumente direkt aus der Dateien-App, Mail, Safari oder jeder anderen App — Markdownr registriert sich als systemweiter Dokumenten-Handler, damit deine Dateien immer ansprechend aussehen.
 
 WARUM MARKDOWNR
 
-iOS hat keinen eingebauten Markdown-Betrachter. Markdownr schliesst diese Luecke mit blitzschnellem nativem Rendering, umfangreichen Themes und Dokumentnavigations-Funktionen, die das Lesen langer Markdown-Dokumente zum Vergnuegen machen.
+iOS hat keinen eingebauten Markdown-Betrachter. Markdownr schließt diese Lücke mit blitzschnellem nativem Rendering, umfangreichen Themes und Dokumentnavigations-Funktionen, die das Lesen langer Markdown-Dokumente zum Vergnügen machen.
 
 DOKUMENTENVERWALTUNG
 
-- Oeffne .md- und .markdown-Dateien aus der Dateien-App, E-Mail-Anhaengen, Safari-Downloads oder jeder App, die Dokumente teilt
-- Durchsuche und oeffne Dateien vom Geraetespeicher oder iCloud Drive mit der integrierten Dateiauswahl
-- Setze Markdownr als Standard-Markdown-Betrachter fuer das gesamte System
+- Öffne .md- und .markdown-Dateien aus der Dateien-App, E-Mail-Anhängen, Safari-Downloads oder jeder App, die Dokumente teilt
+- Durchsuche und öffne Dateien vom Gerätespeicher oder iCloud Drive mit der integrierten Dateiauswahl
+- Setze Markdownr als Standard-Markdown-Betrachter für das gesamte System
 
 LESEN & NAVIGATION
 
-- Inhaltsverzeichnis: Wische von links, um eine automatisch generierte Navigationsleiste mit allen Ueberschriften zu oeffnen — tippe zum Springen zu jedem Abschnitt
-- Volltextsuche: Finde jeden Text sofort mit hervorgehobenen Ergebnissen und Treffer-fuer-Treffer-Navigation
-- Pinch to Zoom: Zoome in jeden Teil deines Dokuments fuer eine naehere Ansicht
-- Front Matter: Zeige YAML-Metadaten (Titel, Autor, Datum, Tags) in einem uebersichtlichen gestalteten Header
+- Inhaltsverzeichnis: Wische von links, um eine automatisch generierte Navigationsleiste mit allen Überschriften zu öffnen — tippe zum Springen zu jedem Abschnitt
+- Volltextsuche: Finde jeden Text sofort mit hervorgehobenen Ergebnissen und Treffer-für-Treffer-Navigation
+- Pinch to Zoom: Zoome in jeden Teil deines Dokuments für eine nähere Ansicht
+- Front Matter: Zeige YAML-Metadaten (Titel, Autor, Datum, Tags) in einem übersichtlichen gestalteten Header
 
 THEMES & ERSCHEINUNGSBILD
 
-- 13 Farbthemen: Standard, Ozean, Wald, Sonnenuntergang, Lavendel, Winter, Fruehling, Sommer, Herbst, Weihnachten, Ostern und mehr — jeweils mit heller und dunkler Variante
+- 13 Farbthemen: Standard, Ozean, Wald, Sonnenuntergang, Lavendel, Winter, Frühling, Sommer, Herbst, Weihnachten, Ostern und mehr — jeweils mit heller und dunkler Variante
 - Dunkel- & Hellmodus: Folgt automatisch deiner Systemeinstellung oder wechsle manuell
-- Theme-Vorschlaege: Dokumente koennen ein bestimmtes Theme per Front Matter anfordern, und saisonale Themes werden basierend auf deinem Standort vorgeschlagen
-- Partikel-Overlays und dekorative Elemente fuer saisonale und Feiertags-Themes
+- Theme-Vorschläge: Dokumente können ein bestimmtes Theme per Front Matter anfordern, und saisonale Themes werden basierend auf deinem Standort vorgeschlagen
+- Partikel-Overlays und dekorative Elemente für saisonale und Feiertags-Themes
 
 ERWEITERTE FUNKTIONEN
 
-- Mathe-Unterstuetzung: Inline- und Block-LaTeX-Ausdruecke gerendert via KaTeX
+- Mathe-Unterstützung: Inline- und Block-LaTeX-Ausdrücke gerendert via KaTeX
 - Benutzerdefinierte Theme-URLs: Lade Themes von entfernten JSON-Dateien, die im Front Matter angegeben sind
-- Volle iPad-Unterstuetzung mit adaptivem Layout
+- Volle iPad-Unterstützung mit adaptivem Layout
 - Lokalisiert in Englisch und Deutsch
 
-Markdownr ist fuer Entwickler, die READMEs lesen, Autoren, die Entwuerfe ueberpruefen, Studenten, die Notizen lesen, und alle, die mit Markdown-Dateien arbeiten. Es macht eine Sache — Markdown anzeigen — und das aussergewoehnlich gut.
+Markdownr ist für Entwickler, die READMEs lesen, Autoren, die Entwürfe überprüfen, Studenten, die Notizen lesen, und alle, die mit Markdown-Dateien arbeiten. Es macht eine Sache — Markdown anzeigen — und das außergewöhnlich gut.
