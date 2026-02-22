@@ -310,7 +310,7 @@ type FloatingMenuProps = {
 function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMatter, showSource, toggleSource}: FloatingMenuProps) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const {showFrontMatterSetting, theme, isDarkMode, toggleDarkMode, themeName, cycleTheme} = React.useContext(MarkdownContext);
+  const {showFrontMatterSetting, theme, isDarkMode, colorMode, toggleDarkMode, themeName, cycleTheme} = React.useContext(MarkdownContext);
 
   const menuOpacity = useSharedValue(1);
   const menuTranslateY = useSharedValue(0);
@@ -374,13 +374,19 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
           </SlideUpMenuItem>
 
           <SlideUpMenuItem isMenuOpen={isMenuOpen} delay={240}>
-            <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>{isDarkMode ? 'Light' : 'Dark'}</Text>
+            <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>
+              {colorMode === 'system' ? 'Auto' : colorMode === 'dark' ? 'Dark' : 'Light'}
+            </Text>
             <TouchableOpacity
               onPress={() => { toggleDarkMode(); }}
               style={[styles.menuItem, {backgroundColor: bgColor}]}
               activeOpacity={0.7}
               testID="darkModeButton">
-              <MenuIcon name={isDarkMode ? 'sun.max' : 'moon'} fallback={isDarkMode ? '☀️' : '🌙'} color={theme.colors.text} />
+              <MenuIcon
+                name={colorMode === 'system' ? 'circle.lefthalf.filled' : colorMode === 'dark' ? 'moon' : 'sun.max'}
+                fallback={colorMode === 'system' ? '⚙️' : colorMode === 'dark' ? '🌙' : '☀️'}
+                color={theme.colors.text}
+              />
             </TouchableOpacity>
           </SlideUpMenuItem>
 
@@ -451,6 +457,7 @@ export function ViewerScreen() {
     theme,
     backgroundColor,
     isDarkMode,
+    colorMode,
     toggleDarkMode,
     themeName,
     cycleTheme,
@@ -816,7 +823,7 @@ export function ViewerScreen() {
         const content = getTextContent(node);
         let suffix = '';
         if (action === 'darkmode') {
-          suffix = isDarkMode ? ' light mode ☀️' : ' dark mode 🌙';
+          suffix = colorMode === 'system' ? ' dark mode 🌙' : colorMode === 'dark' ? ' light mode ☀️' : ' auto mode ⚙️';
         } else if (action === 'theme') {
           const emoji = customThemes[themeName].icon;
           const displayName = themeName.charAt(0).toUpperCase() + themeName.slice(1);
@@ -893,7 +900,7 @@ export function ViewerScreen() {
         </View>
       );
     },
-  }), [highlightText, theme.colors.text, theme.colors.link, theme.colors.heading, theme.colors.border, setIsMenuVisible, setIsMenuOpen, showFrontMatter, setShowFrontMatter, setScrollToPercent, navigation, toggleDarkMode, cycleTheme, isDarkMode, themeName, rendererConfig, openFilePicker, openSearch, headingRefsMap, scrollToAnchor]);
+  }), [highlightText, theme.colors.text, theme.colors.link, theme.colors.heading, theme.colors.border, setIsMenuVisible, setIsMenuOpen, showFrontMatter, setShowFrontMatter, setScrollToPercent, navigation, toggleDarkMode, cycleTheme, isDarkMode, colorMode, themeName, rendererConfig, openFilePicker, openSearch, headingRefsMap, scrollToAnchor]);
 
   const shouldShowFrontMatter = showFrontMatter && frontMatter;
 
