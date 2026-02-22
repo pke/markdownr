@@ -47,6 +47,7 @@ export type MarkdownContextType = {
   frontMatterThemeApplied: boolean;
   setFrontMatterThemeApplied: (applied: boolean) => void;
   applyTheme: (name: ThemeName) => void;
+  openFile: (content: string, fileName: string | null) => void;
 };
 
 const emptyMap = new Map<number, View>();
@@ -83,4 +84,5 @@ export const MarkdownContext = React.createContext<MarkdownContextType>({
   frontMatterThemeApplied: false,
   setFrontMatterThemeApplied: () => {},
   applyTheme: () => {},
+  openFile: () => {},
 });

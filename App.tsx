@@ -9,10 +9,12 @@ import * as Linking from 'expo-linking';
 
 import {EXAMPLE_MARKDOWN} from './example';
 import {Settings, SettingsKeys, addSettingsListener} from './settings';
+import {addRecentFile, getRecentFiles, loadRecentFile} from './recentFiles';
 import {MarkdownContext, type SearchMatch, type TocHeading} from './MarkdownContext';
 import {customThemes, themeNames, type ThemeName, type ThemeConfig} from './themes';
 import {ViewerScreen} from './ViewerScreen';
 import {SearchScreen} from './SearchScreen';
+import {RecentFilesScreen} from './RecentFilesScreen';
 import {TocDrawerContent} from './TocDrawer';
 import {ErrorBoundary} from './ErrorBoundary';
 
@@ -46,8 +48,9 @@ export default function App() {
     Settings.setString(SettingsKeys.THEME, newTheme);
   }, [themeName]);
 
-  const [markdownContent, setMarkdownContent] = useState<string>(EXAMPLE_MARKDOWN);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const initialRecent = useMemo(() => getRecentFiles()[0] ?? null, []);
+  const [markdownContent, setMarkdownContent] = useState<string>(initialRecent ? '' : EXAMPLE_MARKDOWN);
+  const [fileName, setFileName] = useState<string | null>(initialRecent?.subtitle ?? null);
   const [frontMatterTheme, setFrontMatterTheme] = useState<ThemeConfig | null>(null);
   const [frontMatterThemeApplied, setFrontMatterThemeApplied] = useState(false);
 
@@ -96,6 +99,14 @@ export default function App() {
     return addSettingsListener(reloadSettings);
   }, [reloadSettings]);
 
+  const openFile = useCallback((content: string, name: string | null) => {
+    addRecentFile(content, name);
+    setMarkdownContent(content);
+    setFileName(name);
+  }, []);
+
+  const openedViaDeepLink = useRef(false);
+
   const handleInitialUrl = useCallback(
     async (url: string | null) => {
       if (!url) return;
@@ -111,17 +122,30 @@ export default function App() {
         const content = await new File(fileUri).text();
 
         const name = url.split('/').pop() ?? 'Unknown';
-        setMarkdownContent(content);
-        setFileName(name);
+        openFile(content, name);
+        openedViaDeepLink.current = true;
       } catch (err) {
         console.error('Error reading file from URL:', err);
       }
     },
-    [],
+    [openFile],
   );
 
   useEffect(() => {
-    Linking.getInitialURL().then(handleInitialUrl);
+    Linking.getInitialURL().then((url) => {
+      handleInitialUrl(url).then(() => {
+        if (!openedViaDeepLink.current && initialRecent) {
+          loadRecentFile(initialRecent).then((content) => {
+            if (content) {
+              setMarkdownContent(content);
+            } else {
+              // Cached file was purged — fall back to welcome screen
+              setFileName(null);
+            }
+          });
+        }
+      });
+    });
 
     const subscription = Linking.addEventListener('url', ({url}) => {
       handleInitialUrl(url);
@@ -130,7 +154,7 @@ export default function App() {
     return () => {
       subscription.remove();
     };
-  }, [handleInitialUrl]);
+  }, [handleInitialUrl, initialRecent]);
 
   const applyTheme = useCallback((name: ThemeName) => {
     setThemeName(name);
@@ -173,12 +197,13 @@ export default function App() {
     frontMatterThemeApplied,
     setFrontMatterThemeApplied,
     applyTheme,
+    openFile,
   }), [
     markdownContent, fileName, scrollToPercent, highlightText,
     searchMatches, currentMatchIndex, theme, backgroundColor,
     isDarkMode, toggleDarkMode, themeName, cycleTheme, showFrontMatterSetting,
     scrollToHeadingIndex, frontMatterTheme, frontMatterThemeApplied,
-    applyTheme,
+    applyTheme, openFile,
   ]);
 
   const drawerType = Platform.OS === 'android' ? 'back' : 'slide';
@@ -214,6 +239,14 @@ export default function App() {
                     <Stack.Screen
                       name="Search"
                       component={SearchScreen}
+                      options={{
+                        presentation: 'modal',
+                        headerShown: false,
+                      }}
+                    />
+                    <Stack.Screen
+                      name="RecentFiles"
+                      component={RecentFilesScreen}
                       options={{
                         presentation: 'modal',
                         headerShown: false,

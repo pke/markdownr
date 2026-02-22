@@ -8,7 +8,6 @@ tags:
   - mobile
   - documentation
 description: A pocket-friendly markdown viewer for iOS and Android
-version: 1.0.0
 ---
 # Welcome to Markdownr
 
@@ -108,16 +107,16 @@ print(list(fibonacci(10)))
 
 Wide tables scroll horizontally — try swiping left on this one:
 
-| Feature | Status | Since | Notes |
-|---------|--------|-------|-------|
-| Dark Mode | Supported | v1.0 | Follows system setting or manual toggle |
-| Search | Supported | v1.0 | Full-text search with match highlighting |
-| Themes | 5 options | v1.0 | Default, Sepia, Forest, Ocean, Dracula |
-| File Types | .md, .markdown | v1.0 | Open from Files app or share sheet |
-| Math (LaTeX) | Supported | v1.0 | Inline and block equations via KaTeX |
-| Table of Contents | Supported | v1.1 | Auto-generated from headings |
-| Pinch to Zoom | Supported | v1.0 | Zoom in on any content |
-| Double-Tap Zoom | Supported | v1.0 | Quick 2x zoom toggle |
+| Feature | Notes |
+|---------|-------|
+| Dark Mode | Follows system setting or manual toggle |
+| Search | Full-text search with match highlighting |
+| Themes | Default, Sepia, Forest, Ocean, Dracula |
+| File Types | Open from Files app or share sheet |
+| Math (LaTeX) | Inline and block equations via KaTeX |
+| Table of Contents | Auto-generated from headings |
+| Pinch to Zoom | Zoom in on any content |
+| Double-Tap Zoom | Quick 2x zoom toggle |
 
 ### Math Expressions
 
@@ -152,15 +151,6 @@ $$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
 | Cmd + F | Search |
 | Cmd + O | Open file |
 
----
-
-## About
-
-Markdownr is built with React Native and Expo. It uses the blazing-fast \`md4c\` parser through Nitro Modules for native performance.
-
-**Version:** 1.0.0
-
-Made with care for markdown lovers everywhere.
 `;
 
 // Keep the old comprehensive example for reference/testing

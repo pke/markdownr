@@ -14,6 +14,7 @@ export const StorageKeys = {
   RECENT_SEARCHES: 'recentSearches',
   DISMISSED_SEASON: 'dismissedSeason',
   DISMISSED_HOLIDAY: 'dismissedHoliday',
+  RECENT_FILES: 'recentFiles',
 } as const;
 
 type SettingsKey = typeof SettingsKeys[keyof typeof SettingsKeys];
