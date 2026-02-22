@@ -37,6 +37,7 @@ platform :ios do
       configuration: "Release",
       export_method: "app-store",
       export_team_id: "K9VADMGRA7",
+      output_directory: "ios/build",
       xcargs: "-allowProvisioningUpdates"
     )
     pilot(

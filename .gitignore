@@ -43,5 +43,9 @@ yarn-error.*
 # embedded git repo (local dependency)
 react-native-nitro-markdown
 
-# fastlane secrets
+# fastlane
 fastlane/.env
+fastlane/report.xml
+
+# build artifacts
+ios/build/
