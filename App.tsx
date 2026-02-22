@@ -31,10 +31,10 @@ export default function App() {
     ? systemColorScheme === 'dark'
     : colorMode === 'dark';
   const toggleDarkMode = useCallback(() => {
-    const newMode = isDarkMode ? 'light' : 'dark';
-    setColorMode(newMode);
-    Settings.setString(SettingsKeys.COLOR_MODE, newMode);
-  }, [isDarkMode]);
+    const next = colorMode === 'system' ? 'dark' : colorMode === 'dark' ? 'light' : 'system';
+    setColorMode(next);
+    Settings.setString(SettingsKeys.COLOR_MODE, next);
+  }, [colorMode]);
 
   const [themeName, setThemeName] = useState<ThemeName>(() => {
     const saved = Settings.getString(SettingsKeys.THEME, 'default');
@@ -183,6 +183,7 @@ export default function App() {
     theme,
     backgroundColor,
     isDarkMode,
+    colorMode: colorMode as 'system' | 'dark' | 'light',
     toggleDarkMode,
     themeName,
     cycleTheme,
@@ -201,7 +202,7 @@ export default function App() {
   }), [
     markdownContent, fileName, scrollToPercent, highlightText,
     searchMatches, currentMatchIndex, theme, backgroundColor,
-    isDarkMode, toggleDarkMode, themeName, cycleTheme, showFrontMatterSetting,
+    isDarkMode, colorMode, toggleDarkMode, themeName, cycleTheme, showFrontMatterSetting,
     scrollToHeadingIndex, frontMatterTheme, frontMatterThemeApplied,
     applyTheme, openFile,
   ]);

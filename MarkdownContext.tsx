@@ -33,6 +33,7 @@ export type MarkdownContextType = {
   theme: MarkdownTheme;
   backgroundColor: string;
   isDarkMode: boolean;
+  colorMode: 'system' | 'dark' | 'light';
   toggleDarkMode: () => void;
   themeName: ThemeName;
   cycleTheme: () => void;
@@ -70,6 +71,7 @@ export const MarkdownContext = React.createContext<MarkdownContextType>({
   theme: defaultMarkdownTheme,
   backgroundColor: '#1a1a1a',
   isDarkMode: true,
+  colorMode: 'system',
   toggleDarkMode: () => {},
   themeName: 'default',
   cycleTheme: () => {},
