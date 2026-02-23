@@ -241,8 +241,8 @@ export default function App() {
                       name="Search"
                       component={SearchScreen}
                       options={{
-                        presentation: 'modal',
-                        headerShown: false,
+                        presentation: 'fullScreenModal',
+                        headerShown: true,
                       }}
                     />
                     <Stack.Screen

@@ -4,38 +4,83 @@ import {
   View,
   ScrollView,
   Text,
-  TextInput,
   TouchableOpacity,
   Keyboard,
 } from 'react-native';
+import {TouchableOpacity as GHTouchableOpacity} from 'react-native-gesture-handler';
 import Animated, {FadeOut, LinearTransition} from 'react-native-reanimated';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {useNavigation} from '@react-navigation/native';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {MarkdownContext} from './MarkdownContext';
 import {Storage, StorageKeys} from './settings';
 
 export function SearchScreen() {
   const navigation = useNavigation();
-  const insets = useSafeAreaInsets();
-  const {markdownContent, setScrollToPercent, setHighlightText, setSearchMatches, setCurrentMatchIndex, theme, backgroundColor, isDarkMode} = React.useContext(MarkdownContext);
+  const {markdownContent, setScrollToPercent, setHighlightText, setSearchMatches, setCurrentMatchIndex, theme, backgroundColor} = React.useContext(MarkdownContext);
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<{line: number; text: string; charPosition: number; percent: number}[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const borderColor = theme.colors.border ?? '#444';
-  const inputRef = useRef<TextInput>(null);
 
-  // Hide the default header — we render our own search bar
+  // Use refs so the native search bar callbacks always access latest values
+  const searchQueryRef = useRef('');
+  searchQueryRef.current = searchQuery;
+
+  const onSubmitRef = useRef<(text: string) => void>(() => {});
+  onSubmitRef.current = (text: string) => {
+    // Fall back to current searchQuery state if text is empty/invalid
+    const query = (text && text.length > 0) ? text : searchQueryRef.current;
+    if (!query || query.length === 0) return;
+    const lines = markdownContent.split('\n');
+    let charPos = 0;
+    const matches: {line: number; text: string; charPosition: number; percent: number}[] = [];
+    lines.forEach((line, index) => {
+      if (line.toLowerCase().includes(query.toLowerCase())) {
+        matches.push({line: index + 1, text: line, charPosition: charPos, percent: charPos / markdownContent.length});
+      }
+      charPos += line.length + 1;
+    });
+    if (matches.length === 0) {
+      // No results — stay on search screen so user sees "No results found"
+      setSearchQuery(query);
+      return;
+    }
+    setSearchMatches(matches.map(m => ({line: m.line, charPosition: m.charPosition, percent: m.percent})));
+    setHighlightText(query);
+    setCurrentMatchIndex(0);
+    setScrollToPercent(matches[0].percent);
+    // Save to recent searches
+    const saved = Storage.getStringArray(StorageKeys.RECENT_SEARCHES, []);
+    const updated = [query, ...saved.filter(s => s !== query)].slice(0, 10);
+    Storage.setStringArray(StorageKeys.RECENT_SEARCHES, updated);
+    navigation.goBack();
+  };
+
+  // Configure native search bar — only set once on mount
   React.useLayoutEffect(() => {
     navigation.setOptions({
-      headerShown: false,
+      headerShown: true,
+      headerTitle: 'Search',
+      headerStyle: {backgroundColor},
+      headerTintColor: theme.colors.text,
+      headerSearchBarOptions: {
+        placeholder: 'Search in markdown...',
+        autoCapitalize: 'none' as const,
+        hideWhenScrolling: false,
+        tintColor: theme.colors.link,
+        textColor: theme.colors.text,
+        onChangeText: (text: string) => setSearchQuery(text),
+        onCancelButtonPress: () => navigation.goBack(),
+        onSearchButtonPress: (e: any) => {
+          // v7 passes string, v6 passes event — handle both
+          const text = typeof e === 'string' ? e : e?.nativeEvent?.text ?? '';
+          onSubmitRef.current(text);
+        },
+      },
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation]);
-
-  // Auto-focus on mount
-  useEffect(() => {
-    const timer = setTimeout(() => inputRef.current?.focus(), 100);
-    return () => clearTimeout(timer);
-  }, []);
 
   // Load recent searches on mount
   useEffect(() => {
@@ -74,15 +119,6 @@ export function SearchScreen() {
     navigation.goBack();
   }, [results, searchQuery, saveToRecentSearches, setHighlightText, setCurrentMatchIndex, setScrollToPercent, navigation]);
 
-  const handleSubmit = useCallback(() => {
-    if (results.length > 0) {
-      handleResultPress(0);
-    } else if (searchQuery.length > 0) {
-      setHighlightText(searchQuery);
-      navigation.goBack();
-    }
-  }, [results, searchQuery, handleResultPress, setHighlightText, navigation]);
-
   useEffect(() => {
     if (searchQuery.length > 0) {
       const lines = markdownContent.split('\n');
@@ -103,45 +139,36 @@ export function SearchScreen() {
     }
   }, [searchQuery, markdownContent, setSearchMatches]);
 
-  const handleRecentSearchPress = (query: string) => {
-    setSearchQuery(query);
-    inputRef.current?.focus();
-  };
-
-  const inputBgColor = isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)';
-  const placeholderColor = isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)';
+  const handleRecentSearchPress = useCallback((query: string) => {
+    saveToRecentSearches(query);
+    const lines = markdownContent.split('\n');
+    let charPos = 0;
+    const matches: {line: number; text: string; charPosition: number; percent: number}[] = [];
+    lines.forEach((line, index) => {
+      if (line.toLowerCase().includes(query.toLowerCase())) {
+        matches.push({line: index + 1, text: line, charPosition: charPos, percent: charPos / markdownContent.length});
+      }
+      charPos += line.length + 1;
+    });
+    if (matches.length === 0) {
+      // No results — update query so "No results found" shows
+      setSearchQuery(query);
+      return;
+    }
+    setSearchMatches(matches.map(m => ({line: m.line, charPosition: m.charPosition, percent: m.percent})));
+    setHighlightText(query);
+    setCurrentMatchIndex(0);
+    setScrollToPercent(matches[0].percent);
+    navigation.goBack();
+  }, [markdownContent, saveToRecentSearches, setHighlightText, setSearchMatches, setCurrentMatchIndex, setScrollToPercent, navigation]);
 
   return (
-    <View style={[styles.container, {backgroundColor}]}>
-      <View style={[styles.searchHeader, {paddingTop: insets.top + 8}]}>
-        <View style={[styles.searchInputContainer, {backgroundColor: inputBgColor}]}>
-          <Text style={[styles.searchIcon, {color: placeholderColor}]}>🔍</Text>
-          <TextInput
-            ref={inputRef}
-            style={[styles.searchInput, {color: theme.colors.text}]}
-            placeholder="Search in markdown..."
-            placeholderTextColor={placeholderColor}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onSubmitEditing={handleSubmit}
-            returnKeyType="search"
-            autoCorrect={false}
-            autoCapitalize="none"
-            testID="searchInput"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Text style={[styles.clearButtonText, {color: placeholderColor}]}>✕</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.cancelButton}>
-          <Text style={[styles.cancelButtonText, {color: theme.colors.link}]}>Cancel</Text>
-        </TouchableOpacity>
-      </View>
+    <GestureHandlerRootView style={[styles.container, {backgroundColor}]}>
       <ScrollView
-        style={styles.scrollView}
+        contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        style={styles.container}
       >
         {results.length > 0 ? (
           results.map((result, index) => (
@@ -181,73 +208,40 @@ export function SearchScreen() {
                 exiting={FadeOut.duration(200)}
                 layout={LinearTransition.duration(200)}
               >
-                <TouchableOpacity
-                  style={[styles.recentSearchItem, {borderBottomColor: borderColor}]}
-                  onPress={() => handleRecentSearchPress(query)}
-                  activeOpacity={0.7}
+                <ReanimatedSwipeable
+                  friction={2}
+                  rightThreshold={40}
+                  renderRightActions={() => (
+                    <TouchableOpacity
+                      style={styles.deleteAction}
+                      onPress={() => deleteRecentSearch(query)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.deleteActionText}>Delete</Text>
+                    </TouchableOpacity>
+                  )}
                 >
-                  <Text style={[styles.recentSearchIcon, {color: theme.colors.textMuted}]}>🕒</Text>
-                  <Text style={[styles.recentSearchText, {color: theme.colors.heading}]} numberOfLines={1}>
-                    {query}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => deleteRecentSearch(query)}
-                    style={styles.deleteSearchButton}
-                    hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+                  <GHTouchableOpacity
+                    style={[styles.recentSearchItem, {backgroundColor, borderBottomColor: borderColor}]}
+                    onPress={() => handleRecentSearchPress(query)}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.deleteSearchIcon, {color: theme.colors.textMuted}]}>✕</Text>
-                  </TouchableOpacity>
-                </TouchableOpacity>
+                    <Text style={[styles.recentSearchText, {color: theme.colors.heading}]} numberOfLines={1}>
+                      {query}
+                    </Text>
+                  </GHTouchableOpacity>
+                </ReanimatedSwipeable>
               </Animated.View>
             ))}
           </View>
         ) : null}
       </ScrollView>
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  searchHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingBottom: 10,
-  },
-  searchInputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    height: 38,
-  },
-  searchIcon: {
-    fontSize: 14,
-    marginRight: 6,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    paddingVertical: 0,
-  },
-  clearButton: {
-    padding: 4,
-  },
-  clearButtonText: {
-    fontSize: 14,
-  },
-  cancelButton: {
-    paddingLeft: 12,
-  },
-  cancelButtonText: {
-    fontSize: 16,
-  },
-  scrollView: {
     flex: 1,
   },
   searchResult: {
@@ -269,7 +263,8 @@ const styles = StyleSheet.create({
     padding: 40,
   },
   recentSearches: {
-    paddingTop: 16,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
   recentSearchesHeader: {
     flexDirection: 'row',
@@ -290,22 +285,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  recentSearchIcon: {
-    fontSize: 14,
-    marginRight: 12,
   },
   recentSearchText: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 17,
   },
-  deleteSearchButton: {
-    padding: 4,
-    marginLeft: 8,
+  deleteAction: {
+    backgroundColor: '#ff3b30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
   },
-  deleteSearchIcon: {
-    fontSize: 14,
+  deleteActionText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 15,
   },
 });
