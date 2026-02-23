@@ -39,6 +39,30 @@
     .badge a img {
       height: 54px;
     }
+    .testflight {
+      margin-top: 1rem;
+    }
+    .testflight a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #410065;
+      background: #fff;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      padding: 0.5rem 1.25rem;
+      border-radius: 8px;
+      transition: opacity 0.15s;
+    }
+    .testflight a:hover {
+      opacity: 0.85;
+    }
+    .testflight .testflight-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+    }
     main {
       max-width: 640px;
       margin: 0 auto;
@@ -99,6 +123,12 @@
     <div class="badge">
       <a href="https://apps.apple.com/app/markdownr/id6448853807">
         <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on the App Store">
+      </a>
+    </div>
+    <div class="testflight">
+      <a href="https://testflight.apple.com/join/V6wdEjec">
+        <img src="images/testflight.svg" alt="TestFlight" class="testflight-icon">
+        <span>Join TestFlight Beta</span>
       </a>
     </div>
   </div>
