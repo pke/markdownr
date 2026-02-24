@@ -1,6 +1,7 @@
 default_platform(:ios)
 
 APP_IDENTIFIER = "dev.dudesoft.markdownr"
+PROJECT_ROOT = File.expand_path("..", __dir__)
 
 def asc_api_key
   %w[APP_STORE_CONNECT_API_KEY_KEY_ID APP_STORE_CONNECT_API_KEY_ISSUER_ID APP_STORE_CONNECT_API_KEY_KEY_FILEPATH].each do |var|
@@ -14,7 +15,7 @@ def asc_api_key
 end
 
 def read_version
-  props = File.read("../version.properties")
+  props = File.read(File.join(PROJECT_ROOT, "version.properties"))
   major = props[/VERSION_MAJOR=(\d+)/, 1].to_i
   minor = props[/VERSION_MINOR=(\d+)/, 1].to_i
   patch = props[/VERSION_PATCH=(\d+)/, 1].to_i
@@ -43,12 +44,12 @@ platform :ios do
   desc "Build and upload to TestFlight"
   lane :upload_beta do
     build_app(
-      workspace: "ios/Markdownr.xcworkspace",
+      workspace: File.join(PROJECT_ROOT, "ios/Markdownr.xcworkspace"),
       scheme: "Markdownr",
       configuration: "Release",
       export_method: "app-store",
       export_team_id: "K9VADMGRA7",
-      output_directory: "ios/build",
+      output_directory: File.join(PROJECT_ROOT, "ios/build"),
       xcargs: "-allowProvisioningUpdates"
     )
     pilot(
@@ -128,17 +129,19 @@ platform :ios do
 
     # Step 1: Expo prebuild for production
     UI.header("Step 1/5: Expo prebuild")
-    sh("npx expo prebuild --clean 2>&1")
+    Dir.chdir(PROJECT_ROOT) do
+      sh("npx expo prebuild --clean 2>&1")
+    end
 
     # Step 2: Build
     UI.header("Step 2/5: Building Markdownr v#{version}")
     build_app(
-      workspace: "ios/Markdownr.xcworkspace",
+      workspace: File.join(PROJECT_ROOT, "ios/Markdownr.xcworkspace"),
       scheme: "Markdownr",
       configuration: "Release",
       export_method: "app-store",
       export_team_id: "K9VADMGRA7",
-      output_directory: "ios/build",
+      output_directory: File.join(PROJECT_ROOT, "ios/build"),
       xcargs: "-allowProvisioningUpdates"
     )
 
