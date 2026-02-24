@@ -39,6 +39,22 @@ Build and upload to TestFlight
 
 Upload screenshots to App Store Connect
 
+### ios generate_release_notes
+
+```sh
+[bundle exec] fastlane ios generate_release_notes
+```
+
+Generate release notes from git commits since last tag. Review and edit before running release.
+
+### ios release
+
+```sh
+[bundle exec] fastlane ios release
+```
+
+Full release: prebuild, build, upload to TestFlight, upload metadata, and submit for review
+
 ----
 
 This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.
