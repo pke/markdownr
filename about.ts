@@ -7,14 +7,7 @@ theme: dude
 ---
 # About Markdownr
 
-> "Yeah, well, you know, that's just, like, your markdown, man."
-> — The Dude
-
----
-
-Markdownr is a lean, focused Markdown viewer for **iPhone** and **iPad**.
-
-Built with **React Native** and **Expo**, powered by the blazing-fast \`md4c\` parser through **Nitro Modules** for native C++ performance.
+Markdownr is a fast, lean, focused Markdown viewer for **iPhone** and **iPad**.
 
 ## Features
 
@@ -38,12 +31,35 @@ You open a file. It looks beautiful. That's it. The Dude would approve.
 
 ---
 
-> "This aggression will not stand, man."
-> — on overly complicated markdown editors
+Made with care & joy for markdown lovers everywhere.
 
----
+:::quotes
 
-Made with care for markdown lovers everywhere.
+> "Yeah, well, you know, that's just, like, your markdown, man."
+> — The Dude
+
+> "The Dude renders."
+> — The Dude
+
+> "Smokey, this is not HTML. This is Markdown. There are rules."
+> — Walter
+
+> "Am I the only one around here who gives a shit about proper headings?!"
+> — Walter
+
+> "My markdown has been commended as being strongly formatted."
+> — Maude
+
+> "Does the front matter make you uncomfortable, Mr. Lebowski?"
+> — Maude
+
+> "Sometimes you render the markdown, and sometimes, well, the markdown renders you."
+> — The Stranger
+
+> "I like your style, Dude. It really ties the document together."
+> — The Stranger
+
+:::
 
 [Back to Welcome](markdownr:home)
 `;
@@ -55,14 +71,7 @@ theme: dude
 ---
 # Über Markdownr
 
-> „Ja, weißt du, das ist halt, wie, dein Markdown, Mann."
-> — The Dude
-
----
-
-Markdownr ist ein schlanker, fokussierter Markdown-Viewer für **iPhone** und **iPad**.
-
-Gebaut mit **React Native** und **Expo**, angetrieben vom blitzschnellen \`md4c\`-Parser über **Nitro Modules** für native C++-Performance.
+Markdownr ist ein schneller, kleiner, fokussierter Markdown-Viewer für **iPhone** und **iPad**.
 
 ## Funktionen
 
@@ -86,12 +95,35 @@ Du öffnest eine Datei. Sie sieht wunderschön aus. Das war's. The Dude wäre ei
 
 ---
 
-> „Diese Aggression wird nicht geduldet, Mann."
-> — über übermäßig komplizierte Markdown-Editoren
+Mit viel Sorgfalt & Spaß gemacht für Markdown-Fans überall.
 
----
+:::quotes
 
-Mit Liebe gemacht für Markdown-Fans überall.
+> „Ja, weißt du, das ist halt, wie, dein Markdown, Mann."
+> — The Dude
+
+> „The Dude rendert."
+> — The Dude
+
+> „Smokey, das ist nicht HTML. Das ist Markdown. Es gibt Regeln."
+> — Walter
+
+> „Bin ich der Einzige hier, dem korrekte Überschriften wichtig sind?!"
+> — Walter
+
+> „Mein Markdown wurde als ausgesprochen gut formatiert gelobt."
+> — Maude
+
+> „Macht Sie das Front Matter etwa verlegen, Mr. Lebowski?"
+> — Maude
+
+> „Manchmal renderst du das Markdown, und manchmal, naja, rendert das Markdown dich."
+> — The Stranger
+
+> „Ich mag deinen Stil, Dude. Er hält das Dokument wirklich zusammen."
+> — The Stranger
+
+:::
 
 [Zurück zur Startseite](markdownr:home)
 `;

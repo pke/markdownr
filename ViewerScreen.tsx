@@ -17,6 +17,8 @@ import Animated, {
   useSharedValue,
   withTiming,
   withDelay,
+  FadeIn,
+  FadeOut,
   FadeInUp,
   FadeOutUp,
   LinearTransition,
@@ -41,7 +43,7 @@ import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {MarkdownContext, type TocHeading} from './MarkdownContext';
 import {customThemes, type ThemeConfig} from './themes';
 import {parseFrontMatter, type FrontMatter, getExtraMetadata, hasExtraMetadata} from './frontmatter';
-import {composeTransforms, createTypographicTransform, emoticonTransform, subSuperscriptTransform, abbreviationTransform, footnoteTransform, insMarkTransform, definitionListTransform} from './astTransforms';
+import {composeTransforms, createTypographicTransform, emoticonTransform, subSuperscriptTransform, abbreviationTransform, footnoteTransform, insMarkTransform, definitionListTransform, quoteCycleTransform} from './astTransforms';
 import {getLocales} from 'expo-localization';
 import {ZoomableView} from './ZoomableView';
 import {useFileOpener} from './useFileOpener';
@@ -438,6 +440,45 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
   );
 }
 
+// ---------------------------------------------------------------------------
+// QuoteCycler – renders one blockquote at a time, crossfading every 10s
+// ---------------------------------------------------------------------------
+
+function QuoteCycler({quotes, Renderer}: {quotes: MarkdownNode[]; Renderer: React.ComponentType<any>}) {
+  const [index, setIndex] = useState(0);
+  const [height, setHeight] = useState<number | undefined>(undefined);
+
+  const longestIdx = React.useMemo(() => {
+    let maxLen = 0;
+    let idx = 0;
+    quotes.forEach((q, i) => {
+      const len = getTextContent(q).length;
+      if (len > maxLen) { maxLen = len; idx = i; }
+    });
+    return idx;
+  }, [quotes]);
+
+  useEffect(() => {
+    if (quotes.length <= 1) return;
+    const interval = setInterval(() => setIndex(i => (i + 1) % quotes.length), 10000);
+    return () => clearInterval(interval);
+  }, [quotes.length]);
+
+  return (
+    <View style={height != null ? {height} : undefined}>
+      {height == null && (
+        <View style={{position: 'absolute', opacity: 0, left: 0, right: 0}} pointerEvents="none"
+          onLayout={e => setHeight(e.nativeEvent.layout.height)}>
+          <Renderer node={quotes[longestIdx]} depth={0} inListItem={false} parentIsText={false} />
+        </View>
+      )}
+      <Animated.View key={index} entering={FadeIn.duration(600)} exiting={FadeOut.duration(600)}>
+        <Renderer node={quotes[index]} depth={0} inListItem={false} parentIsText={false} />
+      </Animated.View>
+    </View>
+  );
+}
+
 export function ViewerScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -647,7 +688,7 @@ export function ViewerScreen() {
 
   const astTransformFn = React.useMemo(() => {
     const locale = getLocales()[0]?.languageCode ?? 'en';
-    return composeTransforms(definitionListTransform, footnoteTransform, insMarkTransform, createTypographicTransform(locale), emoticonTransform, abbreviationTransform, subSuperscriptTransform);
+    return composeTransforms(quoteCycleTransform, definitionListTransform, footnoteTransform, insMarkTransform, createTypographicTransform(locale), emoticonTransform, abbreviationTransform, subSuperscriptTransform);
   }, []);
 
   const activeConfig: ThemeConfig = (frontMatterThemeApplied && frontMatterTheme)
@@ -709,6 +750,11 @@ export function ViewerScreen() {
         </View>
       );
     } : undefined,
+    quote_cycle: ({node, Renderer}: EnhancedRendererProps) => {
+      const quotes = node.children?.filter((c: MarkdownNode) => c.type === 'blockquote') ?? [];
+      if (quotes.length === 0) return null;
+      return <QuoteCycler quotes={quotes} Renderer={Renderer} />;
+    },
     text: highlightText ? ({node}: {node: {content?: string}}) => {
       const content = node.content || '';
       return <HighlightedText content={content} highlight={highlightText} style={{color: theme.colors.text}} />;

@@ -1,5 +1,7 @@
 // @ts-ignore - importing from source to use patched astTransform
 import type {MarkdownNode} from 'react-native-nitro-markdown/src';
+// @ts-ignore
+import {getTextContent} from 'react-native-nitro-markdown/src';
 
 type AstTransform = (ast: MarkdownNode) => MarkdownNode;
 
@@ -26,11 +28,6 @@ function walkTextNodes(
   node.children?.forEach((child: MarkdownNode) => walkTextNodes(child, fn));
 }
 
-/** Recursively extract all text content from a node tree. */
-function getAllText(node: MarkdownNode): string {
-  if (node.content) return node.content;
-  return node.children?.map(getAllText).join('') ?? '';
-}
 
 /**
  * Strip the "[^label]: " prefix from the first text node in a children array.
@@ -504,7 +501,7 @@ export function abbreviationTransform(ast: MarkdownNode): MarkdownNode {
     if (!node.children) return;
     node.children = node.children.filter((child: MarkdownNode) => {
       if (child.type === 'paragraph' && child.children) {
-        const text = getAllText(child).trim();
+        const text = getTextContent(child).trim();
         const match = text.match(abbrDefPattern);
         if (match) {
           abbrDefs.set(match[1], match[2]);
@@ -564,7 +561,7 @@ export function footnoteTransform(ast: MarkdownNode): MarkdownNode {
     let lastDefLabel: string | null = null;
     for (const child of node.children) {
       if (child.type === 'paragraph' && child.children) {
-        const fullText = getAllText(child).trim();
+        const fullText = getTextContent(child).trim();
         const match = fullText.match(defPattern);
         if (match) {
           const label = match[1];
@@ -587,7 +584,7 @@ export function footnoteTransform(ast: MarkdownNode): MarkdownNode {
       } else if (lastDefLabel && child.type === 'code_block') {
         // 4-space indented continuation → convert to paragraph for display
         const existing = footnoteDefs.get(lastDefLabel) ?? [];
-        const text = getAllText(child).trim();
+        const text = getTextContent(child).trim();
         existing.push({
           type: 'paragraph' as const,
           children: [{type: 'text' as const, content: text}],
@@ -694,6 +691,62 @@ export function footnoteTransform(ast: MarkdownNode): MarkdownNode {
       },
     );
   }
+
+  return ast;
+}
+
+// ---------------------------------------------------------------------------
+// Quote cycle transform   :::quotes / ::: → quote_cycle node
+//   Detects :::quotes container in AST. Collects all blockquotes between
+//   the markers and emits a single `quote_cycle` node with them as children.
+//   The custom renderer handles cycling + crossfade animation.
+// ---------------------------------------------------------------------------
+
+export function quoteCycleTransform(ast: MarkdownNode): MarkdownNode {
+  if (!ast.children) return ast;
+
+  // Find :::quotes and ::: markers in top-level children
+  let startIdx = -1;
+  let endIdx = -1;
+
+  for (let i = 0; i < ast.children.length; i++) {
+    const child = ast.children[i];
+    if (child.type === 'paragraph' && child.children) {
+      const text = getTextContent(child).trim();
+      if (text === ':::quotes' && startIdx === -1) {
+        startIdx = i;
+      } else if (text === ':::' && startIdx !== -1 && endIdx === -1) {
+        endIdx = i;
+        break;
+      }
+    }
+  }
+
+  if (startIdx === -1 || endIdx === -1) return ast;
+
+  // Collect blockquote nodes between the markers
+  const blockquotes: MarkdownNode[] = [];
+  for (let i = startIdx + 1; i < endIdx; i++) {
+    if (ast.children[i].type === 'blockquote') {
+      blockquotes.push(ast.children[i]);
+    }
+  }
+
+  if (blockquotes.length === 0) return ast;
+
+  // Fisher-Yates shuffle so quote order varies each time
+  for (let i = blockquotes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [blockquotes[i], blockquotes[j]] = [blockquotes[j], blockquotes[i]];
+  }
+
+  // Replace the range with a single quote_cycle node containing all quotes
+  const cycleNode: MarkdownNode = {
+    type: 'quote_cycle' as MarkdownNode['type'],
+    children: blockquotes,
+  };
+
+  ast.children.splice(startIdx, endIdx - startIdx + 1, cycleNode);
 
   return ast;
 }
