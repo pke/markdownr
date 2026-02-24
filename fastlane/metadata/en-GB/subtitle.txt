@@ -1,1 +1,1 @@
-Elegant Markdown Viewer
+Fast & elegant Markdown Viewer

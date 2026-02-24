@@ -1,7 +1,5 @@
-Markdownr now remembers! No more "wait, which file was that again?"
+Markdownr just got a little shinier — here's what's new:
 
-- Recent Files: Your last 10 opened files are cached and ready to go. Swipe left to tidy up, or tap to jump right back in.
-- Picks up where you left off: The app restores your last viewed file on launch. No more staring at the welcome screen every morning.
-- Drawer quick access: Your two most recent files live in the sidebar, one tap away.
-- All entry points covered: Share sheet, file picker, deep links — everything lands in your recent files automatically.
-- Privacy first: Cached files stay on your device and never sync to iCloud.
+- Native Search Bar: We ditched our homemade search field and gave you the real deal — iOS's native search bar. It feels right at home, because it literally is.
+- Dark Mode Done Right: The dark mode toggle now properly cycles through System → Dark → Light. No more guessing which mode you're about to land on.
+- Smarter Theme Suggestions: The "try this theme" banner now politely excuses itself when you open a new file. As it should.
