@@ -23,6 +23,14 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 Upload metadata to App Store Connect (without screenshots)
 
+### ios submit_review
+
+```sh
+[bundle exec] fastlane ios submit_review
+```
+
+Submit the current version for App Store review
+
 ### ios upload_beta
 
 ```sh
