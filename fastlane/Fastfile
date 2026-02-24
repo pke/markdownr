@@ -14,7 +14,7 @@ def asc_api_key
 end
 
 def read_version
-  props = File.read("version.properties")
+  props = File.read("../version.properties")
   major = props[/VERSION_MAJOR=(\d+)/, 1].to_i
   minor = props[/VERSION_MINOR=(\d+)/, 1].to_i
   patch = props[/VERSION_PATCH=(\d+)/, 1].to_i
@@ -114,7 +114,7 @@ platform :ios do
 
     # Verify release notes exist and aren't empty
     %w[en-GB de-DE].each do |locale|
-      notes_path = "fastlane/metadata/#{locale}/release_notes.txt"
+      notes_path = "metadata/#{locale}/release_notes.txt"
       UI.user_error!("Missing release notes: #{notes_path}") unless File.exist?(notes_path)
       content = File.read(notes_path).strip
       UI.user_error!("Empty release notes: #{notes_path}") if content.empty?
