@@ -24,6 +24,7 @@ type Suggestion = {
 export function ThemeSuggestion({variant, bottomInset, onApply}: ThemeSuggestionProps) {
   const {
     markdownContent,
+    fileName,
     themeName,
     theme,
     backgroundColor,
@@ -81,7 +82,7 @@ export function ThemeSuggestion({variant, bottomInset, onApply}: ThemeSuggestion
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- setFrontMatterTheme is a stable context setter
-  }, [frontMatterThemeValue]);
+  }, [frontMatterThemeValue, fileName]);
 
   // --- Seasonal suggestion (drawer only, suppressed when front matter declares a theme) ---
   const seasonalSuggestion = React.useMemo<SeasonalSuggestion | null>(() => {
