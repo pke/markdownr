@@ -43,7 +43,7 @@ import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {MarkdownContext, type TocHeading} from './MarkdownContext';
 import {customThemes, type ThemeConfig} from './themes';
 import {parseFrontMatter, type FrontMatter, getExtraMetadata, hasExtraMetadata} from './frontmatter';
-import {composeTransforms, createTypographicTransform, emoticonTransform, subSuperscriptTransform, abbreviationTransform, footnoteTransform, insMarkTransform, definitionListTransform, quoteCycleTransform, preprocessMarkdownHtml} from './astTransforms';
+import {composeTransforms, createTypographicTransform, emoticonTransform, subSuperscriptTransform, abbreviationTransform, footnoteTransform, insMarkTransform, definitionListTransform, quoteCycleTransform, preprocessMarkdownHtml, tableBrTransform} from './astTransforms';
 import {getLocales} from 'expo-localization';
 import {ZoomableView} from './ZoomableView';
 import {useFileOpener} from './useFileOpener';
@@ -689,7 +689,7 @@ export function ViewerScreen() {
 
   const astTransformFn = React.useMemo(() => {
     const locale = getLocales()[0]?.languageCode ?? 'en';
-    return composeTransforms(quoteCycleTransform, definitionListTransform, footnoteTransform, insMarkTransform, createTypographicTransform(locale), emoticonTransform, abbreviationTransform, subSuperscriptTransform);
+    return composeTransforms(quoteCycleTransform, definitionListTransform, footnoteTransform, insMarkTransform, createTypographicTransform(locale), emoticonTransform, abbreviationTransform, subSuperscriptTransform, tableBrTransform);
   }, []);
 
   const activeConfig: ThemeConfig = (frontMatterThemeApplied && frontMatterTheme)

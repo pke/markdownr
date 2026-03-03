@@ -755,17 +755,64 @@ function applyHtmlTagRules(text: string): string {
   });
 }
 
+// Placeholder used for <br> inside table rows.
+// \u2028 (Line Separator) passes through md4c as text, never appears in normal markdown.
+export const TABLE_BR_PLACEHOLDER = '\u2028';
+
 /**
  * Preprocess raw markdown to convert common inline HTML tags to their
  * markdown equivalents. Skips content inside code spans and fenced code blocks.
+ * Inside table rows (lines starting with |), <br> becomes a placeholder instead
+ * of  \n (which would break the table row).
  */
 export function preprocessMarkdownHtml(markdown: string): string {
   // Split on fenced code blocks and inline code spans, preserving them intact.
   // Odd-indexed segments are inside code; even-indexed are plain text.
   const parts = markdown.split(/(```[\s\S]*?```|`[^`]+`)/g);
   return parts
-    .map((part, i) => (i % 2 === 0 ? applyHtmlTagRules(part) : part))
+    .map((part, i) => {
+      if (i % 2 !== 0) return part; // inside code — preserve as-is
+      // Process line-by-line so table rows get the placeholder instead of  \n
+      return part
+        .split('\n')
+        .map(line => {
+          const trimmed = line.trimStart();
+          if (trimmed.startsWith('|') || trimmed.startsWith(':-') || trimmed.startsWith('-:')) {
+            // Table row: replace <br> with placeholder to avoid breaking the row
+            return line.replace(/<br\s*\/?>/gi, TABLE_BR_PLACEHOLDER)
+              .replace(HTML_PREPROCESS_RE, (match: string) => {
+                if (/^<br/i.test(match)) return TABLE_BR_PLACEHOLDER;
+                const nameMatch = match.match(/<\/?([a-z]+)/i);
+                if (nameMatch) return HTML_TAG_TO_MARKDOWN[nameMatch[1].toLowerCase()] ?? match;
+                return match;
+              });
+          }
+          return applyHtmlTagRules(line);
+        })
+        .join('\n');
+    })
     .join('');
+}
+
+// ---------------------------------------------------------------------------
+// Table BR transform   \u2028 placeholder → line_break node in table cells
+//   Must run after parsing since  \n would break table rows during parsing.
+// ---------------------------------------------------------------------------
+
+export function tableBrTransform(ast: MarkdownNode): MarkdownNode {
+  function processNode(node: MarkdownNode): void {
+    if (node.type === 'table_cell' && node.children) {
+      node.children = node.children.map((child: MarkdownNode) => {
+        if (child.type === 'text' && child.content?.includes(TABLE_BR_PLACEHOLDER)) {
+          return {type: 'text', content: child.content.replaceAll(TABLE_BR_PLACEHOLDER, '\n')} as MarkdownNode;
+        }
+        return child;
+      });
+    }
+    node.children?.forEach(processNode);
+  }
+  processNode(ast);
+  return ast;
 }
 
 // ---------------------------------------------------------------------------

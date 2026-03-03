@@ -86,6 +86,14 @@ Self-closing variant<br/>also works.
 
 With a space<br />before the slash too.
 
+\`<br>\` also works inside table cells:
+
+| Name | Description |
+|------|-------------|
+| Alpha | First line<br>second line |
+| Beta | One line only |
+| Gamma | Line one<br>line two<br>line three |
+
 #### Tags in Code (Preserved)
 
 Inside a code span: \`<b>not bold</b>\` — tags are preserved literally.
