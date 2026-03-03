@@ -27,3 +27,8 @@ export const defaultMarkdownTheme = {
 };
 
 export type MarkdownTheme = typeof defaultMarkdownTheme;
+
+export function getTextContent(node: any): string {
+  if (node.content) return node.content;
+  return (node.children ?? []).map(getTextContent).join('');
+}

@@ -696,6 +696,79 @@ export function footnoteTransform(ast: MarkdownNode): MarkdownNode {
 }
 
 // ---------------------------------------------------------------------------
+// HTML inline transform   <br> / <br/> / <br /> → line_break node
+//   md4c parses inline HTML tags as html_inline nodes. The renderer ignores
+//   them by default, so we map the common <br> variants to line_break.
+// ---------------------------------------------------------------------------
+
+const brPattern = /^<br\s*\/?>$/i;
+
+function replaceHtmlInline(node: MarkdownNode): void {
+  if (!node.children) return;
+  node.children = node.children.map((child: MarkdownNode) => {
+    if (child.type === 'html_inline' && child.content && brPattern.test(child.content.trim())) {
+      return {type: 'line_break'} as MarkdownNode;
+    }
+    replaceHtmlInline(child);
+    return child;
+  });
+}
+
+export function htmlInlineTransform(ast: MarkdownNode): MarkdownNode {
+  replaceHtmlInline(ast);
+  return ast;
+}
+
+// ---------------------------------------------------------------------------
+// HTML preprocessing   Convert common inline HTML tags to markdown equivalents
+//   md4c doesn't parse inline HTML by default, so tags appear as literal text.
+//   This function preprocesses the raw markdown string before parsing.
+//   Code spans (` `) and fenced code blocks (``` ```) are preserved intact.
+// ---------------------------------------------------------------------------
+
+// Maps tag names to their markdown wrapper (same string used for open and close)
+const HTML_TAG_TO_MARKDOWN: Record<string, string> = {
+  b: '**', strong: '**',
+  i: '*', em: '*',
+  s: '~~', del: '~~', strike: '~~',
+  u: '++', ins: '++',
+  mark: '==',
+  sup: '^', sub: '~',
+  code: '`',
+};
+
+// Matches <br> variants and all supported paired open/close tags
+const HTML_PREPROCESS_RE =
+  /<br\s*\/?>|<(\/?)(?:b|strong|i|em|s|del|strike|u|ins|mark|sup|sub|code)(?:\s[^>]*)?>|<br\s*>/gi;
+
+function applyHtmlTagRules(text: string): string {
+  return text.replace(HTML_PREPROCESS_RE, (match: string) => {
+    // Self-closing <br>
+    if (/^<br/i.test(match)) return '  \n';
+    // Paired tag: extract tag name
+    const nameMatch = match.match(/<\/?([a-z]+)/i);
+    if (nameMatch) {
+      const tagName = nameMatch[1].toLowerCase();
+      return HTML_TAG_TO_MARKDOWN[tagName] ?? match;
+    }
+    return match;
+  });
+}
+
+/**
+ * Preprocess raw markdown to convert common inline HTML tags to their
+ * markdown equivalents. Skips content inside code spans and fenced code blocks.
+ */
+export function preprocessMarkdownHtml(markdown: string): string {
+  // Split on fenced code blocks and inline code spans, preserving them intact.
+  // Odd-indexed segments are inside code; even-indexed are plain text.
+  const parts = markdown.split(/(```[\s\S]*?```|`[^`]+`)/g);
+  return parts
+    .map((part, i) => (i % 2 === 0 ? applyHtmlTagRules(part) : part))
+    .join('');
+}
+
+// ---------------------------------------------------------------------------
 // Quote cycle transform   :::quotes / ::: → quote_cycle node
 //   Detects :::quotes container in AST. Collects all blockquotes between
 //   the markers and emits a single `quote_cycle` node with them as children.

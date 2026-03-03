@@ -43,7 +43,7 @@ import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {MarkdownContext, type TocHeading} from './MarkdownContext';
 import {customThemes, type ThemeConfig} from './themes';
 import {parseFrontMatter, type FrontMatter, getExtraMetadata, hasExtraMetadata} from './frontmatter';
-import {composeTransforms, createTypographicTransform, emoticonTransform, subSuperscriptTransform, abbreviationTransform, footnoteTransform, insMarkTransform, definitionListTransform, quoteCycleTransform} from './astTransforms';
+import {composeTransforms, createTypographicTransform, emoticonTransform, subSuperscriptTransform, abbreviationTransform, footnoteTransform, insMarkTransform, definitionListTransform, quoteCycleTransform, preprocessMarkdownHtml} from './astTransforms';
 import {getLocales} from 'expo-localization';
 import {ZoomableView} from './ZoomableView';
 import {useFileOpener} from './useFileOpener';
@@ -545,7 +545,8 @@ export function ViewerScreen() {
     backgroundColor: animatedBgColor.value,
   }));
 
-  const {frontMatter, markdown} = React.useMemo(() => parseFrontMatter(markdownContent), [markdownContent]);
+  const {frontMatter, markdown: rawMarkdown} = React.useMemo(() => parseFrontMatter(markdownContent), [markdownContent]);
+  const markdown = React.useMemo(() => preprocessMarkdownHtml(rawMarkdown), [rawMarkdown]);
 
   useEffect(() => {
     scrollViewRef.current?.scrollTo({y: 0, animated: false});

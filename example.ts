@@ -60,6 +60,40 @@ Visit the [Markdownr repo](https://github.com) for updates!
 
 ![Sample Image](https://picsum.photos/800/400 "Sample image")
 
+### HTML Tags
+
+#### Inline Formatting
+
+Use <b>bold</b> or <strong>strong</strong> with HTML tags.
+
+<i>Italic</i> and <em>emphasis</em> work too.
+
+<s>Strikethrough</s>, <del>deleted</del>, and <strike>struck</strike> text.
+
+<u>Underlined</u> and <ins>inserted</ins> text (rendered as underline).
+
+<mark>Highlighted</mark> text stands out.
+
+Chemical formulas: H<sub>2</sub>O, mathematical: x<sup>2</sup> + y<sup>2</sup>.
+
+Inline HTML <code>code()</code> renders as code.
+
+#### Line Breaks
+
+Paragraph with a hard break<br>right here — using \`<br>\`.
+
+Self-closing variant<br/>also works.
+
+With a space<br />before the slash too.
+
+#### Tags in Code (Preserved)
+
+Inside a code span: \`<b>not bold</b>\` — tags are preserved literally.
+
+\`\`\`html
+<b>also preserved</b> in a code block
+\`\`\`
+
 ### Lists
 
 **Shopping list:**
@@ -377,7 +411,33 @@ The goal is to ensure that performance remains consistent regardless of content 
 - Unicode characters from multiple languages
 - Special symbols and emoji combinations
 
-This comprehensive test suite validates that the parser maintains high performance and accuracy across all supported markdown features and edge cases.`;
+This comprehensive test suite validates that the parser maintains high performance and accuracy across all supported markdown features and edge cases.
+
+## HTML Tags
+
+### Inline Formatting
+
+Use <b>bold</b> or <strong>strong</strong> with HTML tags.
+
+<i>Italic</i> and <em>emphasis</em> work too.
+
+<s>Strikethrough</s>, <del>deleted</del>, and <strike>struck</strike> text.
+
+<u>Underlined</u> and <ins>inserted</ins> text.
+
+<mark>Highlighted</mark> text.
+
+H<sub>2</sub>O and x<sup>2</sup>.
+
+Inline HTML <code>code()</code>.
+
+### Line Breaks
+
+Paragraph with a hard break<br>right here — using \`<br>\`.
+
+Self-closing variant<br/>also works.
+
+With a space<br />before the slash too.`;
 
 export const OCEAN_THEMED_SAMPLE = `---
 title: Ocean Theme Demo
