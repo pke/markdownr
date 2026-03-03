@@ -1,5 +1,1 @@
-Markdownr hat ein kleines Upgrade bekommen — das ist neu:
-
-- Native Suchleiste: Wir haben unser Eigenbau-Suchfeld durch die echte iOS-Suchleiste ersetzt. Fühlt sich an wie zu Hause — weil sie es auch ist.
-- Dark Mode richtig gemacht: Der Dark-Mode-Schalter wechselt jetzt sauber zwischen System → Dunkel → Hell. Kein Rätselraten mehr, wo man als Nächstes landet.
-- Klügere Theme-Vorschläge: Der „Probier mal dieses Theme"-Banner verschwindet jetzt höflich, wenn du eine neue Datei öffnest. Wie sich's gehört.
+Deine Markdown-Dateien können jetzt gängige HTML-Inline-Tags verwenden — und die werden auch wirklich gerendert. Fett, kursiv, durchgestrichen, unterstrichen, hervorgehoben, hoch- und tiefgestellt, Zeilenumbrüche — alles mit dabei. Tags in Code-Spans bleiben natürlich als Text erhalten, weil das einfach zum guten Ton gehört.

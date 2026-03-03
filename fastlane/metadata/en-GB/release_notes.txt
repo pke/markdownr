@@ -1,5 +1,1 @@
-Markdownr just got a little shinier — here's what's new:
-
-- Native Search Bar: We ditched our homemade search field and gave you the real deal — iOS's native search bar. It feels right at home, because it literally is.
-- Dark Mode Done Right: The dark mode toggle now properly cycles through System → Dark → Light. No more guessing which mode you're about to land on.
-- Smarter Theme Suggestions: The "try this theme" banner now politely excuses itself when you open a new file. As it should.
+Your markdown files can now use common HTML inline tags — and they'll actually render properly. Bold, italic, strikethrough, underline, highlight, superscripts, subscripts, line breaks — all the classics. Tags inside code spans stay as literal text, because that's just good manners.
