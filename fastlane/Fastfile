@@ -52,8 +52,8 @@ platform :ios do
       submit_for_review: true,
       force: true,
       precheck_include_in_app_purchases: false,
-      automatic_release: false,
-      phased_release: true
+      automatic_release: true,
+      phased_release: false
     )
   end
 
@@ -177,8 +177,8 @@ platform :ios do
       skip_screenshots: true,
       force: true,
       submit_for_review: true,
-      automatic_release: false,
-      phased_release: true,
+      automatic_release: true,
+      phased_release: false,
       precheck_include_in_app_purchases: false
     )
 
