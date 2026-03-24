@@ -11,7 +11,7 @@ export function useFileOpener(onOpen?: () => void) {
 
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/markdown', 'text/plain'],
+        type: ['text/markdown', 'text/plain', 'net.daringfireball.markdown', 'public.plain-text'],
         copyToCacheDirectory: true,
       });
 
