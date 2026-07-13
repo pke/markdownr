@@ -15,7 +15,12 @@ appId: dev.dudesoft.markdownr.dev
     id: "mainMenuButton"
 - waitForAnimationToEnd
 - waitForAnimationToEnd
-- assertVisible: "Search"          # last menu item — proves nothing is clipped off-screen
-- assertVisible: "Open Folder"
+# The regression signal: "Default" (theme cycler) and "Auto" (dark mode) are the
+# TOP items — they used to render above the screen edge in landscape and be
+# unreachable. Their visibility is what actually proves the scrollable-stack fix.
+# ("Search"/"Open Folder" sit nearest the FAB and stayed visible even when broken.)
+- assertVisible: "Default"
+- assertVisible: "Auto"
+- assertVisible: "Search"          # bottom of the stack — sanity that the whole menu is present
 - takeScreenshot: 05-landscape-menu
 - setOrientation: PORTRAIT
