@@ -54,17 +54,24 @@ Screenshots (`takeScreenshot`) land in the working directory.
 | `03-fab-menu` | FAB opens, menu items reachable, item tap works (guards the FAB hit-area fix) |
 | `04-load-sample` | Loads a different document via an in-app link; re-renders |
 | `05-landscape-menu` | Landscape regression: menu items stay on-screen (needs `setOrientation` support) |
+| `06-frontmatter-theme` | `theme:` front matter shows the suggestion banner; Apply activates the theme |
 
 The flows lean on the app's built-in content (welcome page, Ocean sample) and
 `testID`s, so they need **no external fixtures** and **never touch the native
 file picker** — which is deliberately hard to automate.
 
-## Assumptions
+## Assumptions & tips
 
 - The device locale is **English** (assertions use English strings). For a
   localization flow, launch with a locale override and assert translated text —
   e.g. `xcrun simctl launch <UDID> dev.dudesoft.markdownr.dev -AppleLanguages "(ru)"`
   then assert `"Добро пожаловать в Markdownr"`.
+- Text selectors are **full-match regex**, not substring. To match part of an
+  element's text (e.g. a label with an emoji like `Suggested theme: 🌊 Ocean`),
+  wildcard it: `"Suggested theme.*Ocean"`. Opening the drawer uses an edge
+  `swipe` rather than tapping the `☰` link for the same reason.
+- `assertVisible` does not scroll — use `scrollUntilVisible` for content below
+  the fold. Elements behind the menu's dimming backdrop count as not visible.
 
 ## Next steps
 

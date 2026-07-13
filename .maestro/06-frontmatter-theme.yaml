@@ -1,0 +1,31 @@
+# Front-matter theme suggestion → apply.
+# The Ocean sample declares `theme: ocean` in its front matter, so opening it
+# surfaces the suggestion banner. Tapping Apply activates the Ocean theme, which
+# consumes the suggestion (the banner clears). Colors aren't assertable, so the
+# banner lifecycle is the behavioural proof, plus before/after screenshots.
+appId: dev.dudesoft.markdownr.dev
+---
+- stopApp
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "Welcome to Markdownr"
+- scrollUntilVisible:
+    element:
+      text: "Open Ocean Theme Demo"
+    direction: DOWN
+- tapOn: "Open Ocean Theme Demo"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "Exploring Ocean Theme"
+# Banner appears and specifically suggests Ocean (driven by `theme: ocean`).
+# Maestro text selectors are full-match regex, so wildcard around the label.
+- assertVisible: "Suggested theme.*Ocean"
+- takeScreenshot: 06-theme-suggested
+# Apply activates the theme; the suggestion is consumed and the banner clears.
+- tapOn: "Apply"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertNotVisible: "Suggested theme.*Ocean"
+- takeScreenshot: 06-theme-applied
