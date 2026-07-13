@@ -59,6 +59,7 @@ platform :ios do
 
   desc "Build and upload to TestFlight"
   lane :upload_beta do
+    sh("cd #{PROJECT_ROOT} && npx expo prebuild --clean 2>&1")
     build_app(
       workspace: File.join(PROJECT_ROOT, "ios/Markdownr.xcworkspace"),
       scheme: "Markdownr",
