@@ -31,7 +31,7 @@ export function useFileOpener(onOpen?: () => void) {
 /**
  * Sort files by natural order: numeric prefix first (00, 01, 02...), then by relativePath.
  */
-function sortFiles(files: FolderFile[]): FolderFile[] {
+export function sortFiles(files: FolderFile[]): FolderFile[] {
   return [...files].sort((a, b) => {
     const nameA = a.name.toLowerCase();
     const nameB = b.name.toLowerCase();
@@ -47,7 +47,7 @@ function sortFiles(files: FolderFile[]): FolderFile[] {
 /**
  * Build a markdown index page linking to all files in the folder.
  */
-function buildFolderIndex(files: FolderFile[], folderName: string, baseUri: string): {content: string; uri: string} {
+export function buildFolderIndex(files: FolderFile[], folderName: string, baseUri: string): {content: string; uri: string} {
   const lines = [`# ${folderName}`, ''];
   for (const file of files) {
     const label = file.name.replace(/\.(md|markdown)$/i, '');

@@ -134,12 +134,15 @@ export const resources = {
   ru: {translation: ru},
 };
 
-const code = getLocales()[0]?.languageCode;
-const initialLng = code === 'de' || code === 'ru' ? code : 'en';
+/** Map the device locale to a supported UI language, falling back to English. */
+export function currentLanguage(): 'en' | 'de' | 'ru' {
+  const code = getLocales()[0]?.languageCode;
+  return code === 'de' || code === 'ru' ? code : 'en';
+}
 
 i18n.use(initReactI18next).init({
   resources,
-  lng: initialLng,
+  lng: currentLanguage(),
   fallbackLng: 'en',
   interpolation: {escapeValue: false}, // React already escapes
   returnNull: false,
