@@ -1,0 +1,18 @@
+# The auto-generated Table of Contents drawer opens from the welcome page's
+# "☰ Table of Contents" link and lists the document's headings.
+appId: dev.dudesoft.markdownr.dev
+---
+- stopApp
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "Welcome to Markdownr"
+# Open the drawer with an edge swipe (react-navigation drawer, swipeEdgeWidth 50).
+- swipe:
+    start: "2%, 50%"
+    end: "85%, 50%"
+- waitForAnimationToEnd
+- assertVisible: "Contents"        # drawer section heading
+- assertVisible: "About"           # drawer footer link
+- takeScreenshot: 02-toc-drawer

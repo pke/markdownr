@@ -1,0 +1,17 @@
+# Smoke test: the app launches and the welcome markdown actually renders.
+# clearState wipes MMKV so we always start on the welcome page (no recent file).
+appId: dev.dudesoft.markdownr.dev
+---
+- stopApp
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "Welcome to Markdownr"
+- assertVisible: "Getting Started"
+- takeScreenshot: 01-welcome
+# "Theme Support" is further down the page — proves the document scrolls & renders.
+- scrollUntilVisible:
+    element:
+      text: "Theme Support"
+    direction: DOWN

@@ -1,0 +1,21 @@
+# Loading different content through an in-app markdownr: link — no native file
+# picker needed. Proves navigation + re-render of a new document.
+appId: dev.dudesoft.markdownr.dev
+---
+- stopApp
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "Welcome to Markdownr"
+# The Ocean demo link is below the fold — scroll to it before tapping.
+- scrollUntilVisible:
+    element:
+      text: "Open Ocean Theme Demo"
+    direction: DOWN
+- tapOn: "Open Ocean Theme Demo"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "Exploring Ocean Theme"
+- assertNotVisible: "Welcome to Markdownr"
+- takeScreenshot: 04-ocean-sample

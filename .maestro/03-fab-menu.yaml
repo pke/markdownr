@@ -1,0 +1,25 @@
+# The floating action button (⋯) opens the slide-up menu and its items are
+# reachable. Guards the fix that made the whole FAB tappable (not just the
+# ellipsis glyph).
+appId: dev.dudesoft.markdownr.dev
+---
+- stopApp
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "Open Folder"
+- assertVisible: "Search"
+- assertVisible: "Open"
+- takeScreenshot: 03-fab-open
+# Tapping a menu item works and doesn't crash. Dark-mode toggle keeps the menu
+# open, so a menu item is still visible afterwards (the dimmed content behind
+# the backdrop is not, as far as Maestro is concerned).
+- tapOn:
+    id: "darkModeButton"
+- waitForAnimationToEnd
+- assertVisible: "Search"

@@ -1,0 +1,21 @@
+# Regression test for the landscape fixes:
+#   - the FAB menu items used to render above the top screen edge (unreachable)
+#     on short landscape screens; they must now stay on-screen (scrollable).
+# Requires a Maestro version that supports `setOrientation`.
+appId: dev.dudesoft.markdownr.dev
+---
+- stopApp
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- setOrientation: LANDSCAPE_LEFT
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "Search"          # last menu item — proves nothing is clipped off-screen
+- assertVisible: "Open Folder"
+- takeScreenshot: 05-landscape-menu
+- setOrientation: PORTRAIT
