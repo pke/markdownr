@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useCallback, useMemo, useRef} from 'react';
-import {StatusBar, useColorScheme, Platform, View, ScrollView} from 'react-native';
+import {StatusBar, useColorScheme, Platform, View, ScrollView, Settings as RNSettings} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {NavigationContainer, createNavigationContainerRef} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
@@ -161,9 +161,13 @@ export default function App() {
   useEffect(() => {
     if (!__DEV__) return;
     try {
+      // Two triggers: a sentinel file (Maestro places it via recents-setup.sh)
+      // or the `-uitestSeedRecents YES` launch argument (XCUITest), which iOS
+      // exposes through NSUserDefaults / RN Settings.
       const sentinel = new File(Paths.document, '__uitest_seed_recents__');
-      if (!sentinel.exists) return;
-      sentinel.delete();
+      const byLaunchArg = Platform.OS === 'ios' && RNSettings.get('uitestSeedRecents') === 'YES';
+      if (!sentinel.exists && !byLaunchArg) return;
+      if (sentinel.exists) sentinel.delete();
       clearAllRecentFiles();
       addRecentFile('# Alpha\n\nFirst test note.', 'alpha.md');
       addRecentFile('# Beta\n\nSecond test note.', 'beta.md');
