@@ -1,0 +1,21 @@
+# Front-matter show/hide. The welcome doc has front matter; it's hidden by
+# default, so the ⓘ info button is shown. Tapping it reveals the metadata card
+# (with its "hide" link); tapping "hide" collapses it back to the ⓘ button.
+appId: dev.dudesoft.markdownr.dev
+---
+- stopApp
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "ⓘ"
+- tapOn: "ⓘ"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "hide"
+- takeScreenshot: 11-frontmatter-shown
+- tapOn: "hide"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "ⓘ"

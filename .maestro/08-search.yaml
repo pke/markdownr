@@ -1,0 +1,34 @@
+# Full-text search: open Search, type a query, submit, and land on the first
+# match in the viewer (the match counter, e.g. "1/3", confirms it worked).
+# The submit path is used because Maestro's inputText into the native iOS
+# search bar doesn't reliably drive React's onChangeText.
+appId: dev.dudesoft.markdownr.dev
+---
+- stopApp
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- tapOn:
+    id: "searchButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "Search in markdown..."
+- tapOn: "Search in markdown..."
+- inputText: "Theme"
+# Dismiss the iOS multi-keyboard onboarding tip if it appears.
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+      - waitForAnimationToEnd
+- pressKey: Enter
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "1/[0-9]+"
+- takeScreenshot: 08-search-match

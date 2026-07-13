@@ -3,14 +3,17 @@
 # fix. NOTE: Maestro can't pixel-assert clearance of the island (it's a system
 # overlay not in the view tree), so this is a layout/smoke guard — it ensures the
 # drawer opens and its items are present in landscape.
+# No PORTRAIT reset (double-rotation glitches layout); gate on load, then rotate.
 appId: dev.dudesoft.markdownr.dev
 ---
 - stopApp
 - launchApp:
     clearState: true
-- waitForAnimationToEnd
-- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Welcome to Markdownr"
+    timeout: 15000
 - setOrientation: LANDSCAPE_LEFT
+- waitForAnimationToEnd
 - waitForAnimationToEnd
 # Open the drawer via the welcome page's Table-of-Contents link.
 - tapOn: ".*Table of Contents.*"

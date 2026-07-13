@@ -1,0 +1,32 @@
+# Source / rendered toggle. The FAB item label flips between "Source" and
+# "Rendered", which is a clean signal that the view actually switched.
+appId: dev.dudesoft.markdownr.dev
+---
+- stopApp
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- assertVisible: "Source"
+- tapOn:
+    id: "sourceButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+# menu closed on toggle — reopen to read the flipped label
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- assertVisible: "Rendered"
+- takeScreenshot: 10-source-view
+- tapOn:
+    id: "sourceButton"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- tapOn:
+    id: "mainMenuButton"
+- waitForAnimationToEnd
+- assertVisible: "Source"

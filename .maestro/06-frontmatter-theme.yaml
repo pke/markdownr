@@ -8,6 +8,7 @@ appId: dev.dudesoft.markdownr.dev
 - stopApp
 - launchApp:
     clearState: true
+- setOrientation: PORTRAIT
 - waitForAnimationToEnd
 - waitForAnimationToEnd
 - assertVisible: "Welcome to Markdownr"

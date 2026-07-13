@@ -6,6 +6,7 @@ appId: dev.dudesoft.markdownr.dev
 - stopApp
 - launchApp:
     clearState: true
+- setOrientation: PORTRAIT
 - waitForAnimationToEnd
 - waitForAnimationToEnd
 - tapOn:

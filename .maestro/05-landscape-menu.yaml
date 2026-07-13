@@ -2,14 +2,18 @@
 #   - the FAB menu items used to render above the top screen edge (unreachable)
 #     on short landscape screens; they must now stay on-screen (scrollable).
 # Requires a Maestro version that supports `setOrientation`.
+# NOTE: no PORTRAIT reset here — rotating twice in quick succession glitches the
+# layout. Instead we gate on the app being fully loaded (portrait) before rotating.
 appId: dev.dudesoft.markdownr.dev
 ---
 - stopApp
 - launchApp:
     clearState: true
-- waitForAnimationToEnd
-- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Welcome to Markdownr"
+    timeout: 15000
 - setOrientation: LANDSCAPE_LEFT
+- waitForAnimationToEnd
 - waitForAnimationToEnd
 - tapOn:
     id: "mainMenuButton"

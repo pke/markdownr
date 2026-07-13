@@ -56,6 +56,9 @@ Screenshots (`takeScreenshot`) land in the working directory.
 | `05-landscape-menu` | Landscape regression: menu items stay on-screen (needs `setOrientation` support) |
 | `06-frontmatter-theme` | `theme:` front matter shows the suggestion banner; Apply activates the theme |
 | `07-drawer-landscape` | Drawer opens & renders in landscape-left (guards the left safe-area inset fix) |
+| `08-search` | Open Search, type a query, submit, land on the first match (`1/N` counter) |
+| `10-source-view` | Source/rendered toggle (FAB label flips Source ↔ Rendered) |
+| `11-frontmatter-toggle` | Front-matter card show (ⓘ) / hide |
 
 The flows lean on the app's built-in content (welcome page, Ocean sample) and
 `testID`s, so they need **no external fixtures** and **never touch the native
@@ -74,13 +77,19 @@ file picker** — which is deliberately hard to automate.
 - `assertVisible` does not scroll — use `scrollUntilVisible` for content below
   the fold. Elements behind the menu's dimming backdrop count as not visible.
 
+## Known gaps (hard to automate)
+
+- **Recent files:** creating a recent needs a real `openFile`, which only
+  happens via the native document picker or a `file://` deep link. `simctl
+  openurl file://…` routes to the iOS Files "Save" sheet rather than the app,
+  and the picker opens an empty Files browser — neither automates reliably. The
+  recents *logic* is covered by `recentFiles.test.ts` (unit); only the screen's
+  render/swipe-delete is uncovered.
+- **Zoom / particles:** pinch and animated overlays are poor fits for E2E.
+- Search uses the **submit** path (type → Enter) because Maestro's `inputText`
+  into the native iOS search bar doesn't drive React's `onChangeText`.
+
 ## Next steps
 
-- **Real file loading:** `fixtures/sample.md` is here for testing the actual
-  file path. Push it onto the simulator and open it via a `file://` deep link
-  (`openLink:`), which exercises front-matter parsing + relative links end-to-end.
-- **Search:** add a flow that opens Search and types a query. The native iOS
-  search bar needs `tapOn` the field then `inputText`; verify selectors in
-  `maestro studio` first.
 - **CI:** run on real devices via [Maestro Cloud](https://maestro.mobile.dev),
   or on a simulator in GitHub Actions with `maestro test`.
