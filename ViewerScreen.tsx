@@ -8,6 +8,7 @@ import {
   Pressable,
   Alert,
   Platform,
+  useWindowDimensions,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
@@ -315,6 +316,7 @@ type FloatingMenuProps = {
 function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMatter, showSource, toggleSource}: FloatingMenuProps) {
   const {t} = useTranslation();
   const insets = useSafeAreaInsets();
+  const {height: windowHeight} = useWindowDimensions();
   const navigation = useNavigation();
   const {showFrontMatterSetting, theme, isDarkMode, colorMode, toggleDarkMode, themeName, cycleTheme} = React.useContext(MarkdownContext);
 
@@ -363,6 +365,11 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
   const bgColor = surfaceColor + 'e6';
   const mainButtonBgColor = glassAvailable ? 'transparent' : bgColor;
 
+  // Cap the expanded menu to the space above the FAB so items never render
+  // off-screen (e.g. in landscape, where 6 stacked items exceed the height).
+  // It scrolls only when the items don't fit; in portrait it fits and won't.
+  const maxMenuItemsHeight = windowHeight - insets.top - insets.bottom - 56 - 24;
+
   return (
     <>
       {isMenuOpen && (
@@ -372,7 +379,11 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
         />
       )}
       <Animated.View style={[styles.floatingMenuContainer, {bottom: insets.bottom}, menuAnimatedStyle]}>
-        <View style={styles.menuItemsClip}>
+        <ScrollView
+          style={[styles.menuItemsClip, {maxHeight: maxMenuItemsHeight}]}
+          contentContainerStyle={styles.menuItemsContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}>
           <SlideUpMenuItem isMenuOpen={isMenuOpen} delay={320}>
             <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>{themeName.charAt(0).toUpperCase() + themeName.slice(1)}</Text>
             <TouchableOpacity
@@ -444,7 +455,7 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
               <MenuIcon name="magnifyingglass" fallback="🔍" color={theme.colors.text} />
             </TouchableOpacity>
           </SlideUpMenuItem>
-        </View>
+        </ScrollView>
 
         <GlassView glassEffectStyle="regular" isInteractive style={[styles.mainMenuButton, {backgroundColor: mainButtonBgColor}]}>
           <TouchableOpacity onPress={toggleMenu} activeOpacity={0.9} style={styles.menuItemTouchable} testID="mainMenuButton" accessible={true}>
@@ -1116,6 +1127,11 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+    // Cap line length for readability and center the column on wide screens
+    // (iPad landscape); on phones width is below the cap so it fills as before.
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
   },
   markdown: {
     flex: 1,
@@ -1159,6 +1175,9 @@ const styles = StyleSheet.create({
   },
   menuItemsClip: {
     overflow: 'hidden',
+    flexGrow: 0,
+  },
+  menuItemsContent: {
     alignItems: 'flex-end',
   },
   mainMenuButton: {
