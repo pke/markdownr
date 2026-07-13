@@ -23,6 +23,12 @@ export function parseDeepLinkFileUri(
 ): ParsedDeepLink | null {
   if (!url) return null;
 
+  // Only file:// (both platforms) and content:// (Android SAF) are real file
+  // deep links. Reject http(s) / javascript / custom schemes and scheme-less
+  // input so a crafted link can't be coerced into an arbitrary local file read.
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(url)?.[1].toLowerCase();
+  if (scheme !== 'file' && scheme !== 'content') return null;
+
   try {
     let filePath = url;
     if (platform === 'ios') {

@@ -49,6 +49,17 @@ describe('parseDeepLinkFileUri', () => {
   it('falls back to "Unknown" when there is no final path segment', () => {
     expect(parseDeepLinkFileUri('file:///docs/', 'ios')?.name).toBe('Unknown');
   });
+
+  it.each([
+    'http://evil.com/x.md',
+    'https://evil.com/x.md',
+    'javascript:alert(1)',
+    'markdownr://open',
+    'somefile.md', // scheme-less
+  ])('rejects non-file/content scheme: %s', (url) => {
+    expect(parseDeepLinkFileUri(url, 'ios')).toBeNull();
+    expect(parseDeepLinkFileUri(url, 'android')).toBeNull();
+  });
 });
 
 describe('openDeepLink', () => {
