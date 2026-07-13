@@ -32,3 +32,11 @@ export function getTextContent(node: any): string {
   if (node.content) return node.content;
   return (node.children ?? []).map(getTextContent).join('');
 }
+
+// Stubs so modules that import the parser (e.g. example.ts) load in tests.
+export function parseMarkdown(_markdown: string): any {
+  return {type: 'document', children: []};
+}
+export function parseMarkdownWithOptions(_markdown: string, _options?: any): any {
+  return {type: 'document', children: []};
+}
