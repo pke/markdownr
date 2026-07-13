@@ -42,7 +42,7 @@ export function TocDrawerContent({navigation}: DrawerContentComponentProps) {
   };
 
   return (
-    <View style={[styles.container, {backgroundColor, paddingTop: insets.top}]}>
+    <View style={[styles.container, {backgroundColor, paddingTop: insets.top, paddingLeft: insets.left}]}>
       <ThemeSuggestion variant="drawer" onApply={() => navigation.closeDrawer()} />
       {tocHeadings.length > 0 && (
         <>

@@ -1,0 +1,23 @@
+# Landscape drawer: opening the TOC drawer in landscape-left (Dynamic Island on
+# the left edge) must render its items. Guards the drawer's left safe-area inset
+# fix. NOTE: Maestro can't pixel-assert clearance of the island (it's a system
+# overlay not in the view tree), so this is a layout/smoke guard — it ensures the
+# drawer opens and its items are present in landscape.
+appId: dev.dudesoft.markdownr.dev
+---
+- stopApp
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- setOrientation: LANDSCAPE_LEFT
+- waitForAnimationToEnd
+# Open the drawer via the welcome page's Table-of-Contents link.
+- tapOn: ".*Table of Contents.*"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "Contents"
+- assertVisible: "Getting Started"
+- assertVisible: "About"
+- takeScreenshot: 07-drawer-landscape
+- setOrientation: PORTRAIT

@@ -55,6 +55,7 @@ Screenshots (`takeScreenshot`) land in the working directory.
 | `04-load-sample` | Loads a different document via an in-app link; re-renders |
 | `05-landscape-menu` | Landscape regression: menu items stay on-screen (needs `setOrientation` support) |
 | `06-frontmatter-theme` | `theme:` front matter shows the suggestion banner; Apply activates the theme |
+| `07-drawer-landscape` | Drawer opens & renders in landscape-left (guards the left safe-area inset fix) |
 
 The flows lean on the app's built-in content (welcome page, Ocean sample) and
 `testID`s, so they need **no external fixtures** and **never touch the native
