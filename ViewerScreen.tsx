@@ -1227,6 +1227,10 @@ const styles = StyleSheet.create({
   },
   menuItemTouchable: {
     flex: 1,
+    // Fill the button's full width too — GlassView's alignItems:'center'
+    // otherwise collapses the touchable to the icon width, so only the
+    // ellipsis itself was tappable.
+    alignSelf: 'stretch',
     justifyContent: 'center',
     alignItems: 'center',
   },
