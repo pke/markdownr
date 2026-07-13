@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Animated, {FadeOut, LinearTransition} from 'react-native-reanimated';
 import {useNavigation} from '@react-navigation/native';
+import {useTranslation} from 'react-i18next';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -17,6 +18,7 @@ import {MarkdownContext} from './MarkdownContext';
 import {getRecentFiles, loadRecentFile, deleteRecentFile, clearAllRecentFiles, type RecentFileEntry} from './recentFiles';
 
 export function RecentFilesScreen() {
+  const {t} = useTranslation();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const {
@@ -37,11 +39,11 @@ export function RecentFilesScreen() {
       openFile(content, entry.subtitle);
       navigation.goBack();
     } else {
-      Alert.alert('File unavailable', 'This file was removed by iOS to free up storage space. Open the original file again to re-cache it.');
+      Alert.alert(t('recentFiles.unavailableTitle'), t('recentFiles.unavailableMessage'));
       setRecentFiles(prev => prev.filter(e => e.id !== entry.id));
       deleteRecentFile(entry.id);
     }
-  }, [openFile, navigation]);
+  }, [openFile, navigation, t]);
 
   const handleDeleteRecentFile = useCallback((id: string) => {
     setRecentFiles(prev => prev.filter(e => e.id !== id));
@@ -57,22 +59,22 @@ export function RecentFilesScreen() {
     <GestureHandlerRootView style={styles.container}>
       <View style={[styles.container, {backgroundColor}]}>
         <View style={[styles.header, {paddingTop: insets.top + 8}]}>
-          <Text style={[styles.title, {color: theme.colors.heading}]}>Recent Files</Text>
+          <Text style={[styles.title, {color: theme.colors.heading}]}>{t('recentFiles.title')}</Text>
           <View style={styles.headerActions}>
             {recentFiles.length > 0 && (
               <TouchableOpacity onPress={handleClearAll} activeOpacity={0.7}>
-                <Text style={[styles.clearAll, {color: theme.colors.link}]}>Clear All</Text>
+                <Text style={[styles.clearAll, {color: theme.colors.link}]}>{t('common.clearAll')}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
-              <Text style={[styles.doneButton, {color: theme.colors.link}]}>Done</Text>
+              <Text style={[styles.doneButton, {color: theme.colors.link}]}>{t('common.done')}</Text>
             </TouchableOpacity>
           </View>
         </View>
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           {recentFiles.length === 0 && (
             <Text style={[styles.emptyText, {color: theme.colors.textMuted}]}>
-              No recent files. Open a markdown file to see it here.
+              {t('recentFiles.empty')}
             </Text>
           )}
           {recentFiles.map((entry) => (
@@ -88,7 +90,7 @@ export function RecentFilesScreen() {
                     style={styles.deleteAction}
                     onPress={() => handleDeleteRecentFile(entry.id)}
                     activeOpacity={0.7}>
-                    <Text style={styles.deleteActionText}>Delete</Text>
+                    <Text style={styles.deleteActionText}>{t('common.delete')}</Text>
                   </TouchableOpacity>
                 )}>
                 <TouchableOpacity

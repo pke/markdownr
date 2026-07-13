@@ -4,40 +4,48 @@
     {
       "title": "Appearance",
       "titleDe": "Darstellung",
+      "titleRu": "Оформление",
       "settings": [
         {
           "key": "colorMode",
           "type": "multiValue",
           "title": "Color Mode",
           "titleDe": "Farbmodus",
+          "titleRu": "Режим цвета",
           "defaultValue": "system",
           "values": ["system", "light", "dark"],
           "titles": ["System", "Light", "Dark"],
-          "titlesDe": ["System", "Hell", "Dunkel"]
+          "titlesDe": ["System", "Hell", "Dunkel"],
+          "titlesRu": ["Системный", "Светлая", "Тёмная"]
         },
         {
           "key": "theme",
           "type": "multiValue",
           "title": "Theme",
           "titleDe": "Thema",
+          "titleRu": "Тема",
           "defaultValue": "default",
           "values": ["default", "ocean", "forest", "sunset", "lavender"],
           "titles": ["Default", "Ocean", "Forest", "Sunset", "Lavender"],
-          "titlesDe": ["Standard", "Ozean", "Wald", "Sonnenuntergang", "Lavendel"]
+          "titlesDe": ["Standard", "Ozean", "Wald", "Sonnenuntergang", "Lavendel"],
+          "titlesRu": ["Стандартная", "Океан", "Лес", "Закат", "Лаванда"]
         }
       ]
     },
     {
       "title": "Document Display",
       "titleDe": "Dokumentenanzeige",
+      "titleRu": "Отображение документа",
       "footer": "YAML front matter metadata will be displayed at the top of documents when enabled.",
       "footerDe": "YAML-Metadaten werden am Anfang von Dokumenten angezeigt, wenn aktiviert.",
+      "footerRu": "Если включено, метаданные YAML из front matter отображаются в начале документа.",
       "settings": [
         {
           "key": "showFrontMatter",
           "type": "toggle",
           "title": "Show Meta Data",
           "titleDe": "Zeige Meta Informationen",
+          "titleRu": "Показывать метаданные",
           "defaultValue": true
         }
       ]

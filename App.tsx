@@ -7,7 +7,8 @@ import {createDrawerNavigator} from '@react-navigation/drawer';
 import {File} from 'expo-file-system/next';
 import * as Linking from 'expo-linking';
 
-import {EXAMPLE_MARKDOWN} from './example';
+import './i18n'; // initialize i18next before any screen renders
+import {getWelcomeMarkdown} from './example';
 import {Settings, SettingsKeys, Storage, StorageKeys, addSettingsListener} from './settings';
 import {addRecentFile, getRecentFiles, loadRecentFile} from './recentFiles';
 import {MarkdownContext, type SearchMatch, type TocHeading} from './MarkdownContext';
@@ -49,7 +50,7 @@ export default function App() {
   }, [themeName]);
 
   const initialRecent = useMemo(() => getRecentFiles()[0] ?? null, []);
-  const [markdownContent, setMarkdownContent] = useState<string>(initialRecent ? '' : EXAMPLE_MARKDOWN);
+  const [markdownContent, setMarkdownContent] = useState<string>(initialRecent ? '' : getWelcomeMarkdown());
   const [fileName, setFileName] = useState<string | null>(initialRecent?.subtitle ?? null);
   const [currentFileUri, setCurrentFileUri] = useState<string | null>(() =>
     Storage.getString(StorageKeys.LAST_FILE_URI) || null
@@ -59,7 +60,7 @@ export default function App() {
 
   useEffect(() => {
     if (fileName === null) {
-      setMarkdownContent(EXAMPLE_MARKDOWN);
+      setMarkdownContent(getWelcomeMarkdown());
     }
     setFrontMatterThemeApplied(false);
   }, [fileName]);

@@ -4,12 +4,14 @@ import {type DrawerContentComponentProps} from '@react-navigation/drawer';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import {useNavigation} from '@react-navigation/native';
+import {useTranslation} from 'react-i18next';
 import {MarkdownContext} from './MarkdownContext';
 import {getAboutMarkdown} from './about';
 import {ThemeSuggestion} from './ThemeSuggestion';
 import {getRecentFiles, loadRecentFile, type RecentFileEntry} from './recentFiles';
 
 export function TocDrawerContent({navigation}: DrawerContentComponentProps) {
+  const {t} = useTranslation();
   const stackNavigation = useNavigation();
   const {
     tocHeadingsRef, setScrollToHeadingIndex, openFile, setMarkdownContent, setFileName,
@@ -44,7 +46,7 @@ export function TocDrawerContent({navigation}: DrawerContentComponentProps) {
       <ThemeSuggestion variant="drawer" onApply={() => navigation.closeDrawer()} />
       {tocHeadings.length > 0 && (
         <>
-          <Text style={[styles.title, {color: theme.colors.heading}]}>Contents</Text>
+          <Text style={[styles.title, {color: theme.colors.heading}]}>{t('drawer.contents')}</Text>
           <ScrollView style={styles.scrollArea}>
             {tocHeadings.map((heading) => (
               <TouchableOpacity
@@ -71,7 +73,7 @@ export function TocDrawerContent({navigation}: DrawerContentComponentProps) {
       <View style={[styles.footer, {paddingBottom: insets.bottom + 16}]}>
         {recentFiles.length > 0 && (
           <>
-            <Text style={[styles.sectionTitle, {color: theme.colors.heading}]}>Recent Files</Text>
+            <Text style={[styles.sectionTitle, {color: theme.colors.heading}]}>{t('recentFiles.title')}</Text>
             {recentFiles.slice(0, 2).map((entry) => (
               <TouchableOpacity
                 key={entry.id}
@@ -95,7 +97,7 @@ export function TocDrawerContent({navigation}: DrawerContentComponentProps) {
                 onPress={() => { stackNavigation.navigate('RecentFiles' as never); navigation.closeDrawer(); }}
                 activeOpacity={0.7}>
                 <Text style={[styles.showAllText, {color: theme.colors.link}]}>
-                  Show All ({recentFiles.length})
+                  {t('drawer.showAll')} ({recentFiles.length})
                 </Text>
               </TouchableOpacity>
             )}
@@ -103,7 +105,7 @@ export function TocDrawerContent({navigation}: DrawerContentComponentProps) {
         )}
         <View style={styles.aboutContainer}>
           <TouchableOpacity onPress={handleAbout} activeOpacity={0.7}>
-            <Text style={[styles.footerLink, {color: theme.colors.link}]}>About</Text>
+            <Text style={[styles.footerLink, {color: theme.colors.link}]}>{t('drawer.about')}</Text>
           </TouchableOpacity>
           <Text style={[styles.versionText, {color: theme.colors.textMuted}]}>
             Markdownr v{Constants.expoConfig?.version ?? '?'}

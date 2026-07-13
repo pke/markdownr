@@ -1,5 +1,7 @@
+import {getLocales} from 'expo-localization';
+
 // Light and friendly sample markdown for Markdownr
-export const EXAMPLE_MARKDOWN = `---
+const welcome_en = `---
 title: Welcome to Markdownr
 author: The Dude
 date: 2025-01-15
@@ -194,6 +196,412 @@ $$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
 | Cmd + O | Open file |
 
 `;
+
+const welcome_de = `---
+title: Willkommen bei Markdownr
+author: The Dude
+date: 2025-01-15
+tags:
+  - markdown
+  - mobil
+  - dokumentation
+description: Ein handlicher Markdown-Viewer für iOS und Android
+---
+# Willkommen bei Markdownr
+
+Dein handlicher Markdown-Viewer zum Lesen von Dokumenten, Notizen und READMEs für unterwegs.
+
+[☰ Inhaltsverzeichnis](markdownr:toc)
+
+## Erste Schritte
+
+Öffne eine beliebige \`.md\`-Datei von deinem Gerät oder Cloud-Speicher über die [Menü-Schaltfläche](markdownr:menu) unten. Markdownr stellt sie wunderschön dar!
+
+### Was du tun kannst
+
+- [Durchstöbere](markdownr:open) deine Markdown-Dateien
+- [Suche](markdownr:search) in Dokumenten
+- [Wechsle](markdownr:theme)
+- [Umschalten](markdownr:darkmode)
+
+---
+
+## Front-Matter-Unterstützung
+
+Markdownr parst automatisch YAML Front Matter aus deinen Dokumenten und zeigt es als gestalteten Header mit Tags, Titel, Autor und Datum an.
+
+[Front Matter ein- oder ausblenden](markdownr:toggle-frontmatter), um den Metadaten-Block anzuzeigen oder zu verbergen. Du kannst auch auf das Info-Symbol (ⓘ) in der oberen rechten Ecke tippen.
+
+---
+
+## Theme-Unterstützung
+
+Dokumente können über ihr Front Matter ein Theme vorschlagen. Probier es aus:
+
+[Ocean-Theme-Demo öffnen](markdownr:sample-ocean)
+
+---
+
+## Markdown-Schaufenster
+
+Hier ein Vorgeschmack darauf, was Markdownr darstellen kann:
+
+### Textformatierung
+
+Du kannst **fetten Text**, *Kursivschrift* oder ***beides zusammen*** schreiben. Musst du etwas Entferntes zeigen? Nutze ~~Durchgestrichenes~~.
+
+Inline-\`Code\` sieht toll aus für technische Begriffe wie \`useState\` oder Dateinamen wie \`package.json\`.
+
+### Links & Bilder
+
+Besuche das [Markdownr-Repo](https://github.com) für Updates!
+
+![Beispielbild](https://picsum.photos/800/400 "Beispielbild")
+
+### HTML-Tags
+
+#### Inline-Formatierung
+
+Nutze <b>fett</b> oder <strong>stark</strong> mit HTML-Tags.
+
+<i>Kursiv</i> und <em>Betonung</em> funktionieren auch.
+
+<s>Durchgestrichen</s>, <del>gelöscht</del> und <strike>gestrichen</strike> Text.
+
+<u>Unterstrichen</u> und <ins>eingefügt</ins> Text (als Unterstreichung dargestellt).
+
+<mark>Hervorgehobener</mark> Text sticht heraus.
+
+Chemische Formeln: H<sub>2</sub>O, mathematische: x<sup>2</sup> + y<sup>2</sup>.
+
+Inline-HTML <code>code()</code> wird als Code dargestellt.
+
+#### Zeilenumbrüche
+
+Absatz mit einem harten Umbruch<br>genau hier — mit \`<br>\`.
+
+Selbstschließende Variante<br/>funktioniert auch.
+
+Mit einem Leerzeichen<br />vor dem Schrägstrich ebenfalls.
+
+\`<br>\` funktioniert auch in Tabellenzellen:
+
+| Name | Beschreibung |
+|------|-------------|
+| Alpha | Erste Zeile<br>zweite Zeile |
+| Beta | Nur eine Zeile |
+| Gamma | Zeile eins<br>Zeile zwei<br>Zeile drei |
+
+#### Tags im Code (erhalten)
+
+Innerhalb eines Code-Spans: \`<b>not bold</b>\` — Tags werden wörtlich erhalten.
+
+\`\`\`html
+<b>also preserved</b> in a code block
+\`\`\`
+
+### Listen
+
+**Einkaufsliste:**
+- Milch
+- Eier
+- Kaffeebohnen
+
+**Wochenendpläne:**
+1. Morgendlicher Lauf
+2. Brunch mit Freunden
+3. Ein gutes Buch lesen
+
+**Projekt-Checkliste:**
+- [x] Design-Mockups
+- [x] Projekt aufsetzen
+- [ ] Dokumentation schreiben
+- [ ] Veröffentlichen!
+
+### Blockzitate
+
+> „The Dude bleibt gelassen."
+> — Stranger
+
+### Codeblöcke
+
+\`\`\`javascript
+function greet(name) {
+  return \`Hello, \${name}!\`;
+}
+
+console.log(greet('Dude'));
+\`\`\`
+
+\`\`\`python
+def fibonacci(n):
+    a, b = 0, 1
+    for _ in range(n):
+        yield a
+        a, b = b, a + b
+
+print(list(fibonacci(10)))
+\`\`\`
+
+### Tabellen
+
+Breite Tabellen scrollen horizontal — wisch bei dieser hier nach links:
+
+| Funktion | Hinweise |
+|---------|-------|
+| Dark Mode | Folgt der Systemeinstellung oder manuellem Umschalten |
+| Suche | Volltextsuche mit Treffer-Hervorhebung |
+| Themes | Default, Sepia, Forest, Ocean, Dracula |
+| Dateitypen | Aus der Dateien-App oder dem Teilen-Menü öffnen |
+| Mathe (LaTeX) | Inline- und Block-Gleichungen via KaTeX |
+| Inhaltsverzeichnis | Automatisch aus Überschriften generiert |
+| Pinch to Zoom | In jeden Inhalt hineinzoomen |
+| Doppeltipp-Zoom | Schneller 2x-Zoom-Umschalter |
+
+### Mathematische Ausdrücke
+
+Einsteins berühmte Gleichung: $E = mc^2$
+
+Die quadratische Lösungsformel:
+
+$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
+
+### Verschachtelte Inhalte
+
+1. **Erstes Thema**
+   - Unterpunkt A
+   - Unterpunkt B
+     > Ein verschachteltes Zitat zur Betonung
+   - Unterpunkt C
+
+2. **Zweites Thema**
+   - Weitere Details hier
+   - Und auch hier
+
+---
+
+## Tipps & Tricks
+
+> **Profi-Tipp:** Wisch im Menü nach oben, um weitere Optionen wie Theme-Wechsel und Dark-Mode-Umschalter zu enthüllen!
+
+### Tastaturkürzel (auf dem iPad)
+
+| Kürzel | Aktion |
+|----------|--------|
+| Cmd + F | Suchen |
+| Cmd + O | Datei öffnen |
+
+`;
+
+const welcome_ru = `---
+title: Добро пожаловать в Markdownr
+author: The Dude
+date: 2025-01-15
+tags:
+  - markdown
+  - мобильный
+  - документация
+description: Компактный просмотрщик Markdown для iOS и Android
+---
+# Добро пожаловать в Markdownr
+
+Ваш компактный просмотрщик Markdown для чтения документов, заметок и файлов README на ходу.
+
+[☰ Оглавление](markdownr:toc)
+
+## Начало работы
+
+Откройте любой файл \`.md\` с вашего устройства или облачного хранилища с помощью [кнопки меню](markdownr:menu) ниже. Markdownr отобразит его великолепно!
+
+### Что вы можете делать
+
+- [Просматривайте](markdownr:open) ваши файлы Markdown
+- [Ищите](markdownr:search) внутри документов
+- [Переключайте тему](markdownr:theme)
+- [Переключайте режим](markdownr:darkmode)
+
+---
+
+## Поддержка Front Matter
+
+Markdownr автоматически разбирает YAML Front Matter из ваших документов и отображает его как оформленный заголовок с тегами, названием, автором и датой.
+
+[Показать или скрыть Front Matter](markdownr:toggle-frontmatter), чтобы отобразить или скрыть блок метаданных. Вы также можете нажать на значок информации (ⓘ) в правом верхнем углу.
+
+---
+
+## Поддержка тем
+
+Документы могут предлагать тему через свой Front Matter. Попробуйте:
+
+[Открыть демо темы Ocean](markdownr:sample-ocean)
+
+---
+
+## Витрина Markdown
+
+Вот образец того, что может отобразить Markdownr:
+
+### Форматирование текста
+
+Вы можете писать **жирный текст**, *курсив* или ***и то и другое вместе***. Нужно показать что-то удалённое? Используйте ~~зачёркивание~~.
+
+Строчный \`код\` отлично смотрится для технических терминов вроде \`useState\` или имён файлов вроде \`package.json\`.
+
+### Ссылки и изображения
+
+Посетите [репозиторий Markdownr](https://github.com) для обновлений!
+
+![Пример изображения](https://picsum.photos/800/400 "Пример изображения")
+
+### HTML-теги
+
+#### Строчное форматирование
+
+Используйте <b>жирный</b> или <strong>сильный</strong> с HTML-тегами.
+
+<i>Курсив</i> и <em>выделение</em> тоже работают.
+
+<s>Зачёркнутый</s>, <del>удалённый</del> и <strike>перечёркнутый</strike> текст.
+
+<u>Подчёркнутый</u> и <ins>вставленный</ins> текст (отображается как подчёркивание).
+
+<mark>Выделенный</mark> текст бросается в глаза.
+
+Химические формулы: H<sub>2</sub>O, математические: x<sup>2</sup> + y<sup>2</sup>.
+
+Строчный HTML <code>code()</code> отображается как код.
+
+#### Переносы строк
+
+Абзац с жёстким переносом<br>прямо здесь — с помощью \`<br>\`.
+
+Самозакрывающийся вариант<br/>тоже работает.
+
+С пробелом<br />перед слэшем тоже.
+
+\`<br>\` также работает внутри ячеек таблицы:
+
+| Имя | Описание |
+|------|-------------|
+| Alpha | Первая строка<br>вторая строка |
+| Beta | Только одна строка |
+| Gamma | Строка один<br>строка два<br>строка три |
+
+#### Теги в коде (сохраняются)
+
+Внутри строчного кода: \`<b>not bold</b>\` — теги сохраняются буквально.
+
+\`\`\`html
+<b>also preserved</b> in a code block
+\`\`\`
+
+### Списки
+
+**Список покупок:**
+- Молоко
+- Яйца
+- Кофейные зёрна
+
+**Планы на выходные:**
+1. Утренняя пробежка
+2. Бранч с друзьями
+3. Прочитать хорошую книгу
+
+**Контрольный список проекта:**
+- [x] Дизайн-макеты
+- [x] Настроить проект
+- [ ] Написать документацию
+- [ ] Выпустить!
+
+### Цитаты
+
+> «The Dude сохраняет спокойствие.»
+> — Stranger
+
+### Блоки кода
+
+\`\`\`javascript
+function greet(name) {
+  return \`Hello, \${name}!\`;
+}
+
+console.log(greet('Dude'));
+\`\`\`
+
+\`\`\`python
+def fibonacci(n):
+    a, b = 0, 1
+    for _ in range(n):
+        yield a
+        a, b = b, a + b
+
+print(list(fibonacci(10)))
+\`\`\`
+
+### Таблицы
+
+Широкие таблицы прокручиваются горизонтально — попробуйте смахнуть влево на этой:
+
+| Функция | Заметки |
+|---------|-------|
+| Тёмный режим | Следует системной настройке или ручному переключению |
+| Поиск | Полнотекстовый поиск с подсветкой совпадений |
+| Темы | Default, Sepia, Forest, Ocean, Dracula |
+| Типы файлов | Открытие из приложения Файлы или меню «Поделиться» |
+| Математика (LaTeX) | Строчные и блочные уравнения через KaTeX |
+| Оглавление | Автоматически генерируется из заголовков |
+| Щипок для масштаба | Приближение любого содержимого |
+| Масштаб двойным касанием | Быстрое переключение масштаба 2x |
+
+### Математические выражения
+
+Знаменитое уравнение Эйнштейна: $E = mc^2$
+
+Формула корней квадратного уравнения:
+
+$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
+
+### Вложенное содержимое
+
+1. **Первая тема**
+   - Подпункт A
+   - Подпункт B
+     > Вложенная цитата для акцента
+   - Подпункт C
+
+2. **Вторая тема**
+   - Больше деталей здесь
+   - И здесь тоже
+
+---
+
+## Советы и хитрости
+
+> **Совет профи:** Смахните вверх по меню, чтобы открыть больше опций, таких как переключение тем и переключатель тёмного режима!
+
+### Сочетания клавиш (на iPad)
+
+| Сочетание | Действие |
+|----------|--------|
+| Cmd + F | Поиск |
+| Cmd + O | Открыть файл |
+
+`;
+
+const welcomeTranslations: Record<string, string> = {
+  en: welcome_en,
+  de: welcome_de,
+  ru: welcome_ru,
+};
+
+export function getWelcomeMarkdown(): string {
+  const languageCode = getLocales()[0]?.languageCode ?? 'en';
+  return welcomeTranslations[languageCode] ?? welcome_en;
+}
+
+// Backwards-compat: static English default
+export const EXAMPLE_MARKDOWN = welcome_en;
 
 // Keep the old comprehensive example for reference/testing
 export const COMPREHENSIVE_EXAMPLE = `# Nitro Markdown

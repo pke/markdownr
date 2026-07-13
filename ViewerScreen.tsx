@@ -45,6 +45,7 @@ import {customThemes, type ThemeConfig} from './themes';
 import {parseFrontMatter, type FrontMatter, getExtraMetadata, hasExtraMetadata} from './frontmatter';
 import {composeTransforms, createTypographicTransform, emoticonTransform, subSuperscriptTransform, abbreviationTransform, footnoteTransform, insMarkTransform, definitionListTransform, quoteCycleTransform, preprocessMarkdownHtml, tableBrTransform} from './astTransforms';
 import {getLocales} from 'expo-localization';
+import {useTranslation} from 'react-i18next';
 import {ZoomableView} from './ZoomableView';
 import {useFileOpener, useFolderOpener, resolveRelativeMarkdownLink} from './useFileOpener';
 import {File} from 'expo-file-system/next';
@@ -71,6 +72,7 @@ type FrontMatterBlockProps = {
 };
 
 function FrontMatterBlock({frontMatter, onHide, isDarkMode, theme}: FrontMatterBlockProps) {
+  const {t} = useTranslation();
   const [isExtraExpanded, setIsExtraExpanded] = useState(false);
   const extraMetadata = getExtraMetadata(frontMatter);
   const hasExtra = hasExtraMetadata(frontMatter);
@@ -126,7 +128,7 @@ function FrontMatterBlock({frontMatter, onHide, isDarkMode, theme}: FrontMatterB
             onPress={() => setIsExtraExpanded(!isExtraExpanded)}
             style={frontMatterStyles.extraToggle}>
             <Text style={[frontMatterStyles.extraToggleText, {color: theme.colors.link}]}>
-              {isExtraExpanded ? '▼' : '▶'} More info
+              {isExtraExpanded ? '▼' : '▶'} {t('frontMatter.moreInfo')}
             </Text>
           </TouchableOpacity>
           {isExtraExpanded && (
@@ -145,7 +147,7 @@ function FrontMatterBlock({frontMatter, onHide, isDarkMode, theme}: FrontMatterB
       )}
 
       <TouchableOpacity onPress={onHide} style={frontMatterStyles.hideLink}>
-        <Text style={[frontMatterStyles.hideLinkText, {color: metaColor}]}>hide</Text>
+        <Text style={[frontMatterStyles.hideLinkText, {color: metaColor}]}>{t('frontMatter.hide')}</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -311,6 +313,7 @@ type FloatingMenuProps = {
 };
 
 function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMatter, showSource, toggleSource}: FloatingMenuProps) {
+  const {t} = useTranslation();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const {showFrontMatterSetting, theme, isDarkMode, colorMode, toggleDarkMode, themeName, cycleTheme} = React.useContext(MarkdownContext);
@@ -383,7 +386,7 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
 
           <SlideUpMenuItem isMenuOpen={isMenuOpen} delay={240}>
             <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>
-              {colorMode === 'system' ? 'Auto' : colorMode === 'dark' ? 'Dark' : 'Light'}
+              {colorMode === 'system' ? t('mode.auto') : colorMode === 'dark' ? t('mode.dark') : t('mode.light')}
             </Text>
             <TouchableOpacity
               onPress={() => { toggleDarkMode(); }}
@@ -399,7 +402,7 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
           </SlideUpMenuItem>
 
           <SlideUpMenuItem isMenuOpen={isMenuOpen} delay={160}>
-            <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>{showSource ? 'Rendered' : 'Source'}</Text>
+            <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>{showSource ? t('view.rendered') : t('view.source')}</Text>
             <TouchableOpacity
               onPress={() => { toggleSource(); closeMenu(); }}
               style={[styles.menuItem, {backgroundColor: bgColor}]}
@@ -410,7 +413,7 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
           </SlideUpMenuItem>
 
           <SlideUpMenuItem isMenuOpen={isMenuOpen} delay={80}>
-            <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>Open</Text>
+            <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>{t('menu.open')}</Text>
             <TouchableOpacity
               onPress={openFile}
               style={[styles.menuItem, {backgroundColor: bgColor}]}
@@ -421,7 +424,7 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
           </SlideUpMenuItem>
 
           <SlideUpMenuItem isMenuOpen={isMenuOpen} delay={40}>
-            <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>Open Folder</Text>
+            <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>{t('menu.openFolder')}</Text>
             <TouchableOpacity
               onPress={openFolder}
               style={[styles.menuItem, {backgroundColor: bgColor}]}
@@ -432,7 +435,7 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
           </SlideUpMenuItem>
 
           <SlideUpMenuItem isMenuOpen={isMenuOpen} delay={0}>
-            <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>Search</Text>
+            <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>{t('menu.search')}</Text>
             <TouchableOpacity
               onPress={handleSearch}
               style={[styles.menuItem, {backgroundColor: bgColor}]}
@@ -497,6 +500,7 @@ function QuoteCycler({quotes, Renderer}: {quotes: MarkdownNode[]; Renderer: Reac
 }
 
 export function ViewerScreen() {
+  const {t} = useTranslation();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const {
@@ -545,18 +549,18 @@ export function ViewerScreen() {
         return false;
       } catch {
         Alert.alert(
-          'Open Folder',
-          'Select all files in this folder to enable link navigation.',
+          t('menu.openFolder'),
+          t('alert.openFolderMessage'),
           [
-            {text: 'Cancel', style: 'cancel'},
-            {text: 'Open Folder', onPress: openFolderPicker},
+            {text: t('common.cancel'), style: 'cancel'},
+            {text: t('menu.openFolder'), onPress: openFolderPicker},
           ],
         );
         return false;
       }
     }
     return true; // let non-md links open normally
-  }, [currentFileUri, openFile, openFolderPicker]);
+  }, [currentFileUri, openFile, openFolderPicker, t]);
 
   const openSearch = useCallback(() => {
     navigation.navigate('Search' as never);
@@ -926,11 +930,11 @@ export function ViewerScreen() {
         const content = getTextContent(node);
         let suffix = '';
         if (action === 'darkmode') {
-          suffix = colorMode === 'system' ? ' dark mode 🌙' : colorMode === 'dark' ? ' light mode ☀️' : ' auto mode ⚙️';
+          suffix = colorMode === 'system' ? t('suffix.toDarkMode') : colorMode === 'dark' ? t('suffix.toLightMode') : t('suffix.toAutoMode');
         } else if (action === 'theme') {
           const emoji = customThemes[themeName].icon;
           const displayName = themeName.charAt(0).toUpperCase() + themeName.slice(1);
-          suffix = ` color themes: ${emoji} ${displayName}`;
+          suffix = `${t('suffix.colorThemes')} ${emoji} ${displayName}`;
         }
         return (
           <>

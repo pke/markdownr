@@ -2,6 +2,7 @@ import React, {useState, useEffect, useCallback} from 'react';
 import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import Animated, {FadeInUp, FadeOutDown} from 'react-native-reanimated';
 import {getLocales} from 'expo-localization';
+import {useTranslation} from 'react-i18next';
 
 import {MarkdownContext} from './MarkdownContext';
 import {customThemes} from './themes';
@@ -22,6 +23,7 @@ type Suggestion = {
 };
 
 export function ThemeSuggestion({variant, bottomInset, onApply}: ThemeSuggestionProps) {
+  const {t} = useTranslation();
   const {
     markdownContent,
     fileName,
@@ -74,9 +76,9 @@ export function ThemeSuggestion({variant, bottomInset, onApply}: ThemeSuggestion
             const pathname = new URL(resolved.url).pathname;
             const segment = pathname.split('/').filter(Boolean).pop() ?? '';
             const name = segment.replace(/\.json$/i, '').replace(/[-_]/g, ' ').trim();
-            setFmLabel(name ? name.charAt(0).toUpperCase() + name.slice(1) : 'Custom theme');
+            setFmLabel(name ? name.charAt(0).toUpperCase() + name.slice(1) : t('theme.custom'));
           } catch {
-            setFmLabel('Custom theme');
+            setFmLabel(t('theme.custom'));
           }
         }
       });
@@ -145,14 +147,14 @@ export function ThemeSuggestion({variant, bottomInset, onApply}: ThemeSuggestion
           },
         ]}>
         <Text style={[bannerStyles.text, {color: theme.colors.text}]}>
-          Suggested theme: {suggestion.label}
+          {t('theme.suggested')} {suggestion.label}
         </Text>
         <View style={bannerStyles.actions}>
           <TouchableOpacity onPress={handleDismiss} style={[bannerStyles.dismissButton, {borderColor: theme.colors.border}]}>
-            <Text style={[bannerStyles.dismissText, {color: theme.colors.text}]}>Dismiss</Text>
+            <Text style={[bannerStyles.dismissText, {color: theme.colors.text}]}>{t('common.dismiss')}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleApply} style={[bannerStyles.button, {backgroundColor: theme.colors.link}]}>
-            <Text style={bannerStyles.buttonText}>Apply</Text>
+            <Text style={bannerStyles.buttonText}>{t('common.apply')}</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
@@ -163,13 +165,13 @@ export function ThemeSuggestion({variant, bottomInset, onApply}: ThemeSuggestion
   return (
     <View style={[drawerStyles.container, {backgroundColor, borderColor: theme.colors.border}]}>
       <Text style={[drawerStyles.text, {color: theme.colors.text}]}>
-        Suggested theme: {suggestion.label}
+        {t('theme.suggested')} {suggestion.label}
       </Text>
       <TouchableOpacity
         onPress={handleApply}
         style={[drawerStyles.button, {backgroundColor: theme.colors.link}]}
         activeOpacity={0.7}>
-        <Text style={drawerStyles.buttonText}>Apply</Text>
+        <Text style={drawerStyles.buttonText}>{t('common.apply')}</Text>
       </TouchableOpacity>
     </View>
   );

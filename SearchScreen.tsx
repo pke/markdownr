@@ -12,10 +12,12 @@ import Animated, {FadeOut, LinearTransition} from 'react-native-reanimated';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {useNavigation} from '@react-navigation/native';
+import {useTranslation} from 'react-i18next';
 import {MarkdownContext} from './MarkdownContext';
 import {Storage, StorageKeys} from './settings';
 
 export function SearchScreen() {
+  const {t} = useTranslation();
   const navigation = useNavigation();
   const {markdownContent, setScrollToPercent, setHighlightText, setSearchMatches, setCurrentMatchIndex, theme, backgroundColor} = React.useContext(MarkdownContext);
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,11 +63,11 @@ export function SearchScreen() {
   React.useLayoutEffect(() => {
     navigation.setOptions({
       headerShown: true,
-      headerTitle: 'Search',
+      headerTitle: t('search.title'),
       headerStyle: {backgroundColor},
       headerTintColor: theme.colors.text,
       headerSearchBarOptions: {
-        placeholder: 'Search in markdown...',
+        placeholder: t('search.placeholder'),
         autoCapitalize: 'none' as const,
         hideWhenScrolling: false,
         tintColor: theme.colors.link,
@@ -179,7 +181,7 @@ export function SearchScreen() {
               activeOpacity={0.7}
             >
               <Text style={[styles.searchResultLine, {color: theme.colors.textMuted}]}>
-                Line {result.line}
+                {t('search.line')} {result.line}
               </Text>
               <Text style={[styles.searchResultText, {color: theme.colors.heading}]} numberOfLines={2}>
                 {result.text}
@@ -188,17 +190,17 @@ export function SearchScreen() {
           ))
         ) : searchQuery.length > 0 ? (
           <View style={styles.noResults}>
-            <Text style={{color: theme.colors.text}}>No results found</Text>
+            <Text style={{color: theme.colors.text}}>{t('search.noResults')}</Text>
           </View>
         ) : recentSearches.length > 0 ? (
           <View style={styles.recentSearches}>
             <View style={styles.recentSearchesHeader}>
               <Text style={[styles.recentSearchesTitle, {color: theme.colors.textMuted}]}>
-                Recent Searches
+                {t('search.recentSearches')}
               </Text>
               <TouchableOpacity onPress={clearAllRecentSearches} activeOpacity={0.7}>
                 <Text style={[styles.clearAllText, {color: theme.colors.link}]}>
-                  Clear All
+                  {t('common.clearAll')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -217,7 +219,7 @@ export function SearchScreen() {
                       onPress={() => deleteRecentSearch(query)}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.deleteActionText}>Delete</Text>
+                      <Text style={styles.deleteActionText}>{t('common.delete')}</Text>
                     </TouchableOpacity>
                   )}
                 >

@@ -4,6 +4,7 @@
  * Generates iOS Settings.bundle from settings-definition.json
  * - Root.plist (English)
  * - de.lproj/Root.strings (German localization)
+ * - ru.lproj/Root.strings (Russian localization)
  *
  * Usage: node scripts/generate-settings-bundle.js
  */
@@ -14,8 +15,13 @@ const path = require('path');
 const settingsPath = path.join(__dirname, '..', 'settings-definition.json');
 const bundlePath = path.join(__dirname, '..', 'ios', 'MarkdownrDev', 'Settings.bundle');
 const outputPath = path.join(bundlePath, 'Root.plist');
-const deLprojPath = path.join(bundlePath, 'de.lproj');
-const deStringsPath = path.join(deLprojPath, 'Root.strings');
+
+// Localizations to emit, keyed by the field suffix used in settings-definition.json
+// (titleDe/titlesDe/footerDe, titleRu/titlesRu/footerRu, ...).
+const LOCALES = [
+  {suffix: 'De', lproj: 'de.lproj'},
+  {suffix: 'Ru', lproj: 'ru.lproj'},
+];
 
 // Read settings definition
 const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
@@ -88,8 +94,11 @@ let plist = `<?xml version="1.0" encoding="UTF-8"?>
 \t<array>
 `;
 
-// Collect strings for localization
+// Collect strings for localization, one map per locale (keyed by English source)
 const localizations = {};
+for (const {suffix} of LOCALES) {
+  localizations[suffix] = {};
+}
 
 // Add groups and settings
 for (const group of settings.groups) {
@@ -108,28 +117,32 @@ for (const group of settings.groups) {
 
   plist += `\t\t</dict>\n`;
 
-  // Collect German translations
-  if (group.titleDe) {
-    localizations[group.title] = group.titleDe;
-  }
-  if (group.footer && group.footerDe) {
-    localizations[group.footer] = group.footerDe;
+  // Collect translations for every locale
+  for (const {suffix} of LOCALES) {
+    if (group[`title${suffix}`]) {
+      localizations[suffix][group.title] = group[`title${suffix}`];
+    }
+    if (group.footer && group[`footer${suffix}`]) {
+      localizations[suffix][group.footer] = group[`footer${suffix}`];
+    }
   }
 
   // Add settings in this group
   for (const setting of group.settings) {
     plist += settingToPlist(setting);
 
-    // Collect German translation
-    if (setting.titleDe) {
-      localizations[setting.title] = setting.titleDe;
-    }
+    for (const {suffix} of LOCALES) {
+      if (setting[`title${suffix}`]) {
+        localizations[suffix][setting.title] = setting[`title${suffix}`];
+      }
 
-    // Collect German translations for multiValue titles
-    if (setting.type === 'multiValue' && setting.titles && setting.titlesDe) {
-      for (let i = 0; i < setting.titles.length; i++) {
-        if (setting.titlesDe[i]) {
-          localizations[setting.titles[i]] = setting.titlesDe[i];
+      // multiValue option titles
+      const localizedTitles = setting[`titles${suffix}`];
+      if (setting.type === 'multiValue' && setting.titles && localizedTitles) {
+        for (let i = 0; i < setting.titles.length; i++) {
+          if (localizedTitles[i]) {
+            localizations[suffix][setting.titles[i]] = localizedTitles[i];
+          }
         }
       }
     }
@@ -141,26 +154,31 @@ plist += `\t</array>
 </plist>
 `;
 
-// Ensure output directories exist
+// Ensure output directory exists
 if (!fs.existsSync(bundlePath)) {
   fs.mkdirSync(bundlePath, { recursive: true });
-}
-if (!fs.existsSync(deLprojPath)) {
-  fs.mkdirSync(deLprojPath, { recursive: true });
 }
 
 // Write plist
 fs.writeFileSync(outputPath, plist);
 console.log(`Generated: ${outputPath}`);
 
-// Generate German .strings file
-let stringsContent = '/* German localization for Settings.bundle */\n\n';
-for (const [english, german] of Object.entries(localizations)) {
-  // Escape quotes in strings
-  const escapedEnglish = english.replace(/"/g, '\\"');
-  const escapedGerman = german.replace(/"/g, '\\"');
-  stringsContent += `"${escapedEnglish}" = "${escapedGerman}";\n`;
-}
+// Generate a .strings file per locale
+for (const {suffix, lproj} of LOCALES) {
+  const lprojPath = path.join(bundlePath, lproj);
+  if (!fs.existsSync(lprojPath)) {
+    fs.mkdirSync(lprojPath, { recursive: true });
+  }
 
-fs.writeFileSync(deStringsPath, stringsContent);
-console.log(`Generated: ${deStringsPath}`);
+  let stringsContent = `/* ${lproj} localization for Settings.bundle */\n\n`;
+  for (const [english, translated] of Object.entries(localizations[suffix])) {
+    // Escape quotes in strings
+    const escapedEnglish = english.replace(/"/g, '\\"');
+    const escapedTranslated = translated.replace(/"/g, '\\"');
+    stringsContent += `"${escapedEnglish}" = "${escapedTranslated}";\n`;
+  }
+
+  const stringsPath = path.join(lprojPath, 'Root.strings');
+  fs.writeFileSync(stringsPath, stringsContent);
+  console.log(`Generated: ${stringsPath}`);
+}
