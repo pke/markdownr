@@ -13,6 +13,9 @@ function getVersion() {
 }
 
 const IS_DEV = process.env.APP_VARIANT === 'development';
+// Opt-in: inject the native XCUITest target during prebuild (see
+// modules/ui-tests/). Off by default so normal dev/prod prebuilds are untouched.
+const WITH_UITESTS = process.env.WITH_UITESTS === '1';
 const { version, buildNumber } = getVersion();
 
 export default {
@@ -134,6 +137,10 @@ export default {
     web: {
       favicon: './assets/favicon.png',
     },
-    plugins: ['expo-document-picker', './modules/folder-picker/plugin.js'],
+    plugins: [
+      'expo-document-picker',
+      './modules/folder-picker/plugin.js',
+      ...(WITH_UITESTS ? ['./modules/ui-tests/plugin.js'] : []),
+    ],
   },
 };

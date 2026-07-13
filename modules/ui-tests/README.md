@@ -1,50 +1,69 @@
 # Native UI tests (XCUITest)
 
-Covers behaviour Maestro can't drive — chiefly the **per-row swipe-to-delete**
-gesture on the Recent Files list. `react-native-gesture-handler`'s pan needs a
-real continuous touch; XCUITest's `swipeLeft()` produces one, Maestro's synthetic
-swipe falls through to the row's tap and opens the file instead.
+Native coverage for the one thing unit tests can't reach: the **OS actually
+delivering a `file://` document into the app** (`application(_:open:)` → RN
+`Linking` → `openDeepLink`). The unit tests mock the read + `openFile`.
+
+**Status: both tests pass** on the iPhone 17 Pro simulator (iOS 26.5).
 
 ## What's here
 
-- **`MarkdownrUITests/RecentsUITests.swift`** — the test: launch with recents
-  seeded, open the drawer, Show All, swipe-delete the "Alpha" row, assert it's
-  gone and the others remain. This is complete and correct.
-- **`plugin.js`** — an Expo config plugin that adds the XCUITest target to the
-  generated Xcode project so it survives `expo prebuild --clean`. **Work in
-  progress — not registered in `app.config.js`** (see Status).
+- **`MarkdownrUITests/DeepLinkUITests.swift`** — two tests:
+  - `testAppLaunchesAndRendersUI` — sanity: app builds, launches against Metro,
+    renders (asserts the always-present FAB, testID `mainMenuButton`).
+  - `testDeepLinkRendersOpenedFile` — asserts an OS-delivered `file://` document
+    renders in Markdownr.
+- **`inject-target.rb`** — adds the XCUITest target to the generated `ios/`
+  project using the **`xcodeproj` Ruby gem** (CocoaPods ships it). This replaces
+  the abandoned `plugin.js` — node-xcode has no `ui-testing` target type, so the
+  config-plugin route failed the Expo serializer (`Invalid target: undefined`).
+  The gem creates a proper `ui_test_bundle`; the one gotcha is `PRODUCT_NAME`
+  (unset → `-Runner.app`/`.xctest` name collision), which the script fixes.
+- **`run-native-tests.sh`** — the harness. XCUITest can't call `simctl`, so it
+  performs the real document handoff itself (`simctl openurl file://…`) and then
+  runs the bundle, which asserts the fixture rendered.
+- **`probe-delivery.sh`** — one-off diagnostic used to confirm `simctl openurl`
+  delivers to the app (it does) and screenshot the result.
+- **`fixtures/deeplink-fixture.md`** — the document opened via deep link.
+- **`plugin.js`** — the abandoned node-xcode approach, kept for reference. Not
+  registered in `app.config.js` (would break `expo prebuild`).
 
-## Seeding
+## Why `openurl`, not driving the Files app
 
-Recents can't be created through the UI without the native picker, so the
-DEBUG-only hook in `App.tsx` seeds three files (Alpha/Beta/Gamma) when the
-`-uitestSeedRecents YES` launch argument is present. iOS surfaces launch
-arguments through `NSUserDefaults`, which RN's `Settings` module reads — no
-native bridge needed. The test sets that argument via `app.launchArguments`.
+Driving the real Files app in XCUITest is too iOS-version-brittle — every step is
+a moving target: the Files bundle id (`com.apple.DocumentsApp` on iOS 26, not
+`com.apple.DocumentsUI`), whether the app's Documents folder surfaces, its
+display name (`Markdownr Dev` with a space, not the target name), tap-to-rename
+vs tap-to-open on a grid label, and Quick Look preview vs hand-off to the owning
+app. `simctl openurl file://…` reproduces the exact OS `application(_:open:)`
+handoff without any of that fragility, and was verified to render the fixture
+end to end (see `probe-delivery.sh`).
 
-## Status
+## Running
 
-The XCUITest and the seed hook are done. The **config plugin is not finished**:
-`node-xcode` has no first-class UI-test target type, and the target this plugin
-produces currently fails Expo's xcodeproj serializer with
-`Invalid target: undefined`. Registering the plugin **breaks `expo prebuild`**,
-so it is intentionally left out of `app.config.js`.
+```sh
+# 1. Metro (custom port)
+APP_VARIANT=development npx expo start --port 8092
 
-### To run the test today (manual target)
+# 2. prebuild if ios/ is stale, then inject the test target
+APP_VARIANT=development npx expo prebuild -p ios
+ruby modules/ui-tests/inject-target.rb          # needs the xcodeproj gem
 
-1. `APP_VARIANT=development npx expo prebuild -p ios`
-2. In Xcode, add a **UI Testing Bundle** target named `MarkdownrUITests`
-   (host application = the app target), and add `RecentsUITests.swift` to it.
-3. Start Metro (`APP_VARIANT=development npx expo start --port 8092`).
-4. `xcodebuild test -workspace ios/MarkdownrDev.xcworkspace -scheme MarkdownrDev \
-     -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-     -only-testing:MarkdownrUITests`
+# 3. build once, then run the harness
+xcodebuild build-for-testing -workspace ios/MarkdownrDev.xcworkspace \
+  -scheme MarkdownrDev -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -derivedDataPath ios/build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+bash modules/ui-tests/run-native-tests.sh
+```
 
-### To finish the plugin
+## Caveats / not-yet-done
 
-The remaining work is producing a valid UI-test `PBXNativeTarget` (product type
-`com.apple.product-type.bundle.ui-testing`, `TEST_TARGET_NAME` = app target, a
-Sources phase with the Swift file, and a target dependency) that Expo's
-serializer accepts. `@config-plugins/detox` is a working reference for adding a
-UI-test target to an Expo project. Once it prebuilds cleanly, register it in
-`app.config.js` and wire a `test` action into the app scheme.
+- The AppDelegate dev build needs the Metro host pinned (`provider.jsLocation =
+  "localhost:8092"`) — `packagerServerHost()` returns nil for the dev variant on
+  iOS 26. `inject-target.rb` does **not** patch AppDelegate; do it by hand after
+  prebuild (or fold it into the config plugin if this is ever productionized).
+- The target injection is a local step, not wired into `expo prebuild`. To make
+  it survive `--clean`, finish a config plugin (the `xcodeproj`-gem logic here is
+  the working reference; `@config-plugins/detox` shows the plugin shape).
+- `RecentsUITests.swift` (swipe-to-delete) is separate and still needs its seed +
+  selectors verified against iOS 26.
