@@ -1,5 +1,5 @@
-import {describe, it, expect} from 'vitest';
-import {parseDeepLinkFileUri} from '../deepLink';
+import {describe, it, expect, vi} from 'vitest';
+import {parseDeepLinkFileUri, openDeepLink} from '../deepLink';
 
 describe('parseDeepLinkFileUri', () => {
   it('returns null for empty input', () => {
@@ -48,5 +48,47 @@ describe('parseDeepLinkFileUri', () => {
 
   it('falls back to "Unknown" when there is no final path segment', () => {
     expect(parseDeepLinkFileUri('file:///docs/', 'ios')?.name).toBe('Unknown');
+  });
+});
+
+describe('openDeepLink', () => {
+  it('reads the file and opens it with the parsed name + uri', async () => {
+    const readFileText = vi.fn().mockResolvedValue('# Hello\n\nbody');
+    const openFile = vi.fn();
+
+    const opened = await openDeepLink('file:///docs/note.md', readFileText, openFile, 'ios');
+
+    expect(opened).toBe(true);
+    expect(readFileText).toHaveBeenCalledWith('file:///docs/note.md');
+    expect(openFile).toHaveBeenCalledWith('# Hello\n\nbody', 'note.md', 'file:///docs/note.md');
+  });
+
+  it('reads a content:// uri as-is on Android', async () => {
+    const readFileText = vi.fn().mockResolvedValue('body');
+    const openFile = vi.fn();
+
+    await openDeepLink('content://auth/document/42', readFileText, openFile, 'android');
+
+    expect(readFileText).toHaveBeenCalledWith('content://auth/document/42');
+    expect(openFile).toHaveBeenCalledWith('body', '42', 'content://auth/document/42');
+  });
+
+  it('does nothing and returns false for a non-file link', async () => {
+    const readFileText = vi.fn();
+    const openFile = vi.fn();
+
+    const opened = await openDeepLink(null, readFileText, openFile, 'ios');
+
+    expect(opened).toBe(false);
+    expect(readFileText).not.toHaveBeenCalled();
+    expect(openFile).not.toHaveBeenCalled();
+  });
+
+  it('propagates read errors without opening', async () => {
+    const readFileText = vi.fn().mockRejectedValue(new Error('purged'));
+    const openFile = vi.fn();
+
+    await expect(openDeepLink('file:///docs/gone.md', readFileText, openFile, 'ios')).rejects.toThrow('purged');
+    expect(openFile).not.toHaveBeenCalled();
   });
 });

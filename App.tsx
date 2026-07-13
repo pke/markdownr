@@ -8,7 +8,7 @@ import {File, Paths} from 'expo-file-system/next';
 import * as Linking from 'expo-linking';
 
 import './i18n'; // initialize i18next before any screen renders
-import {parseDeepLinkFileUri} from './deepLink';
+import {openDeepLink} from './deepLink';
 import {getWelcomeMarkdown} from './example';
 import {Settings, SettingsKeys, Storage, StorageKeys, addSettingsListener} from './settings';
 import {addRecentFile, getRecentFiles, loadRecentFile, clearAllRecentFiles} from './recentFiles';
@@ -117,12 +117,8 @@ export default function App() {
       if (!url) return;
 
       try {
-        const parsed = parseDeepLinkFileUri(url);
-        if (!parsed) return;
-
-        const content = await new File(parsed.fileUri).text();
-        openFile(content, parsed.name, parsed.fileUri);
-        openedViaDeepLink.current = true;
+        const opened = await openDeepLink(url, (uri) => new File(uri).text(), openFile);
+        if (opened) openedViaDeepLink.current = true;
       } catch (err) {
         console.error('Error reading file from URL:', err);
       }

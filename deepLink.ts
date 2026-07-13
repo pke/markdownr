@@ -36,3 +36,24 @@ export function parseDeepLinkFileUri(
     return null;
   }
 }
+
+/**
+ * Open a file that arrived via a deep link: parse the URL, read the file, and
+ * hand the content to `openFile`. Returns true if a file was opened, false if
+ * the URL wasn't a usable file link. Read errors propagate to the caller.
+ *
+ * `readFileText` and `openFile` are injected so this is testable without the
+ * native file system or React state.
+ */
+export async function openDeepLink(
+  url: string | null | undefined,
+  readFileText: (uri: string) => Promise<string>,
+  openFile: (content: string, name: string | null, fileUri: string) => void,
+  platform: typeof Platform.OS = Platform.OS,
+): Promise<boolean> {
+  const parsed = parseDeepLinkFileUri(url, platform);
+  if (!parsed) return false;
+  const content = await readFileText(parsed.fileUri);
+  openFile(content, parsed.name, parsed.fileUri);
+  return true;
+}
