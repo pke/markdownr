@@ -22,6 +22,8 @@ export type MarkdownContextType = {
   setMarkdownContent: (content: string) => void;
   fileName: string | null;
   setFileName: (name: string | null) => void;
+  currentFileUri: string | null;
+  setCurrentFileUri: (uri: string | null) => void;
   scrollToPercent: number | null;
   setScrollToPercent: (percent: number | null) => void;
   highlightText: string | null;
@@ -48,7 +50,7 @@ export type MarkdownContextType = {
   frontMatterThemeApplied: boolean;
   setFrontMatterThemeApplied: (applied: boolean) => void;
   applyTheme: (name: ThemeName) => void;
-  openFile: (content: string, fileName: string | null) => void;
+  openFile: (content: string, fileName: string | null, fileUri?: string | null) => void;
 };
 
 const emptyMap = new Map<number, View>();
@@ -60,6 +62,8 @@ export const MarkdownContext = React.createContext<MarkdownContextType>({
   setMarkdownContent: () => {},
   fileName: null,
   setFileName: () => {},
+  currentFileUri: null,
+  setCurrentFileUri: () => {},
   scrollToPercent: null,
   setScrollToPercent: () => {},
   highlightText: null,

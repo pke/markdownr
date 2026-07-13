@@ -134,6 +134,6 @@ export default {
     web: {
       favicon: './assets/favicon.png',
     },
-    plugins: ['expo-document-picker'],
+    plugins: ['expo-document-picker', './modules/folder-picker/plugin.js'],
   },
 };

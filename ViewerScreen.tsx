@@ -46,7 +46,8 @@ import {parseFrontMatter, type FrontMatter, getExtraMetadata, hasExtraMetadata} 
 import {composeTransforms, createTypographicTransform, emoticonTransform, subSuperscriptTransform, abbreviationTransform, footnoteTransform, insMarkTransform, definitionListTransform, quoteCycleTransform, preprocessMarkdownHtml, tableBrTransform} from './astTransforms';
 import {getLocales} from 'expo-localization';
 import {ZoomableView} from './ZoomableView';
-import {useFileOpener} from './useFileOpener';
+import {useFileOpener, useFolderOpener, resolveRelativeMarkdownLink} from './useFileOpener';
+import {File} from 'expo-file-system/next';
 import {ParticleOverlayProvider, ParticleOverlayBackground, ParticleOverlayForeground} from './ParticleOverlay';
 import {SantaHat} from './SantaHat';
 import {OCEAN_THEMED_SAMPLE} from './example';
@@ -344,6 +345,11 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
     setShowFrontMatter(showFrontMatterSetting);
   }, [closeMenu, setShowFrontMatter, showFrontMatterSetting]));
 
+  const openFolder = useFolderOpener(useCallback(() => {
+    closeMenu();
+    setShowFrontMatter(showFrontMatterSetting);
+  }, [closeMenu, setShowFrontMatter, showFrontMatterSetting]));
+
   const handleSearch = () => {
     closeMenu();
     navigation.navigate('Search' as never);
@@ -411,6 +417,17 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
               activeOpacity={0.7}
               testID="openFileButton">
               <MenuIcon name="folder" fallback="📁" color={theme.colors.text} />
+            </TouchableOpacity>
+          </SlideUpMenuItem>
+
+          <SlideUpMenuItem isMenuOpen={isMenuOpen} delay={40}>
+            <Text style={[styles.menuItemLabel, {color: theme.colors.text, backgroundColor: bgColor}]}>Open Folder</Text>
+            <TouchableOpacity
+              onPress={openFolder}
+              style={[styles.menuItem, {backgroundColor: bgColor}]}
+              activeOpacity={0.7}
+              testID="openFolderButton">
+              <MenuIcon name="folder.badge.plus" fallback="📂" color={theme.colors.text} />
             </TouchableOpacity>
           </SlideUpMenuItem>
 
@@ -510,9 +527,36 @@ export function ViewerScreen() {
     scrollViewRef,
     frontMatterTheme,
     frontMatterThemeApplied,
+    currentFileUri,
+    openFile,
   } = React.useContext(MarkdownContext);
 
   const openFilePicker = useFileOpener();
+  const openFolderPicker = useFolderOpener();
+
+  const handleLinkPress = useCallback(async (href: string): Promise<boolean> => {
+    // Try to resolve relative .md links against the current file's URI
+    const resolved = resolveRelativeMarkdownLink(href, currentFileUri);
+    if (resolved) {
+      try {
+        const content = await new File(resolved).text();
+        const name = resolved.split('/').pop() ?? null;
+        openFile(content, name, resolved);
+        return false;
+      } catch {
+        Alert.alert(
+          'Open Folder',
+          'Select all files in this folder to enable link navigation.',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Open Folder', onPress: openFolderPicker},
+          ],
+        );
+        return false;
+      }
+    }
+    return true; // let non-md links open normally
+  }, [currentFileUri, openFile, openFolderPicker]);
 
   const openSearch = useCallback(() => {
     navigation.navigate('Search' as never);
@@ -715,6 +759,18 @@ export function ViewerScreen() {
       const idx = headingIndexCounter.current++;
       const decoration = rendererConfig?.headingDecoration;
       const showDecoration = decoration && (level ?? 1) === 1;
+      // If the heading contains a single link child, iOS can't propagate taps
+      // through nested <Text> elements. Lift the link press to a Pressable wrapper.
+      const singleLinkChild = node.children?.length === 1 && node.children[0].type === 'link'
+        ? node.children[0]
+        : null;
+      const headingContent = (
+        <Heading level={level ?? 1}>
+          {node.children?.map((child: MarkdownNode, i: number) => (
+            <Renderer key={`${child.type}-${i}`} node={child} depth={1} inListItem={false} parentIsText={true} />
+          ))}
+        </Heading>
+      );
       return (
         <View
           ref={(ref: View | null) => {
@@ -729,11 +785,11 @@ export function ViewerScreen() {
               <SantaHat size={decoration.size} />
             </View>
           )}
-          <Heading level={level ?? 1}>
-            {node.children?.map((child: MarkdownNode, i: number) => (
-              <Renderer key={`${child.type}-${i}`} node={child} depth={1} inListItem={false} parentIsText={true} />
-            ))}
-          </Heading>
+          {singleLinkChild ? (
+            <Pressable onPress={() => handleLinkPress(singleLinkChild.href ?? '')}>
+              {headingContent}
+            </Pressable>
+          ) : headingContent}
         </View>
       );
     },
@@ -993,6 +1049,7 @@ export function ViewerScreen() {
                   astTransform={astTransformFn}
                   renderers={customRenderers}
                   onParseComplete={handleParseComplete}
+                  onLinkPress={handleLinkPress}
                   style={styles.markdown}>
                   {markdown}
                 </Markdown>

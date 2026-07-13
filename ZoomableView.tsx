@@ -27,6 +27,7 @@ export function ZoomableView({
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
 
+
   const pinchGesture = Gesture.Pinch()
     .onStart((e) => {
       savedScale.value = scale.value;
@@ -69,13 +70,11 @@ export function ZoomableView({
     .maxDelay(250)
     .onEnd(() => {
       if (scale.value > 1) {
-        // Zoom out
         scale.value = withTiming(1);
         translateX.value = withTiming(0);
         translateY.value = withTiming(0);
         savedScale.value = 1;
       } else {
-        // Zoom in to 2x centered on tap point
         scale.value = withTiming(2);
         savedScale.value = 2;
       }

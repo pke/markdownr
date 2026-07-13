@@ -8,7 +8,7 @@ import {File} from 'expo-file-system/next';
 import * as Linking from 'expo-linking';
 
 import {EXAMPLE_MARKDOWN} from './example';
-import {Settings, SettingsKeys, addSettingsListener} from './settings';
+import {Settings, SettingsKeys, Storage, StorageKeys, addSettingsListener} from './settings';
 import {addRecentFile, getRecentFiles, loadRecentFile} from './recentFiles';
 import {MarkdownContext, type SearchMatch, type TocHeading} from './MarkdownContext';
 import {customThemes, themeNames, type ThemeName, type ThemeConfig} from './themes';
@@ -51,6 +51,9 @@ export default function App() {
   const initialRecent = useMemo(() => getRecentFiles()[0] ?? null, []);
   const [markdownContent, setMarkdownContent] = useState<string>(initialRecent ? '' : EXAMPLE_MARKDOWN);
   const [fileName, setFileName] = useState<string | null>(initialRecent?.subtitle ?? null);
+  const [currentFileUri, setCurrentFileUri] = useState<string | null>(() =>
+    Storage.getString(StorageKeys.LAST_FILE_URI) || null
+  );
   const [frontMatterTheme, setFrontMatterTheme] = useState<ThemeConfig | null>(null);
   const [frontMatterThemeApplied, setFrontMatterThemeApplied] = useState(false);
 
@@ -58,9 +61,6 @@ export default function App() {
     if (fileName === null) {
       setMarkdownContent(EXAMPLE_MARKDOWN);
     }
-    // Reset applied state so the banner can re-appear for new files.
-    // Don't reset frontMatterTheme here — ViewerScreen's effect handles
-    // that based on the parsed front matter content.
     setFrontMatterThemeApplied(false);
   }, [fileName]);
 
@@ -99,10 +99,13 @@ export default function App() {
     return addSettingsListener(reloadSettings);
   }, [reloadSettings]);
 
-  const openFile = useCallback((content: string, name: string | null) => {
+  const openFile = useCallback((content: string, name: string | null, fileUri?: string | null) => {
     addRecentFile(content, name);
     setMarkdownContent(content);
     setFileName(name);
+    const uri = fileUri ?? null;
+    setCurrentFileUri(uri);
+    Storage.setString(StorageKeys.LAST_FILE_URI, uri ?? '');
   }, []);
 
   const openedViaDeepLink = useRef(false);
@@ -122,7 +125,7 @@ export default function App() {
         const content = await new File(fileUri).text();
 
         const name = url.split('/').pop() ?? 'Unknown';
-        openFile(content, name);
+        openFile(content, name, fileUri);
         openedViaDeepLink.current = true;
       } catch (err) {
         console.error('Error reading file from URL:', err);
@@ -172,6 +175,8 @@ export default function App() {
     setMarkdownContent,
     fileName,
     setFileName,
+    currentFileUri,
+    setCurrentFileUri,
     scrollToPercent,
     setScrollToPercent,
     highlightText,
@@ -200,7 +205,7 @@ export default function App() {
     applyTheme,
     openFile,
   }), [
-    markdownContent, fileName, scrollToPercent, highlightText,
+    markdownContent, fileName, currentFileUri, scrollToPercent, highlightText,
     searchMatches, currentMatchIndex, theme, backgroundColor,
     isDarkMode, colorMode, toggleDarkMode, themeName, cycleTheme, showFrontMatterSetting,
     scrollToHeadingIndex, frontMatterTheme, frontMatterThemeApplied,
