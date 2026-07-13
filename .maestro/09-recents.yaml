@@ -1,0 +1,43 @@
+# Recent files: list + swipe-to-delete.
+# Requires the seed sentinel to be placed first — run via recents-setup.sh,
+# which drops an empty sentinel into the app's documents dir. A DEBUG-only hook
+# in App.tsx then resets recents to three known files (Alpha, Beta, Gamma) on
+# launch. This is the one flow that needs external setup; the rest are
+# self-contained. clearState is false so the sentinel survives the launch.
+appId: dev.dudesoft.markdownr.dev
+---
+- stopApp
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+# Open the drawer via edge swipe; the Recent Files section lists the seeded files.
+- swipe:
+    start: "2%, 50%"
+    end: "85%, 50%"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: "Recent Files"
+# Recent items combine icon+title+subtitle into one accessibility label, so match
+# with a wildcard rather than the bare title.
+- extendedWaitUntil:
+    visible: ".*Gamma.*"
+    timeout: 10000
+- takeScreenshot: 09-recents-drawer
+# Open the full list and swipe-delete an entry.
+- tapOn: ".*Show All.*"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: ".*Alpha.*"
+    timeout: 10000
+- takeScreenshot: 09-recents-list
+# NOTE: the per-row swipe-to-delete (ReanimatedSwipeable / gesture-handler pan)
+# is NOT reliably drivable by Maestro — synthetic swipes fall through to the
+# row's tap handler and open the file instead. We verify the delete path via
+# "Clear All" instead; the swipe gesture would need native (XCUITest) coverage.
+- tapOn: "Clear All"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- assertVisible: ".*No recent files.*"
+- takeScreenshot: 09-recents-cleared

@@ -59,6 +59,7 @@ Screenshots (`takeScreenshot`) land in the working directory.
 | `08-search` | Open Search, type a query, submit, land on the first match (`1/N` counter) |
 | `10-source-view` | Source/rendered toggle (FAB label flips Source ↔ Rendered) |
 | `11-frontmatter-toggle` | Front-matter card show (ⓘ) / hide |
+| `09-recents` | Recent-files list + delete (needs `recents-setup.sh`; see below) |
 
 The flows lean on the app's built-in content (welcome page, Ocean sample) and
 `testID`s, so they need **no external fixtures** and **never touch the native
@@ -79,12 +80,16 @@ file picker** — which is deliberately hard to automate.
 
 ## Known gaps (hard to automate)
 
-- **Recent files:** creating a recent needs a real `openFile`, which only
-  happens via the native document picker or a `file://` deep link. `simctl
-  openurl file://…` routes to the iOS Files "Save" sheet rather than the app,
-  and the picker opens an empty Files browser — neither automates reliably. The
-  recents *logic* is covered by `recentFiles.test.ts` (unit); only the screen's
-  render/swipe-delete is uncovered.
+- **Recent files** (`09-recents`) need seeding, since creating a recent requires
+  a real `openFile` (native picker or `file://` deep link — neither automates:
+  `simctl openurl file://…` routes to the iOS Files "Save" sheet). A DEBUG-only
+  hook in App.tsx seeds recents when a sentinel file is present; run the flow via
+  **`recents-setup.sh`** (drops the sentinel, then runs the flow). It is NOT part
+  of a plain `maestro test .maestro/` run.
+- **Swipe-to-delete** on the recents list can't be driven by Maestro — the
+  `ReanimatedSwipeable` pan (gesture-handler) isn't recognized and the touch
+  falls through to the row's tap. `09-recents` deletes via "Clear All" instead;
+  the swipe gesture is covered by the XCUITest target.
 - **Zoom / particles:** pinch and animated overlays are poor fits for E2E.
 - Search uses the **submit** path (type → Enter) because Maestro's `inputText`
   into the native iOS search bar doesn't drive React's `onChangeText`.

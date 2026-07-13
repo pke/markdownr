@@ -4,13 +4,14 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {NavigationContainer, createNavigationContainerRef} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createDrawerNavigator} from '@react-navigation/drawer';
-import {File} from 'expo-file-system/next';
+import {File, Paths} from 'expo-file-system/next';
 import * as Linking from 'expo-linking';
 
 import './i18n'; // initialize i18next before any screen renders
+import {parseDeepLinkFileUri} from './deepLink';
 import {getWelcomeMarkdown} from './example';
 import {Settings, SettingsKeys, Storage, StorageKeys, addSettingsListener} from './settings';
-import {addRecentFile, getRecentFiles, loadRecentFile} from './recentFiles';
+import {addRecentFile, getRecentFiles, loadRecentFile, clearAllRecentFiles} from './recentFiles';
 import {MarkdownContext, type SearchMatch, type TocHeading} from './MarkdownContext';
 import {customThemes, themeNames, type ThemeName, type ThemeConfig} from './themes';
 import {ViewerScreen} from './ViewerScreen';
@@ -116,17 +117,11 @@ export default function App() {
       if (!url) return;
 
       try {
-        let filePath = url;
+        const parsed = parseDeepLinkFileUri(url);
+        if (!parsed) return;
 
-        if (Platform.OS === 'ios') {
-          filePath = decodeURIComponent(url.replace('file://', ''));
-        }
-
-        const fileUri = Platform.OS === 'android' ? url : `file://${filePath}`;
-        const content = await new File(fileUri).text();
-
-        const name = url.split('/').pop() ?? 'Unknown';
-        openFile(content, name, fileUri);
+        const content = await new File(parsed.fileUri).text();
+        openFile(content, parsed.name, parsed.fileUri);
         openedViaDeepLink.current = true;
       } catch (err) {
         console.error('Error reading file from URL:', err);
@@ -159,6 +154,24 @@ export default function App() {
       subscription.remove();
     };
   }, [handleInitialUrl, initialRecent]);
+
+  // DEBUG-only hook so UI tests can seed recent files without the native picker.
+  // A test drops an empty sentinel file into the app's documents dir; on launch
+  // we reset recents to a known set and remove the sentinel. No-op in release.
+  useEffect(() => {
+    if (!__DEV__) return;
+    try {
+      const sentinel = new File(Paths.document, '__uitest_seed_recents__');
+      if (!sentinel.exists) return;
+      sentinel.delete();
+      clearAllRecentFiles();
+      addRecentFile('# Alpha\n\nFirst test note.', 'alpha.md');
+      addRecentFile('# Beta\n\nSecond test note.', 'beta.md');
+      addRecentFile('# Gamma\n\nThird test note.', 'gamma.md');
+    } catch {
+      // best-effort test seeding
+    }
+  }, []);
 
   const applyTheme = useCallback((name: ThemeName) => {
     setThemeName(name);
