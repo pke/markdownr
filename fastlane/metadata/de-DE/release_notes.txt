@@ -1,1 +1,9 @@
-Deine Markdown-Dateien können jetzt gängige HTML-Inline-Tags verwenden — und die werden auch wirklich gerendert. Fett, kursiv, durchgestrichen, unterstrichen, hervorgehoben, hoch- und tiefgestellt, Zeilenumbrüche — alles mit dabei. Tags in Code-Spans bleiben natürlich als Text erhalten, weil das einfach zum guten Ton gehört.
+Ein großes Update! Das ist neu:
+
+• Ordner öffnen — richte Markdownr auf einen ganzen Ordner und stöbere durch alle Markdown-Dateien, während die Links dazwischen genau so funktionieren, wie sie sollen.
+• Markdownr spricht jetzt Russisch und Deutsch — von den Menüs bis zu den Meldungen.
+• Querformat — dreh dein iPhone oder iPad zur Seite und alles ordnet sich wunderschön neu an.
+• Der Menü-Button lässt sich jetzt überall antippen, nicht mehr nur auf den drei Pünktchen.
+• .md-Dateien direkt aus der Dateien-App auf dem iPhone zu öffnen, klappt jetzt einwandfrei.
+
+Viel Freude beim Lesen!

@@ -1,1 +1,9 @@
-Your markdown files can now use common HTML inline tags — and they'll actually render properly. Bold, italic, strikethrough, underline, highlight, superscripts, subscripts, line breaks — all the classics. Tags inside code spans stay as literal text, because that's just good manners.
+A big one! Here's what's new:
+
+• Open Folder — point Markdownr at a whole folder and browse all its Markdown files, with the links between them working just like they should.
+• Markdownr now speaks Russian and German, from the menus right through to the messages.
+• Landscape mode — turn your iPhone or iPad on its side and everything reflows beautifully.
+• The menu button is now tappable all over, not just on the three little dots.
+• Opening .md files straight from the Files app on iPhone works a treat now.
+
+Happy reading!
