@@ -136,18 +136,39 @@ export async function tryRestoreFolder(
 export function resolveRelativeMarkdownLink(href: string, currentFileUri: string | null): string | null {
   if (!currentFileUri) return null;
 
-  // Only handle relative links (no scheme, not an anchor)
-  if (href.startsWith('#') || href.includes('://')) return null;
+  // Reject anchors, protocol-relative URLs, and any link that carries its own
+  // scheme (http:, mailto:, markdownr:, file:, content: ...). Only bare
+  // relative links are resolved against the current file.
+  if (href.startsWith('#') || href.startsWith('//') || /^[a-z][a-z0-9+.\-]*:/i.test(href)) {
+    return null;
+  }
 
-  // Build the resolved URI by replacing the filename in the current URI
   const lastSlash = currentFileUri.lastIndexOf('/');
   if (lastSlash === -1) return null;
-
   const dir = currentFileUri.substring(0, lastSlash + 1);
+
+  // Resolve + normalize (collapses ./ and ../). A link we can't parse is a
+  // link we won't open — no naive string-concat fallback.
+  let resolved: string;
+  let root: string;
   try {
-    const resolved = new URL(href, dir).toString();
-    return resolved;
+    resolved = new URL(href, dir).toString();
+    // Containment root: the folder the user actually granted access to (the
+    // picked folder copied into cache) when the current file lives inside it,
+    // otherwise the current file's own directory.
+    const folderRoot = Storage.getString(StorageKeys.LAST_FOLDER_URI);
+    const rawRoot = folderRoot && currentFileUri.startsWith(folderRoot) ? folderRoot : dir;
+    root = new URL(rawRoot).toString();
   } catch {
-    return dir + href;
+    return null;
   }
+  if (!root.endsWith('/')) root += '/';
+
+  // Block `../` traversal that escapes the granted folder into the app's other
+  // private storage, and allow only local file/content schemes (exact match).
+  if (!resolved.startsWith(root)) return null;
+  const scheme = resolved.match(/^([a-z][a-z0-9+.\-]*):/i)?.[1].toLowerCase();
+  if (scheme !== 'file' && scheme !== 'content') return null;
+
+  return resolved;
 }
