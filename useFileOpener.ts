@@ -139,7 +139,7 @@ export function resolveRelativeMarkdownLink(href: string, currentFileUri: string
   // Reject anchors, protocol-relative URLs, and any link that carries its own
   // scheme (http:, mailto:, markdownr:, file:, content: ...). Only bare
   // relative links are resolved against the current file.
-  if (href.startsWith('#') || href.startsWith('//') || /^[a-z][a-z0-9+.\-]*:/i.test(href)) {
+  if (href.startsWith('#') || href.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(href)) {
     return null;
   }
 
@@ -164,10 +164,16 @@ export function resolveRelativeMarkdownLink(href: string, currentFileUri: string
   }
   if (!root.endsWith('/')) root += '/';
 
+  // Defense in depth: a legitimate relative link never needs percent-encoded
+  // dots or slashes. Encoded forms (%2e = '.', %2f = '/') can smuggle ../ past
+  // URL normalization yet still be decoded by the native file layer, so reject
+  // them outright before the containment check.
+  if (/%2e|%2f/i.test(resolved)) return null;
+
   // Block `../` traversal that escapes the granted folder into the app's other
   // private storage, and allow only local file/content schemes (exact match).
   if (!resolved.startsWith(root)) return null;
-  const scheme = resolved.match(/^([a-z][a-z0-9+.\-]*):/i)?.[1].toLowerCase();
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(resolved)?.[1].toLowerCase();
   if (scheme !== 'file' && scheme !== 'content') return null;
 
   return resolved;
