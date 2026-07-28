@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useCallback, useMemo, useRef} from 'react';
-import {StatusBar, useColorScheme, Platform, View, ScrollView, Settings as RNSettings} from 'react-native';
+import {AppState, StatusBar, useColorScheme, Platform, View, ScrollView, Settings as RNSettings} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {NavigationContainer, createNavigationContainerRef} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
@@ -9,9 +9,13 @@ import * as Linking from 'expo-linking';
 
 import './i18n'; // initialize i18next before any screen renders
 import {openDeepLink} from './deepLink';
+import {
+  checkForExternalChange, shouldShowBanner, statFileSource, readFileSource,
+  reloadFromSource, type FileSource,
+} from './fileChangeDetection';
 import {getWelcomeMarkdown} from './example';
 import {Settings, SettingsKeys, Storage, StorageKeys, addSettingsListener} from './settings';
-import {addRecentFile, getRecentFiles, loadRecentFile, clearAllRecentFiles} from './recentFiles';
+import {addRecentFile, getRecentFiles, loadRecentFile, clearAllRecentFiles, getCachedFileMtime} from './recentFiles';
 import {MarkdownContext, type SearchMatch, type TocHeading} from './MarkdownContext';
 import {customThemes, themeNames, type ThemeName, type ThemeConfig} from './themes';
 import {ViewerScreen} from './ViewerScreen';
@@ -23,6 +27,13 @@ import {ErrorBoundary} from './ErrorBoundary';
 const Stack = createNativeStackNavigator();
 const Drawer = createDrawerNavigator();
 const navigationRef = createNavigationContainerRef();
+
+/** Classify a viewer URI for external-change detection. */
+function sourceForUri(uri: string | null): FileSource | null {
+  if (uri?.startsWith('file://')) return {uri, kind: 'file'};
+  if (uri?.startsWith('content://')) return {uri, kind: 'content'};
+  return null;
+}
 
 export default function App() {
   const systemColorScheme = useColorScheme();
@@ -101,6 +112,15 @@ export default function App() {
     return addSettingsListener(reloadSettings);
   }, [reloadSettings]);
 
+  // --- External-change detection (see docs/superpowers/specs/2026-07-13-…) ---
+  // Baseline = mtime of the displayed snapshot; a newer source mtime on app
+  // focus offers a reload. Refs, not state: only the banner visibility renders.
+  const currentSourceRef = useRef<FileSource | null>(null);
+  const baselineMtimeRef = useRef<number | null>(null);
+  const dismissedMtimeRef = useRef<number | null>(null);
+  const pendingMtimeRef = useRef<number | null>(null);
+  const [externalChangeDetected, setExternalChangeDetected] = useState(false);
+
   const openFile = useCallback((content: string, name: string | null, fileUri?: string | null) => {
     addRecentFile(content, name);
     setMarkdownContent(content);
@@ -108,6 +128,17 @@ export default function App() {
     const uri = fileUri ?? null;
     setCurrentFileUri(uri);
     Storage.setString(StorageKeys.LAST_FILE_URI, uri ?? '');
+
+    const source = sourceForUri(uri);
+    currentSourceRef.current = source;
+    baselineMtimeRef.current = null;
+    dismissedMtimeRef.current = null;
+    pendingMtimeRef.current = null;
+    setExternalChangeDetected(false);
+    if (source) {
+      // Fire-and-forget: mtime of the file we just read is the new baseline.
+      statFileSource(source).then(m => { baselineMtimeRef.current = m; }).catch(() => {});
+    }
   }, []);
 
   const openedViaDeepLink = useRef(false);
@@ -126,6 +157,33 @@ export default function App() {
     [openFile],
   );
 
+  const runExternalChangeCheck = useCallback(async () => {
+    const check = await checkForExternalChange(currentSourceRef.current, baselineMtimeRef.current);
+    if (shouldShowBanner(check, dismissedMtimeRef.current)) {
+      pendingMtimeRef.current = check.sourceMtime;
+      setExternalChangeDetected(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') runExternalChangeCheck();
+    });
+    return () => sub.remove();
+  }, [runExternalChangeCheck]);
+
+  const dismissExternalChange = useCallback(() => {
+    dismissedMtimeRef.current = pendingMtimeRef.current;
+    setExternalChangeDetected(false);
+  }, []);
+
+  const reloadCurrentFile = useCallback(async () => {
+    const source = currentSourceRef.current;
+    if (!source) { setExternalChangeDetected(false); return; }
+    const ok = await reloadFromSource(source, fileName, openFile, readFileSource);
+    if (!ok) dismissExternalChange(); // read failed: keep content, stop nagging
+  }, [fileName, openFile, dismissExternalChange]);
+
   useEffect(() => {
     Linking.getInitialURL().then((url) => {
       handleInitialUrl(url).then(() => {
@@ -133,6 +191,12 @@ export default function App() {
           loadRecentFile(initialRecent).then((content) => {
             if (content) {
               setMarkdownContent(content);
+              // The displayed snapshot is the recents cache copy; its mtime is
+              // the baseline. An edit made while the app was quit is offered
+              // for reload right away.
+              currentSourceRef.current = sourceForUri(Storage.getString(StorageKeys.LAST_FILE_URI) || null);
+              baselineMtimeRef.current = getCachedFileMtime(initialRecent.id);
+              runExternalChangeCheck();
             } else {
               // Cached file was purged — fall back to welcome screen
               setFileName(null);
@@ -149,7 +213,7 @@ export default function App() {
     return () => {
       subscription.remove();
     };
-  }, [handleInitialUrl, initialRecent]);
+  }, [handleInitialUrl, initialRecent, runExternalChangeCheck]);
 
   // DEBUG-only hook so UI tests can seed recent files without the native picker.
   // A test drops an empty sentinel file into the app's documents dir; on launch
@@ -218,12 +282,16 @@ export default function App() {
     setFrontMatterThemeApplied,
     applyTheme,
     openFile,
+    externalChangeDetected,
+    reloadCurrentFile,
+    dismissExternalChange,
   }), [
     markdownContent, fileName, currentFileUri, scrollToPercent, highlightText,
     searchMatches, currentMatchIndex, theme, backgroundColor,
     isDarkMode, colorMode, toggleDarkMode, themeName, cycleTheme, showFrontMatterSetting,
     scrollToHeadingIndex, frontMatterTheme, frontMatterThemeApplied,
     applyTheme, openFile,
+    externalChangeDetected, reloadCurrentFile, dismissExternalChange,
   ]);
 
   const drawerType = Platform.OS === 'android' ? 'back' : 'slide';

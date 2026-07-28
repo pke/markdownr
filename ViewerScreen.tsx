@@ -55,6 +55,7 @@ import {SantaHat} from './SantaHat';
 import {OCEAN_THEMED_SAMPLE} from './example';
 import {getAboutMarkdown} from './about';
 import {ThemeSuggestion} from './ThemeSuggestion';
+import {FileChangedBanner} from './FileChangedBanner';
 
 const isIOS = Platform.OS === 'ios';
 
@@ -1100,6 +1101,12 @@ export function ViewerScreen() {
           </View>
         )}
         <ThemeSuggestion variant="banner" bottomInset={insets.bottom + 56 + 12} />
+        <FileChangedBanner
+          bottomInset={insets.bottom + 56 + 12 + 52}
+          getScrollPercent={() =>
+            contentHeight > 0 ? lastScrollY.current / contentHeight : null
+          }
+        />
         <FloatingMenu
           isMenuVisible={isMenuVisible}
           isMenuOpen={isMenuOpen}

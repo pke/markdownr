@@ -1,6 +1,7 @@
 // In-memory mock for expo-file-system/next
 
 const fileStore = new Map<string, string>();
+const mtimeStore = new Map<string, number>();
 
 export class File {
   uri: string;
@@ -9,6 +10,9 @@ export class File {
   }
   get exists(): boolean {
     return fileStore.has(this.uri);
+  }
+  get modificationTime(): number | null {
+    return mtimeStore.get(this.uri) ?? null;
   }
   create(): void {
     if (!fileStore.has(this.uri)) {
@@ -42,9 +46,18 @@ export const Paths = {
   cache: '/mock-cache',
 };
 
-// Helper to reset state between tests
+// Helpers to reset/seed state between tests
 export function _resetFileStore(): void {
   fileStore.clear();
+  mtimeStore.clear();
+}
+
+export function __setMtime(uri: string, mtime: number): void {
+  mtimeStore.set(uri, mtime);
+}
+
+export function __clearMtimes(): void {
+  mtimeStore.clear();
 }
 
 export function _getFileStore(): Map<string, string> {

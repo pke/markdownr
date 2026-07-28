@@ -51,6 +51,9 @@ export type MarkdownContextType = {
   setFrontMatterThemeApplied: (applied: boolean) => void;
   applyTheme: (name: ThemeName) => void;
   openFile: (content: string, fileName: string | null, fileUri?: string | null) => void;
+  externalChangeDetected: boolean;
+  reloadCurrentFile: () => Promise<void>;
+  dismissExternalChange: () => void;
 };
 
 const emptyMap = new Map<number, View>();
@@ -91,4 +94,7 @@ export const MarkdownContext = React.createContext<MarkdownContextType>({
   setFrontMatterThemeApplied: () => {},
   applyTheme: () => {},
   openFile: () => {},
+  externalChangeDetected: false,
+  reloadCurrentFile: async () => {},
+  dismissExternalChange: () => {},
 });

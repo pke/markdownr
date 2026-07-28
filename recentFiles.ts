@@ -104,6 +104,17 @@ export async function loadRecentFile(entry: RecentFileEntry): Promise<string | n
   }
 }
 
+/** Modification time of a recents cache copy — the "when we last read it"
+ * baseline for external-change detection after a launch-restore. */
+export function getCachedFileMtime(id: string): number | null {
+  try {
+    const mtime = new File(recentFilesDir, `${id}.md`).modificationTime;
+    return mtime && mtime > 0 ? mtime : null;
+  } catch {
+    return null;
+  }
+}
+
 export function deleteRecentFile(id: string): void {
   const entries = getRecentFiles().filter(e => e.id !== id);
   saveRecentFiles(entries);

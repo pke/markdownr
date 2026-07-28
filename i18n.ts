@@ -37,6 +37,7 @@ export const en = {
   drawer: {contents: 'Contents', showAll: 'Show All', about: 'About'},
   theme: {suggested: 'Suggested theme:', custom: 'Custom theme'},
   error: {title: 'Something went wrong', tryAgain: 'Try Again'},
+  fileChanged: {message: 'File changed on disk', reload: 'Reload'},
   common: {
     clearAll: 'Clear All',
     delete: 'Delete',
@@ -80,6 +81,7 @@ const de: Translations<typeof en> = {
   drawer: {contents: 'Inhalt', showAll: 'Alle anzeigen', about: 'Über'},
   theme: {suggested: 'Empfohlenes Thema:', custom: 'Eigenes Thema'},
   error: {title: 'Etwas ist schiefgelaufen', tryAgain: 'Erneut versuchen'},
+  fileChanged: {message: 'Datei wurde extern geändert', reload: 'Neu laden'},
   common: {
     clearAll: 'Alle löschen',
     delete: 'Löschen',
@@ -118,6 +120,7 @@ const ru: Translations<typeof en> = {
   drawer: {contents: 'Содержание', showAll: 'Показать все', about: 'О приложении'},
   theme: {suggested: 'Рекомендуемая тема:', custom: 'Своя тема'},
   error: {title: 'Что-то пошло не так', tryAgain: 'Повторить'},
+  fileChanged: {message: 'Файл изменён на диске', reload: 'Перезагрузить'},
   common: {
     clearAll: 'Очистить всё',
     delete: 'Удалить',
