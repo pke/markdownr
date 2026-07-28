@@ -4,21 +4,108 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Markdownr — Elegant Markdown Viewer</title>
-  <meta name="description" content="A lean, focused Markdown viewer for iPhone and iPad. Native rendering, beautiful themes, dark mode, and full-text search.">
+  <meta name="description" content="A lean, focused Markdown viewer for iPhone, iPad and Android. Native rendering, beautiful themes, dark mode, and full-text search.">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#410065">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16131a">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       line-height: 1.6;
-      color: #1d1d1f;
-      background: #fff;
+    }
+
+    /* Theme tokens. LIGHT is the default set; dark comes from the OS media
+       query. The #themeswitch checkbox flips *relative to the OS scheme*, so
+       both branches define their opposite (see the toggle wiring below). */
+    .page {
+      --bg: #fff;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --border: #e5e5e5;
+      --accent: #410065;
+      --hero-bg: #410065;
+      --hero-text: #fff;
+      --pill-bg: #fff;
+      --pill-text: #410065;
+      color-scheme: light;
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
     }
+    @media (prefers-color-scheme: dark) {
+      .page {
+        --bg: #16131a;
+        --text: #e9e6ee;
+        --muted: #a49fae;
+        --border: #2f2a36;
+        --accent: #c1a1e6;
+        --hero-bg: #2f004a;
+        --hero-text: #fff;
+        --pill-bg: #fff;
+        --pill-text: #410065;
+        color-scheme: dark;
+      }
+      #themeswitch:checked ~ .page {
+        --bg: #fff;
+        --text: #1d1d1f;
+        --muted: #6e6e73;
+        --border: #e5e5e5;
+        --accent: #410065;
+        --hero-bg: #410065;
+        --hero-text: #fff;
+        --pill-bg: #fff;
+        --pill-text: #410065;
+        color-scheme: light;
+      }
+    }
+    @media (prefers-color-scheme: light) {
+      #themeswitch:checked ~ .page {
+        --bg: #16131a;
+        --text: #e9e6ee;
+        --muted: #a49fae;
+        --border: #2f2a36;
+        --accent: #c1a1e6;
+        --hero-bg: #2f004a;
+        --hero-text: #fff;
+        --pill-bg: #fff;
+        --pill-text: #410065;
+        color-scheme: dark;
+      }
+    }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px; height: 1px;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .theme-toggle {
+      position: absolute;
+      top: 1rem; right: 1rem;
+      width: 40px; height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      color: var(--hero-text);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 50%;
+      cursor: pointer;
+      user-select: none;
+    }
+    #themeswitch:focus-visible ~ .page .theme-toggle {
+      outline: 2px solid var(--hero-text);
+      outline-offset: 2px;
+    }
+
     .hero {
-      background: #410065;
-      color: #fff;
+      position: relative;
+      background: var(--hero-bg);
+      color: var(--hero-text);
       padding: 4rem 1.5rem;
       text-align: center;
     }
@@ -46,8 +133,8 @@
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
-      color: #410065;
-      background: #fff;
+      color: var(--pill-text);
+      background: var(--pill-bg);
       font-size: 0.9rem;
       font-weight: 600;
       text-decoration: none;
@@ -86,99 +173,121 @@
       width: 10px;
       height: 10px;
       border-radius: 50%;
-      background: #410065;
+      background: var(--accent);
     }
     .features strong {
       display: block;
       margin-bottom: 0.15rem;
     }
     .features span {
-      color: #6e6e73;
+      color: var(--muted);
       font-size: 0.95rem;
     }
     .contact {
       margin-top: 2.5rem;
       padding-top: 1.5rem;
-      border-top: 1px solid #e5e5e5;
+      border-top: 1px solid var(--border);
     }
     .contact h2 {
       font-size: 1.15rem;
       margin-bottom: 0.5rem;
     }
-    a { color: #410065; }
+    a { color: var(--accent); }
     footer {
-      color: #6e6e73;
+      color: var(--muted);
       font-size: 0.85rem;
-      border-top: 1px solid #e5e5e5;
+      border-top: 1px solid var(--border);
       padding: 1rem 1.5rem;
       text-align: center;
     }
-    footer a { color: #6e6e73; text-decoration: underline; }
+    footer a { color: var(--muted); text-decoration: underline; }
   </style>
 </head>
 <body>
-  <div class="hero">
-    <h1>Markdownr</h1>
-    <p>A lean, focused Markdown viewer for iPhone, iPad and Android.</p>
-    <div class="badge">
-      <a href="https://apps.apple.com/app/markdownr/id6448853807">
-        <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on the App Store">
-      </a>
+  <input type="checkbox" id="themeswitch" class="visually-hidden" role="switch"
+         aria-label="Switch between dark and light theme">
+  <script>
+    (function () {
+      var box = document.getElementById("themeswitch");
+      var osDark = matchMedia("(prefers-color-scheme: dark)").matches;
+      try {
+        var saved = localStorage.getItem("theme");
+        // restore: checked == (savedIsDark XOR osIsDark)
+        if (saved === "dark" || saved === "light") box.checked = (saved === "dark") !== osDark;
+      } catch (e) { /* no storage (private mode): degrade to session-only toggle */ }
+      box.addEventListener("change", function () {
+        try {
+          // save the resolved theme: osDark XOR checked
+          localStorage.setItem("theme", (osDark !== box.checked) ? "dark" : "light");
+        } catch (e) { /* no storage: the flip still works, it just isn't remembered */ }
+      });
+    })();
+  </script>
+  <div class="page">
+    <div class="hero">
+      <label for="themeswitch" class="theme-toggle" aria-hidden="true" title="Toggle theme">◐</label>
+      <h1>Markdownr</h1>
+      <p>A lean, focused Markdown viewer for iPhone, iPad and Android.</p>
+      <div class="badge">
+        <a href="https://apps.apple.com/app/markdownr/id6448853807">
+          <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on the App Store">
+        </a>
+      </div>
+      <div class="testflight">
+        <a href="https://testflight.apple.com/join/V6wdEjec">
+          <img src="images/testflight.svg" alt="TestFlight" class="testflight-icon">
+          <span>Join TestFlight Beta</span>
+        </a>
+      </div>
+      <div class="testflight">
+        <a href="https://github.com/pke/markdownr/releases/latest/download/markdownr.apk">
+          <span aria-hidden="true">🤖</span>
+          <span>Download APK for Android</span>
+        </a>
+      </div>
     </div>
-    <div class="testflight">
-      <a href="https://testflight.apple.com/join/V6wdEjec">
-        <img src="images/testflight.svg" alt="TestFlight" class="testflight-icon">
-        <span>Join TestFlight Beta</span>
-      </a>
-    </div>
-    <div class="testflight">
-      <a href="https://github.com/pke/markdownr/releases/latest/download/markdownr.apk">
-        <span aria-hidden="true">🤖</span>
-        <span>Download APK for Android</span>
-      </a>
-    </div>
+
+    <main>
+      <ul class="features">
+        <li>
+          <strong>Native Rendering</strong>
+          <span>Blazing-fast Markdown display for smooth scrolling and instant rendering.</span>
+        </li>
+        <li>
+          <strong>Dark &amp; Light Mode</strong>
+          <span>Automatically adapts to your system setting, or switch manually with a single tap.</span>
+        </li>
+        <li>
+          <strong>Beautiful Colour Themes</strong>
+          <span>Five carefully crafted themes — Default, Ocean, Forest, Sunset and Lavender — each with light and dark variants.</span>
+        </li>
+        <li>
+          <strong>Table of Contents</strong>
+          <span>Swipe from the left to open a navigation drawer for quick jumping through long documents.</span>
+        </li>
+        <li>
+          <strong>Full-Text Search</strong>
+          <span>Find any text instantly with highlighted results and match navigation.</span>
+        </li>
+        <li>
+          <strong>Front Matter Support</strong>
+          <span>View YAML front matter metadata such as title, author, tags and dates in a clean header.</span>
+        </li>
+        <li>
+          <strong>Open From Anywhere</strong>
+          <span>Open .md and .markdown files from the Files app, email attachments or any other app.</span>
+        </li>
+      </ul>
+
+      <div class="contact">
+        <h2>Contact</h2>
+        <p>Questions or feedback? Reach us at <a href="mailto:markdownr@dudesoft.app">markdownr@dudesoft.app</a>.</p>
+      </div>
+    </main>
+
+    <footer>
+      &copy; 2026 DudeSoft &middot; <a href="/privacy">Privacy Policy</a>
+    </footer>
   </div>
-
-  <main>
-    <ul class="features">
-      <li>
-        <strong>Native Rendering</strong>
-        <span>Blazing-fast Markdown display for smooth scrolling and instant rendering.</span>
-      </li>
-      <li>
-        <strong>Dark &amp; Light Mode</strong>
-        <span>Automatically adapts to your system setting, or switch manually with a single tap.</span>
-      </li>
-      <li>
-        <strong>Beautiful Colour Themes</strong>
-        <span>Five carefully crafted themes — Default, Ocean, Forest, Sunset and Lavender — each with light and dark variants.</span>
-      </li>
-      <li>
-        <strong>Table of Contents</strong>
-        <span>Swipe from the left to open a navigation drawer for quick jumping through long documents.</span>
-      </li>
-      <li>
-        <strong>Full-Text Search</strong>
-        <span>Find any text instantly with highlighted results and match navigation.</span>
-      </li>
-      <li>
-        <strong>Front Matter Support</strong>
-        <span>View YAML front matter metadata such as title, author, tags and dates in a clean header.</span>
-      </li>
-      <li>
-        <strong>Open From Anywhere</strong>
-        <span>Open .md and .markdown files from the Files app, email attachments or any other app.</span>
-      </li>
-    </ul>
-
-    <div class="contact">
-      <h2>Contact</h2>
-      <p>Questions or feedback? Reach us at <a href="mailto:markdownr@dudesoft.app">markdownr@dudesoft.app</a>.</p>
-    </div>
-  </main>
-
-  <footer>
-    &copy; 2026 DudeSoft &middot; <a href="/privacy">Privacy Policy</a>
-  </footer>
 </body>
 </html>
