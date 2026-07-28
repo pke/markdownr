@@ -17,7 +17,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Tag pushes don't support paths-ignore, so skipping website-only releases
+  # needs a diff against the previous version tag. The version hook amends
+  # version.properties + package.json/lock into every release commit, so those
+  # are allow-listed alongside other non-app paths — otherwise nothing would
+  # ever count as www-only. (Trade-off, documented: a release whose only change
+  # is a package.json dependency edit would be skipped; in practice dependency
+  # changes always come with code or config changes.)
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      www_only: ${{ steps.diff.outputs.www_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "www_only=false" >> "$GITHUB_OUTPUT"   # manual run always builds
+            exit 0
+          fi
+          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          if [ -z "$PREV" ]; then
+            echo "www_only=false" >> "$GITHUB_OUTPUT"   # first tag: build
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only "$PREV".."$GITHUB_REF_NAME")
+          echo "Changed since $PREV:"; echo "$CHANGED"
+          NON_APP='^www/|^docs/|^\.github/|^\.gitignore$|^version\.properties$|^package\.json$|^package-lock\.json$|^fastlane/metadata/'
+          if [ -n "$CHANGED" ] && ! echo "$CHANGED" | grep -qvE "$NON_APP"; then
+            echo "www_only=true" >> "$GITHUB_OUTPUT"
+            echo "No app-relevant changes — skipping APK build for ${GITHUB_REF_NAME}"
+          else
+            echo "www_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-release:
+    needs: check
+    if: needs.check.outputs.www_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
