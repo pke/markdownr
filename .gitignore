@@ -55,3 +55,4 @@ ios/build/
 
 # Gradle build outputs of local Expo modules
 modules/*/android/build/
+.vercel
