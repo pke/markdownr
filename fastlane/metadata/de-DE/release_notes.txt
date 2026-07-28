@@ -1,9 +1,8 @@
-Ein großes Update! Das ist neu:
+Deine Dateien haben jetzt einen sechsten Sinn!
 
-• Ordner öffnen — richte Markdownr auf einen ganzen Ordner und stöbere durch alle Markdown-Dateien, während die Links dazwischen genau so funktionieren, wie sie sollen.
-• Markdownr spricht jetzt Russisch und Deutsch — von den Menüs bis zu den Meldungen.
-• Querformat — dreh dein iPhone oder iPad zur Seite und alles ordnet sich wunderschön neu an.
-• Der Menü-Button lässt sich jetzt überall antippen, nicht mehr nur auf den drei Pünktchen.
-• .md-Dateien direkt aus der Dateien-App auf dem iPhone zu öffnen, klappt jetzt einwandfrei.
+• Markdownr merkt, wenn eine geöffnete Datei von einer anderen App geändert wurde — ein freundlicher Banner bietet an, sie neu zu laden. Nie wieder veraltete Notizen!
+• Nach dem Neuladen landest du genau dort, wo du gerade gelesen hast
+• Geöffnete Dateien bleiben aktuell: bearbeite sie, wo du willst — Markdownr bleibt auf dem Laufenden
+• Zuletzt geöffnete Dateien zeigen jetzt die frischeste Version, nicht die Kopie von gestern
 
 Viel Freude beim Lesen!

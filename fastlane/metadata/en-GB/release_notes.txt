@@ -1,9 +1,8 @@
-A big one! Here's what's new:
+Your files just got a sixth sense!
 
-• Open Folder — point Markdownr at a whole folder and browse all its Markdown files, with the links between them working just like they should.
-• Markdownr now speaks Russian and German, from the menus right through to the messages.
-• Landscape mode — turn your iPhone or iPad on its side and everything reflows beautifully.
-• The menu button is now tappable all over, not just on the three little dots.
-• Opening .md files straight from the Files app on iPhone works a treat now.
+• Markdownr now notices when an open file is changed by another app — a friendly banner offers to reload it, so you never read stale notes again
+• Reloading drops you right back where you were reading
+• Files you open stay live: edit them anywhere, Markdownr keeps up
+• Recent files now open their freshest version, not yesterday's copy
 
 Happy reading!
