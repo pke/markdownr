@@ -52,3 +52,6 @@ ios/build/
 
 # editor
 .vscode/
+
+# Gradle build outputs of local Expo modules
+modules/*/android/build/
