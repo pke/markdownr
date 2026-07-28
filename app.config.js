@@ -140,6 +140,7 @@ export default {
     plugins: [
       'expo-document-picker',
       './modules/folder-picker/plugin.js',
+      './modules/file-picker/plugin.js',
       ...(WITH_UITESTS ? ['./modules/ui-tests/plugin.js'] : []),
     ],
   },

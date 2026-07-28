@@ -1,9 +1,10 @@
 import {useCallback, useContext} from 'react';
-import * as DocumentPicker from 'expo-document-picker';
 import {File} from 'expo-file-system/next';
 import {MarkdownContext} from './MarkdownContext';
+import {pickFile, readPickedFile} from 'file-picker';
 import {pickFolder, restoreFolder, type FolderFile, type FolderResult} from 'folder-picker';
 import {Storage, StorageKeys} from './settings';
+import type {FileSource} from './fileChangeDetection';
 
 export function useFileOpener(onOpen?: () => void) {
   const {openFile} = useContext(MarkdownContext);
@@ -12,16 +13,16 @@ export function useFileOpener(onOpen?: () => void) {
     onOpen?.();
 
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/markdown', 'text/plain', 'net.daringfireball.markdown', 'public.plain-text'],
-        copyToCacheDirectory: true,
-      });
+      // Native in-place picker (no cache copy): the picked file stays live, so
+      // external edits are detectable (see fileChangeDetection.ts).
+      const picked = await pickFile();
+      if (!picked) return;
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const file = result.assets[0];
-        const content = await new File(file.uri).text();
-        openFile(content, file.name ?? null, file.uri);
-      }
+      const source: FileSource = picked.bookmarkKey
+        ? {uri: picked.uri, kind: 'bookmark', ref: picked.bookmarkKey}
+        : {uri: picked.uri, kind: 'content', ref: picked.uri};
+      const content = await readPickedFile(source.ref!);
+      openFile(content, picked.name ?? null, picked.uri, source);
     } catch (err) {
       console.error('Error picking document:', err);
     }

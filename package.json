@@ -1,6 +1,6 @@
 {
   "name": "markdownrexpo",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -32,6 +32,7 @@
     "expo-media-library": "~18.2.1",
     "expo-sharing": "~14.0.8",
     "expo-symbols": "~1.0.8",
+    "file-picker": "file:./modules/file-picker",
     "folder-picker": "file:./modules/folder-picker",
     "i18next": "^26.3.6",
     "js-yaml": "^4.1.1",

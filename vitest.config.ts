@@ -14,6 +14,7 @@ export default defineConfig({
       'react-native-mmkv': path.resolve(__dirname, '__tests__/mocks/react-native-mmkv.ts'),
       'expo-localization': path.resolve(__dirname, '__tests__/mocks/expo-localization.ts'),
       'folder-picker': path.resolve(__dirname, '__tests__/mocks/folder-picker.ts'),
+      'file-picker': path.resolve(__dirname, '__tests__/mocks/file-picker.ts'),
       'expo-document-picker': path.resolve(__dirname, '__tests__/mocks/expo-document-picker.ts'),
       'expo-font': path.resolve(__dirname, '__tests__/mocks/expo-font.ts'),
     },

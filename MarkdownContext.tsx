@@ -4,6 +4,7 @@ import {View, ScrollView} from 'react-native';
 import {defaultMarkdownTheme, type MarkdownTheme} from 'react-native-nitro-markdown/src';
 import {EXAMPLE_MARKDOWN} from './example';
 import type {ThemeName, ThemeConfig} from './themes';
+import type {FileSource} from './fileChangeDetection';
 
 export type TocHeading = {
   index: number;
@@ -50,7 +51,7 @@ export type MarkdownContextType = {
   frontMatterThemeApplied: boolean;
   setFrontMatterThemeApplied: (applied: boolean) => void;
   applyTheme: (name: ThemeName) => void;
-  openFile: (content: string, fileName: string | null, fileUri?: string | null) => void;
+  openFile: (content: string, fileName: string | null, fileUri?: string | null, source?: FileSource | null) => void;
   externalChangeDetected: boolean;
   reloadCurrentFile: () => Promise<void>;
   dismissExternalChange: () => void;

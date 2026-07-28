@@ -16,6 +16,7 @@ export const StorageKeys = {
   DISMISSED_HOLIDAY: 'dismissedHoliday',
   RECENT_FILES: 'recentFiles',
   LAST_FILE_URI: 'lastFileUri',
+  LAST_FILE_SOURCE: 'lastFileSource',
   LAST_FOLDER_URI: 'lastFolderUri',
 } as const;
 

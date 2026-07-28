@@ -1,6 +1,7 @@
 import {File, Directory, Paths} from 'expo-file-system/next';
 import {Storage, StorageKeys} from './settings';
 import {parseFrontMatter} from './frontmatter';
+import type {FileSource} from './fileChangeDetection';
 
 const MAX_RECENT_FILES = 10;
 const recentFilesDir = new Directory(Paths.cache, 'recent-files');
@@ -10,6 +11,9 @@ export interface RecentFileEntry {
   title: string;
   subtitle: string;
   addedAt: string;
+  /** How to re-read the live file (Phase 2). Entries predating this field
+   * simply open from the cache copy, as before. */
+  source?: FileSource;
 }
 
 function ensureDir(): void {
@@ -59,7 +63,7 @@ function saveRecentFiles(entries: RecentFileEntry[]): void {
   Storage.setString(StorageKeys.RECENT_FILES, JSON.stringify(entries));
 }
 
-export function addRecentFile(content: string, fileName: string | null): void {
+export function addRecentFile(content: string, fileName: string | null, source?: FileSource): void {
   ensureDir();
   const entries = getRecentFiles();
   const subtitle = deriveSubtitle(fileName);
@@ -80,6 +84,7 @@ export function addRecentFile(content: string, fileName: string | null): void {
     title,
     subtitle,
     addedAt: new Date().toISOString(),
+    ...(source ? {source} : {}),
   };
 
   const file = new File(recentFilesDir, `${id}.md`);

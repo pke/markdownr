@@ -35,6 +35,21 @@ function sourceForUri(uri: string | null): FileSource | null {
   return null;
 }
 
+/** Rehydrate the persisted source descriptor (falls back to deriving one from
+ * the last file URI, e.g. for state written before Phase 2). */
+function restorePersistedSource(): FileSource | null {
+  const json = Storage.getString(StorageKeys.LAST_FILE_SOURCE);
+  if (json) {
+    try {
+      const parsed = JSON.parse(json) as FileSource;
+      if (parsed?.uri && parsed?.kind) return parsed;
+    } catch {
+      // fall through to URI-derived source
+    }
+  }
+  return sourceForUri(Storage.getString(StorageKeys.LAST_FILE_URI) || null);
+}
+
 export default function App() {
   const systemColorScheme = useColorScheme();
   const [colorMode, setColorMode] = useState<string>(() =>
@@ -121,15 +136,16 @@ export default function App() {
   const pendingMtimeRef = useRef<number | null>(null);
   const [externalChangeDetected, setExternalChangeDetected] = useState(false);
 
-  const openFile = useCallback((content: string, name: string | null, fileUri?: string | null) => {
-    addRecentFile(content, name);
+  const openFile = useCallback((content: string, name: string | null, fileUri?: string | null, sourceOverride?: FileSource | null) => {
+    const uri = fileUri ?? null;
+    const source = sourceOverride ?? sourceForUri(uri);
+    addRecentFile(content, name, source ?? undefined);
     setMarkdownContent(content);
     setFileName(name);
-    const uri = fileUri ?? null;
     setCurrentFileUri(uri);
     Storage.setString(StorageKeys.LAST_FILE_URI, uri ?? '');
+    Storage.setString(StorageKeys.LAST_FILE_SOURCE, source ? JSON.stringify(source) : '');
 
-    const source = sourceForUri(uri);
     currentSourceRef.current = source;
     baselineMtimeRef.current = null;
     dismissedMtimeRef.current = null;
@@ -194,7 +210,7 @@ export default function App() {
               // The displayed snapshot is the recents cache copy; its mtime is
               // the baseline. An edit made while the app was quit is offered
               // for reload right away.
-              currentSourceRef.current = sourceForUri(Storage.getString(StorageKeys.LAST_FILE_URI) || null);
+              currentSourceRef.current = restorePersistedSource();
               baselineMtimeRef.current = getCachedFileMtime(initialRecent.id);
               runExternalChangeCheck();
             } else {

@@ -7,6 +7,9 @@ import {
   type FileSource,
 } from '../fileChangeDetection';
 import {__setMtime, __clearMtimes} from './mocks/expo-file-system-next';
+import {
+  __setPickedContent, __setPickedMtime, __resetFilePicker,
+} from './mocks/file-picker';
 
 const src = (uri = 'file:///docs/a.md'): FileSource => ({uri, kind: 'file'});
 const statOf = (v: number | null) => vi.fn().mockResolvedValue(v);
@@ -42,11 +45,6 @@ describe('statFileSource (default stat strategy)', () => {
     expect(await statFileSource(src())).toBe(1234);
   });
 
-  it('returns null for non-file kinds (phase 2 strategies)', async () => {
-    expect(await statFileSource({uri: 'content://x/1', kind: 'content'})).toBeNull();
-    expect(await statFileSource({uri: 'file:///x', kind: 'bookmark'})).toBeNull();
-  });
-
   it('returns null for a file kind whose uri is not file://', async () => {
     expect(await statFileSource({uri: 'content://x/1', kind: 'file'})).toBeNull();
   });
@@ -54,6 +52,38 @@ describe('statFileSource (default stat strategy)', () => {
   it('returns null when the file has no mtime (missing/unreadable)', async () => {
     __clearMtimes();
     expect(await statFileSource(src('file:///nope.md'))).toBeNull();
+  });
+
+  it('stats bookmark sources through the picker module ref', async () => {
+    __resetFilePicker();
+    __setPickedMtime('bm-key-1', 4321);
+    expect(await statFileSource({uri: 'file:///icloud/x.md', kind: 'bookmark', ref: 'bm-key-1'})).toBe(4321);
+  });
+
+  it('stats content sources using the uri as the ref', async () => {
+    __resetFilePicker();
+    __setPickedMtime('content://docs/9', 5555);
+    expect(await statFileSource({uri: 'content://docs/9', kind: 'content'})).toBe(5555);
+  });
+
+  it('returns null for a bookmark source without a ref', async () => {
+    __resetFilePicker();
+    expect(await statFileSource({uri: 'file:///x', kind: 'bookmark'})).toBeNull();
+  });
+});
+
+describe('readFileSource (picked kinds)', () => {
+  it('reads bookmark sources through the picker module', async () => {
+    __resetFilePicker();
+    __setPickedContent('bm-key-2', '# From iCloud');
+    const {readFileSource} = await import('../fileChangeDetection');
+    expect(await readFileSource({uri: 'file:///icloud/y.md', kind: 'bookmark', ref: 'bm-key-2'})).toBe('# From iCloud');
+  });
+
+  it('rejects for a bookmark source without a ref', async () => {
+    __resetFilePicker();
+    const {readFileSource} = await import('../fileChangeDetection');
+    await expect(readFileSource({uri: 'file:///x', kind: 'bookmark'})).rejects.toThrow();
   });
 });
 
