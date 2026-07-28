@@ -1,0 +1,88 @@
+name: Android release APK
+
+# Every version tag (created by the post-commit hook on feat/fix commits)
+# builds the optimized, signed APK and attaches it to the GitHub release.
+# The website's download button follows releases/latest/download/markdownr.apk,
+# so it always serves the newest build with no site changes.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Restore upload keystore + gradle properties
+        env:
+          KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.UPLOAD_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$HOME/upload.keystore"
+          mkdir -p "$HOME/.gradle"
+          {
+            echo "UPLOAD_STORE_FILE=$HOME/upload.keystore"
+            echo "UPLOAD_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "UPLOAD_KEY_ALIAS=$KEY_ALIAS"
+            echo "UPLOAD_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$HOME/.gradle/gradle.properties"
+
+      - name: Expo prebuild (android)
+        run: npx expo prebuild -p android --no-install
+        env:
+          CI: '1'
+
+      - name: Build release APK
+        run: cd android && ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Fail if APK is debug-signed
+        run: |
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          "$BT/apksigner" verify --print-certs "$APK" | head -2
+          if "$BT/apksigner" verify --print-certs "$APK" | grep -q "Android Debug"; then
+            echo "::error::APK is debug-signed — UPLOAD_* secrets missing or wrong"
+            exit 1
+          fi
+
+      - name: Publish to GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(grep VERSION_MAJOR version.properties | cut -d= -f2).$(grep VERSION_MINOR version.properties | cut -d= -f2).$(grep VERSION_PATCH version.properties | cut -d= -f2)"
+          TAG="v$VERSION"
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          cp "$APK" markdownr.apk
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" markdownr.apk --clobber
+          else
+            gh release create "$TAG" "$APK" markdownr.apk \
+              --title "Markdownr $VERSION" \
+              --notes-file fastlane/metadata/en-GB/release_notes.txt
+          fi
+          echo "Published $TAG: $(basename "$APK")"
