@@ -45,7 +45,7 @@ jobs:
           fi
           CHANGED=$(git diff --name-only "$PREV".."$GITHUB_REF_NAME")
           echo "Changed since $PREV:"; echo "$CHANGED"
-          NON_APP='^www/|^docs/|^\.github/|^\.gitignore$|^version\.properties$|^package\.json$|^package-lock\.json$|^fastlane/metadata/'
+          NON_APP='^www/|^docs/|^\.github/|^\.gitignore$|^version\.properties$|^package\.json$|^package-lock\.json$|^fastlane/|^Gemfile'
           if [ -n "$CHANGED" ] && ! echo "$CHANGED" | grep -qvE "$NON_APP"; then
             echo "www_only=true" >> "$GITHUB_OUTPUT"
             echo "No app-relevant changes — skipping APK build for ${GITHUB_REF_NAME}"
