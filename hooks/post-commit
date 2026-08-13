@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# Guard against recursion (amend triggers post-commit again)
+if [ -n "$VERSION_BUMP_IN_PROGRESS" ]; then
+  exit 0
+fi
+
+# Read the commit message
+MSG=$(git log -1 --pretty=%B)
+
+# Determine bump type from conventional commit prefix
+BUMP=""
+if echo "$MSG" | grep -qiE "BREAKING CHANGE|^[a-z]+(\(.+\))?!:"; then
+  BUMP="major"
+elif echo "$MSG" | grep -qiE "^feat(\(.+\))?:"; then
+  BUMP="minor"
+elif echo "$MSG" | grep -qiE "^(fix|perf|refactor)(\(.+\))?:"; then
+  BUMP="patch"
+fi
+
+if [ -z "$BUMP" ]; then
+  exit 0  # No version bump needed
+fi
+
+# The version tracks the APP: skip the bump when the commit touches only
+# non-app paths (website, docs, CI, release tooling, tests). Keep this regex
+# in sync with the check job in .github/workflows/android-release.yml.
+# NOTE: BSD grep's -q is buggy combined with -v (wrong exit status) — use
+# command substitution instead.
+NON_APP='^www/|^docs/|^\.github/|^\.gitignore$|^version\.properties$|^package\.json$|^package-lock\.json$|^fastlane/|^Gemfile|^tools/|^\.maestro/|^modules/ui-tests/|^hooks/'
+CHANGED=$(git diff-tree --no-commit-id --name-only -r HEAD)
+if [ -n "$CHANGED" ] && [ -z "$(echo "$CHANGED" | grep -vE "$NON_APP")" ]; then
+  echo "No app-relevant changes — version bump skipped"
+  exit 0
+fi
+
+# Read current version
+PROPS="version.properties"
+MAJOR=$(grep VERSION_MAJOR "$PROPS" | cut -d= -f2)
+MINOR=$(grep VERSION_MINOR "$PROPS" | cut -d= -f2)
+PATCH=$(grep VERSION_PATCH "$PROPS" | cut -d= -f2)
+
+# Apply bump
+case "$BUMP" in
+  major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+  minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+  patch) PATCH=$((PATCH + 1)) ;;
+esac
+
+VERSION="$MAJOR.$MINOR.$PATCH"
+BUILD=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+
+# Update version.properties
+printf "VERSION_MAJOR=%d\nVERSION_MINOR=%d\nVERSION_PATCH=%d\n" "$MAJOR" "$MINOR" "$PATCH" > "$PROPS"
+
+# Update package.json + package-lock.json
+npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+# Amend the commit with version files (with recursion guard)
+git add version.properties package.json package-lock.json
+VERSION_BUMP_IN_PROGRESS=1 git commit --amend --no-edit --no-verify
+
+# Create annotated tag
+git tag -a "v$VERSION" -m "v$VERSION"
+
+echo "Version bumped to $VERSION (build $BUILD) [$BUMP]"
+echo "Tagged v$VERSION"
