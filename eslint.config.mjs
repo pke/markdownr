@@ -7,6 +7,12 @@ export default [
   },
   ...tseslint.configs.recommended,
   {
+    files: ['app.config.js', 'modules/**/plugin.js'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     plugins: {
       'react-hooks': reactHooks,
