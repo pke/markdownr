@@ -511,6 +511,19 @@ function QuoteCycler({quotes, Renderer}: {quotes: MarkdownNode[]; Renderer: Reac
   );
 }
 
+function isTextOnlyNode(node: MarkdownNode): boolean {
+  if (!node.children || node.children.length === 0) {
+    return node.type === 'text';
+  }
+  return node.children.every((child: MarkdownNode) =>
+    child.type === 'text' ||
+    child.type === 'bold' ||
+    child.type === 'italic' ||
+    child.type === 'strikethrough' ||
+    (child.children && isTextOnlyNode(child))
+  );
+}
+
 export function ViewerScreen() {
   const {t} = useTranslation();
   const insets = useSafeAreaInsets();
@@ -684,7 +697,7 @@ export function ViewerScreen() {
       scrollViewRef.current?.scrollTo({y: yOffset, animated: true});
       setScrollToPercent(null);
     }
-  }, [scrollToPercent, contentHeight, setScrollToPercent]);
+  }, [scrollToPercent, contentHeight, scrollViewRef, setScrollToPercent]);
 
   useEffect(() => {
     if (scrollToHeadingIndex === null) return;
@@ -728,19 +741,6 @@ export function ViewerScreen() {
     const newIndex = currentMatchIndex < searchMatches.length - 1 ? currentMatchIndex + 1 : 0;
     setCurrentMatchIndex(newIndex);
     setScrollToPercent(searchMatches[newIndex].percent);
-  };
-
-  const isTextOnlyNode = (node: MarkdownNode): boolean => {
-    if (!node.children || node.children.length === 0) {
-      return node.type === 'text';
-    }
-    return node.children.every(child =>
-      child.type === 'text' ||
-      child.type === 'bold' ||
-      child.type === 'italic' ||
-      child.type === 'strikethrough' ||
-      (child.children && isTextOnlyNode(child))
-    );
   };
 
   const handleImageLongPress = useCallback((url: string) => {
@@ -1019,7 +1019,7 @@ export function ViewerScreen() {
         </View>
       );
     },
-  }), [highlightText, theme.colors.text, theme.colors.link, theme.colors.heading, theme.colors.border, setIsMenuVisible, setIsMenuOpen, showFrontMatter, setShowFrontMatter, setScrollToPercent, navigation, toggleDarkMode, cycleTheme, isDarkMode, colorMode, themeName, rendererConfig, openFilePicker, openSearch, headingRefsMap, scrollToAnchor]);
+  }), [highlightText, theme.colors.text, theme.colors.link, theme.colors.border, setIsMenuVisible, setIsMenuOpen, showFrontMatter, setShowFrontMatter, setScrollToPercent, navigation, toggleDarkMode, cycleTheme, colorMode, themeName, rendererConfig, openFilePicker, openSearch, headingRefsMap, scrollToAnchor, handleImageLongPress, handleLinkPress, setFileName, setMarkdownContent, t]);
 
   const shouldShowFrontMatter = showFrontMatter && frontMatter;
 
@@ -1254,4 +1254,3 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
 });
-
