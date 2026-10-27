@@ -1,7 +1,6 @@
 import React from 'react';
 import {View, ScrollView} from 'react-native';
-// @ts-ignore - importing from source to use patched astTransform
-import {defaultMarkdownTheme, type MarkdownTheme} from 'react-native-nitro-markdown/src';
+import {defaultMarkdownTheme, type MarkdownTheme} from 'react-native-nitro-markdown';
 import {EXAMPLE_MARKDOWN} from './example';
 import type {ThemeName, ThemeConfig} from './themes';
 import type {FileSource} from './fileChangeDetection';

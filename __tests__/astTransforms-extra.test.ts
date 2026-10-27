@@ -5,11 +5,14 @@ import {
   emoticonTransform,
   subSuperscriptTransform,
   insMarkTransform,
+  customNode,
+  customNodeKind,
   definitionListTransform,
   abbreviationTransform,
   footnoteTransform,
   tableBrTransform,
   TABLE_BR_PLACEHOLDER,
+  createViewerTransform,
 } from '../astTransforms';
 import {emojiData} from '../emojiData';
 
@@ -127,17 +130,16 @@ describe('insMarkTransform', () => {
     insMarkTransform(ast as any);
     const kids = (ast as any).children[0].children;
     expect(kids[0]).toEqual({type: 'text', content: 'a '});
-    expect(kids[1]).toEqual({type: 'ins', children: [{type: 'text', content: 'b'}]});
+    expect(kids[1]).toEqual(customNode('ins', [{type: 'text', content: 'b'}]));
     expect(kids[2]).toEqual({type: 'text', content: ' c'});
   });
 
   it('wraps ==text== in a mark node', () => {
     const ast = doc(para(text('==hi==')));
     insMarkTransform(ast as any);
-    expect((ast as any).children[0].children[0]).toEqual({
-      type: 'mark',
-      children: [{type: 'text', content: 'hi'}],
-    });
+    expect((ast as any).children[0].children[0]).toEqual(
+      customNode('mark', [{type: 'text', content: 'hi'}]),
+    );
   });
 });
 
@@ -148,9 +150,9 @@ describe('definitionListTransform', () => {
     definitionListTransform(ast as any);
     const kids = (ast as any).children;
     expect(kids).toHaveLength(1);
-    expect(kids[0].type).toBe('dl');
-    expect(kids[0].children[0].type).toBe('dt');
-    expect(kids[0].children[1].type).toBe('dd');
+    expect(customNodeKind(kids[0])).toBe('dl');
+    expect(customNodeKind(kids[0].children[0])).toBe('dt');
+    expect(customNodeKind(kids[0].children[1])).toBe('dd');
     expect(getContent(kids[0].children[0])).toBe('Coffee');
     expect(getContent(kids[0].children[1])).toBe('Black hot drink');
   });
@@ -235,5 +237,17 @@ describe('tableBrTransform', () => {
     const ast = doc(para(text(`a${TABLE_BR_PLACEHOLDER}b`)));
     tableBrTransform(ast as any);
     expect((ast as any).children[0].children[0].content).toBe(`a${TABLE_BR_PLACEHOLDER}b`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('math nodes', () => {
+  // nitro-markdown renders math from the node's text children, so the text
+  // transforms must leave LaTeX alone (x^2^ would otherwise become superscript).
+  it.each(['math_inline', 'math_block'])('leaves %s content untouched', (type) => {
+    const latex = 'a^2 + b^2 = c^2 -- "x" ++y++ ==z== :-)';
+    const ast = doc(para({type, children: [text(latex)]}));
+    const result: any = createViewerTransform('en')(ast as any);
+    expect(result.children[0].children[0]).toEqual({type, children: [text(latex)]});
   });
 });

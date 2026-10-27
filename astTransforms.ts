@@ -1,13 +1,36 @@
-// @ts-ignore - importing from source to use patched astTransform
-import type {MarkdownNode} from 'react-native-nitro-markdown/src';
-// @ts-ignore
-import {getTextContent} from 'react-native-nitro-markdown/src';
-
-type AstTransform = (ast: MarkdownNode) => MarkdownNode;
+import type {AstTransform, MarkdownNode} from 'react-native-nitro-markdown';
+import {getTextContent} from 'react-native-nitro-markdown';
 
 /** Compose multiple AST transforms into a single transform, applied left-to-right. */
 export function composeTransforms(...transforms: AstTransform[]): AstTransform {
   return (ast: MarkdownNode) => transforms.reduce((a, fn) => fn(a), ast);
+}
+
+// ---------------------------------------------------------------------------
+// Custom nodes
+//   nitro-markdown validates transformed ASTs and rejects unknown node types,
+//   so our own nodes (ins, mark, dl, dt, dd, quote_cycle) ride on html_inline /
+//   html_block nodes, marked by a `markdownr:<kind>` title and without content.
+// ---------------------------------------------------------------------------
+
+export type CustomNodeKind = 'ins' | 'mark' | 'dl' | 'dt' | 'dd' | 'quote_cycle';
+
+const BLOCK_KINDS = new Set<CustomNodeKind>(['dl', 'dt', 'dd', 'quote_cycle']);
+const CUSTOM_TITLE_PREFIX = 'markdownr:';
+
+export function customNode(kind: CustomNodeKind, children: MarkdownNode[] = []): MarkdownNode {
+  return {
+    type: BLOCK_KINDS.has(kind) ? 'html_block' : 'html_inline',
+    title: CUSTOM_TITLE_PREFIX + kind,
+    children,
+  };
+}
+
+/** Returns the custom node kind of a node created by `customNode`, if any. */
+export function customNodeKind(node: MarkdownNode): CustomNodeKind | undefined {
+  if (node.type !== 'html_block' && node.type !== 'html_inline') return undefined;
+  if (!node.title?.startsWith(CUSTOM_TITLE_PREFIX)) return undefined;
+  return node.title.slice(CUSTOM_TITLE_PREFIX.length) as CustomNodeKind;
 }
 
 // ---------------------------------------------------------------------------
@@ -17,6 +40,8 @@ export function composeTransforms(...transforms: AstTransform[]): AstTransform {
 const SKIP_TRANSFORM = new Set([
   'table', 'table_head', 'table_body', 'table_row', 'table_cell',
   'code_block', 'code_inline',
+  // nitro-markdown renders math from these nodes' text children: keep LaTeX raw
+  'math_inline', 'math_block',
 ]);
 
 function walkTextNodes(
@@ -307,14 +332,12 @@ const insPattern = /\+\+([^+]+)\+\+/g;
 const markPattern = /==([^=]+)==/g;
 
 export function insMarkTransform(ast: MarkdownNode): MarkdownNode {
-  spliceTextNodes(ast, insPattern, (match) => ({
-    type: 'ins' as MarkdownNode['type'],
-    children: [{type: 'text', content: match[1]}],
-  }));
-  spliceTextNodes(ast, markPattern, (match) => ({
-    type: 'mark' as MarkdownNode['type'],
-    children: [{type: 'text', content: match[1]}],
-  }));
+  spliceTextNodes(ast, insPattern, (match) =>
+    customNode('ins', [{type: 'text', content: match[1]}]),
+  );
+  spliceTextNodes(ast, markPattern, (match) =>
+    customNode('mark', [{type: 'text', content: match[1]}]),
+  );
   return ast;
 }
 
@@ -369,10 +392,7 @@ export function definitionListTransform(ast: MarkdownNode): MarkdownNode {
       if (child.type === 'paragraph' && !isDefParagraph(child) &&
           i + 1 < parent.children.length && isDefParagraph(parent.children[i + 1])) {
         // This paragraph is a term, collect definitions
-        const dtNode: MarkdownNode = {
-          type: 'dt' as MarkdownNode['type'],
-          children: child.children,
-        };
+        const dtNode = customNode('dt', child.children);
 
         const ddNodes: MarkdownNode[] = [];
         i++;
@@ -380,10 +400,7 @@ export function definitionListTransform(ast: MarkdownNode): MarkdownNode {
           const next = parent.children[i];
           if (isDefParagraph(next)) {
             // New `:   ` or `~ ` definition
-            ddNodes.push({
-              type: 'dd' as MarkdownNode['type'],
-              children: stripDefMarker(next),
-            });
+            ddNodes.push(customNode('dd', stripDefMarker(next)));
             i++;
           } else if (ddNodes.length > 0 && next.type === 'code_block') {
             // Continuation code block for the last dd (indented code)
@@ -395,10 +412,7 @@ export function definitionListTransform(ast: MarkdownNode): MarkdownNode {
           }
         }
 
-        newChildren.push({
-          type: 'dl' as MarkdownNode['type'],
-          children: [dtNode, ...ddNodes],
-        });
+        newChildren.push(customNode('dl', [dtNode, ...ddNodes]));
       } else {
         // Also check for compact style: single paragraph with embedded ~ definitions
         if (child.type === 'paragraph' && child.children) {
@@ -462,10 +476,7 @@ function tryCompactDefList(para: MarkdownNode): MarkdownNode | null {
       const match = first.content.match(/^\s{0,2}~\s(.*)/s);
       const rest = match?.[1] ?? first.content;
       const stripped = rest ? [{...first, content: rest}, ...line.slice(1)] : line.slice(1);
-      ddNodes.push({
-        type: 'dd' as MarkdownNode['type'],
-        children: stripped,
-      });
+      ddNodes.push(customNode('dd', stripped));
     } else if (!inDefs) {
       if (termChildren.length > 0) {
         termChildren.push({type: 'soft_break'} as MarkdownNode);
@@ -476,13 +487,7 @@ function tryCompactDefList(para: MarkdownNode): MarkdownNode | null {
 
   if (termChildren.length === 0 || ddNodes.length === 0) return null;
 
-  return {
-    type: 'dl' as MarkdownNode['type'],
-    children: [
-      {type: 'dt' as MarkdownNode['type'], children: termChildren},
-      ...ddNodes,
-    ],
-  };
+  return customNode('dl', [customNode('dt', termChildren), ...ddNodes]);
 }
 
 // ---------------------------------------------------------------------------
@@ -818,7 +823,7 @@ export function tableBrTransform(ast: MarkdownNode): MarkdownNode {
 // ---------------------------------------------------------------------------
 // Quote cycle transform   :::quotes / ::: → quote_cycle node
 //   Detects :::quotes container in AST. Collects all blockquotes between
-//   the markers and emits a single `quote_cycle` node with them as children.
+//   the markers and emits a single `quote_cycle` custom node with them as children.
 //   The custom renderer handles cycling + crossfade animation.
 // ---------------------------------------------------------------------------
 
@@ -861,12 +866,14 @@ export function quoteCycleTransform(ast: MarkdownNode): MarkdownNode {
   }
 
   // Replace the range with a single quote_cycle node containing all quotes
-  const cycleNode: MarkdownNode = {
-    type: 'quote_cycle' as MarkdownNode['type'],
-    children: blockquotes,
-  };
+  const cycleNode = customNode('quote_cycle', blockquotes);
 
   ast.children.splice(startIdx, endIdx - startIdx + 1, cycleNode);
 
   return ast;
+}
+
+/** The transform pipeline the viewer applies to every parsed document. */
+export function createViewerTransform(locale: string): AstTransform {
+  return composeTransforms(quoteCycleTransform, definitionListTransform, footnoteTransform, insMarkTransform, createTypographicTransform(locale), emoticonTransform, abbreviationTransform, subSuperscriptTransform, tableBrTransform);
 }
