@@ -40,6 +40,8 @@ export function customNodeKind(node: MarkdownNode): CustomNodeKind | undefined {
 const SKIP_TRANSFORM = new Set([
   'table', 'table_head', 'table_body', 'table_row', 'table_cell',
   'code_block', 'code_inline',
+  // nitro-markdown renders math from these nodes' text children: keep LaTeX raw
+  'math_inline', 'math_block',
 ]);
 
 function walkTextNodes(
