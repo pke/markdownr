@@ -5,6 +5,8 @@ import {
   emoticonTransform,
   subSuperscriptTransform,
   insMarkTransform,
+  customNode,
+  customNodeKind,
   definitionListTransform,
   abbreviationTransform,
   footnoteTransform,
@@ -127,17 +129,16 @@ describe('insMarkTransform', () => {
     insMarkTransform(ast as any);
     const kids = (ast as any).children[0].children;
     expect(kids[0]).toEqual({type: 'text', content: 'a '});
-    expect(kids[1]).toEqual({type: 'ins', children: [{type: 'text', content: 'b'}]});
+    expect(kids[1]).toEqual(customNode('ins', [{type: 'text', content: 'b'}]));
     expect(kids[2]).toEqual({type: 'text', content: ' c'});
   });
 
   it('wraps ==text== in a mark node', () => {
     const ast = doc(para(text('==hi==')));
     insMarkTransform(ast as any);
-    expect((ast as any).children[0].children[0]).toEqual({
-      type: 'mark',
-      children: [{type: 'text', content: 'hi'}],
-    });
+    expect((ast as any).children[0].children[0]).toEqual(
+      customNode('mark', [{type: 'text', content: 'hi'}]),
+    );
   });
 });
 
@@ -148,9 +149,9 @@ describe('definitionListTransform', () => {
     definitionListTransform(ast as any);
     const kids = (ast as any).children;
     expect(kids).toHaveLength(1);
-    expect(kids[0].type).toBe('dl');
-    expect(kids[0].children[0].type).toBe('dt');
-    expect(kids[0].children[1].type).toBe('dd');
+    expect(customNodeKind(kids[0])).toBe('dl');
+    expect(customNodeKind(kids[0].children[0])).toBe('dt');
+    expect(customNodeKind(kids[0].children[1])).toBe('dd');
     expect(getContent(kids[0].children[0])).toBe('Coffee');
     expect(getContent(kids[0].children[1])).toBe('Black hot drink');
   });

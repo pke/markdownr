@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {htmlInlineTransform, quoteCycleTransform, preprocessMarkdownHtml} from '../astTransforms';
+import {htmlInlineTransform, quoteCycleTransform, preprocessMarkdownHtml, customNodeKind} from '../astTransforms';
 
 // Minimal MarkdownNode helper
 function doc(...children: object[]) {
@@ -91,7 +91,7 @@ describe('quoteCycleTransform', () => {
 
     const result = quoteCycleTransform(ast as any);
     expect(result.children).toHaveLength(1);
-    expect(result.children![0].type).toBe('quote_cycle');
+    expect(customNodeKind(result.children![0])).toBe('quote_cycle');
     expect(result.children![0].children).toHaveLength(2);
   });
 
@@ -126,7 +126,7 @@ describe('quoteCycleTransform', () => {
     const result = quoteCycleTransform(ast as any);
     expect(result.children).toHaveLength(3);
     expect(result.children![0]).toEqual(para(text('Before')));
-    expect(result.children![1].type).toBe('quote_cycle');
+    expect(customNodeKind(result.children![1])).toBe('quote_cycle');
     expect(result.children![2]).toEqual(para(text('After')));
   });
 

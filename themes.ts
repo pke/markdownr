@@ -1,8 +1,7 @@
-// @ts-ignore - importing from source to use patched astTransform
 import {
   defaultMarkdownTheme,
   type MarkdownTheme,
-} from 'react-native-nitro-markdown/src';
+} from 'react-native-nitro-markdown';
 
 // v0.4.x removed lightMarkdownTheme/darkMarkdownTheme — define locally
 const lightMarkdownTheme: MarkdownTheme = defaultMarkdownTheme;
@@ -605,7 +604,6 @@ export const customThemes = {
         tableHeaderText: '#5d4037',
         tableRowEven: 'transparent',
         tableRowOdd: '#efebe9',
-        background: '#fff8e1',
       },
     },
     dark: {
@@ -629,7 +627,6 @@ export const customThemes = {
         tableHeaderText: '#a1887f',
         tableRowEven: 'transparent',
         tableRowOdd: '#3e2723',
-        background: '#1b0e04',
       },
     },
     background: {light: '#fff8e1', dark: '#1b0e04'},

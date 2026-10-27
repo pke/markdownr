@@ -34,8 +34,7 @@ import {
   type MarkdownTheme,
   type MarkdownNode,
   type EnhancedRendererProps,
-// @ts-ignore - importing from source to use patched astTransform
-} from 'react-native-nitro-markdown/src';
+} from 'react-native-nitro-markdown';
 import * as Linking from 'expo-linking';
 import {Share} from 'react-native';
 import {GlassView, isLiquidGlassAvailable} from 'expo-glass-effect';
@@ -44,7 +43,8 @@ import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {MarkdownContext, type TocHeading} from './MarkdownContext';
 import {customThemes, type ThemeConfig} from './themes';
 import {parseFrontMatter, type FrontMatter, getExtraMetadata, hasExtraMetadata} from './frontmatter';
-import {composeTransforms, createTypographicTransform, emoticonTransform, subSuperscriptTransform, abbreviationTransform, footnoteTransform, insMarkTransform, definitionListTransform, quoteCycleTransform, preprocessMarkdownHtml, tableBrTransform} from './astTransforms';
+import {createViewerTransform, customNodeKind, preprocessMarkdownHtml} from './astTransforms';
+import {mathRenderers} from './MathRenderers';
 import {getLocales} from 'expo-localization';
 import {useTranslation} from 'react-i18next';
 import {ZoomableView} from './ZoomableView';
@@ -58,6 +58,8 @@ import {ThemeSuggestion} from './ThemeSuggestion';
 import {FileChangedBanner} from './FileChangedBanner';
 
 const isIOS = Platform.OS === 'ios';
+// nitro-markdown only loads http(s) images by default; keep embedded data: images working
+const IMAGE_OPTIONS = {allowedProtocols: ['http:', 'https:', 'data:']};
 
 function MenuIcon({name, fallback, color}: {name: SFSymbol; fallback: string; color?: string}) {
   if (isIOS) {
@@ -749,7 +751,7 @@ export function ViewerScreen() {
 
   const astTransformFn = React.useMemo(() => {
     const locale = getLocales()[0]?.languageCode ?? 'en';
-    return composeTransforms(quoteCycleTransform, definitionListTransform, footnoteTransform, insMarkTransform, createTypographicTransform(locale), emoticonTransform, abbreviationTransform, subSuperscriptTransform, tableBrTransform);
+    return createViewerTransform(locale);
   }, []);
 
   const activeConfig: ThemeConfig = (frontMatterThemeApplied && frontMatterTheme)
@@ -764,10 +766,10 @@ export function ViewerScreen() {
     : undefined;
 
   const customRenderers = React.useMemo(() => ({
-    image: ({url, alt, title, Renderer: R}: EnhancedRendererProps) => {
+    image: ({url, alt, title}: EnhancedRendererProps) => {
       return (
         <Pressable onLongPress={() => handleImageLongPress(url ?? '')} style={{flex: 1, minWidth: 120}}>
-          <MarkdownImage url={url ?? ''} alt={alt} title={title} Renderer={R} />
+          <MarkdownImage url={url ?? ''} alt={alt} title={title} />
         </Pressable>
       );
     },
@@ -823,11 +825,6 @@ export function ViewerScreen() {
         </View>
       );
     } : undefined,
-    quote_cycle: ({node, Renderer}: EnhancedRendererProps) => {
-      const quotes = node.children?.filter((c: MarkdownNode) => c.type === 'blockquote') ?? [];
-      if (quotes.length === 0) return null;
-      return <QuoteCycler quotes={quotes} Renderer={Renderer} />;
-    },
     text: highlightText ? ({node}: {node: {content?: string}}) => {
       const content = node.content || '';
       return <HighlightedText content={content} highlight={highlightText} style={{color: theme.colors.text}} />;
@@ -984,40 +981,34 @@ export function ViewerScreen() {
 
       return undefined;
     },
-    ins: ({children}: EnhancedRendererProps) => {
-      return (
-        <Text style={{textDecorationLine: 'underline'}}>
-          {children}
-        </Text>
-      );
+    ...mathRenderers,
+    // Custom nodes from astTransforms (see customNode); real HTML falls through to the default renderer
+    html_inline: ({node, children}: EnhancedRendererProps) => {
+      switch (customNodeKind(node)) {
+        case 'ins':
+          return <Text style={{textDecorationLine: 'underline'}}>{children}</Text>;
+        case 'mark':
+          return <Text style={{backgroundColor: 'rgba(255, 255, 0, 0.3)'}}>{children}</Text>;
+        default:
+          return undefined;
+      }
     },
-    mark: ({children}: EnhancedRendererProps) => {
-      return (
-        <Text style={{backgroundColor: 'rgba(255, 255, 0, 0.3)'}}>
-          {children}
-        </Text>
-      );
-    },
-    dl: ({children}: EnhancedRendererProps) => {
-      return (
-        <View style={{marginVertical: 8}}>
-          {children}
-        </View>
-      );
-    },
-    dt: ({children}: EnhancedRendererProps) => {
-      return (
-        <Text style={{fontWeight: 'bold', color: theme.colors.text, marginTop: 8}}>
-          {children}
-        </Text>
-      );
-    },
-    dd: ({children}: EnhancedRendererProps) => {
-      return (
-        <View style={{paddingLeft: 24, marginTop: 2}}>
-          {children}
-        </View>
-      );
+    html_block: ({node, children, Renderer}: EnhancedRendererProps) => {
+      switch (customNodeKind(node)) {
+        case 'quote_cycle': {
+          const quotes = node.children?.filter((c: MarkdownNode) => c.type === 'blockquote') ?? [];
+          if (quotes.length === 0) return null;
+          return <QuoteCycler quotes={quotes} Renderer={Renderer} />;
+        }
+        case 'dl':
+          return <View style={{marginVertical: 8}}>{children}</View>;
+        case 'dt':
+          return <Text style={{fontWeight: 'bold', color: theme.colors.text, marginTop: 8}}>{children}</Text>;
+        case 'dd':
+          return <View style={{paddingLeft: 24, marginTop: 2}}>{children}</View>;
+        default:
+          return undefined;
+      }
     },
   }), [highlightText, theme.colors.text, theme.colors.link, theme.colors.border, setIsMenuVisible, setIsMenuOpen, showFrontMatter, setShowFrontMatter, setScrollToPercent, navigation, toggleDarkMode, cycleTheme, colorMode, themeName, rendererConfig, openFilePicker, openSearch, headingRefsMap, scrollToAnchor, handleImageLongPress, handleLinkPress, setFileName, setMarkdownContent, t]);
 
@@ -1062,6 +1053,7 @@ export function ViewerScreen() {
                 <Markdown
                   theme={theme}
                   options={{gfm: true, math: true}}
+                  imageOptions={IMAGE_OPTIONS}
                   astTransform={astTransformFn}
                   renderers={customRenderers}
                   onParseComplete={handleParseComplete}
