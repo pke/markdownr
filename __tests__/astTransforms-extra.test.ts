@@ -12,6 +12,7 @@ import {
   footnoteTransform,
   tableBrTransform,
   TABLE_BR_PLACEHOLDER,
+  createViewerTransform,
 } from '../astTransforms';
 import {emojiData} from '../emojiData';
 
@@ -236,5 +237,17 @@ describe('tableBrTransform', () => {
     const ast = doc(para(text(`a${TABLE_BR_PLACEHOLDER}b`)));
     tableBrTransform(ast as any);
     expect((ast as any).children[0].children[0].content).toBe(`a${TABLE_BR_PLACEHOLDER}b`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('math nodes', () => {
+  // nitro-markdown renders math from the node's text children, so the text
+  // transforms must leave LaTeX alone (x^2^ would otherwise become superscript).
+  it.each(['math_inline', 'math_block'])('leaves %s content untouched', (type) => {
+    const latex = 'a^2 + b^2 = c^2 -- "x" ++y++ ==z== :-)';
+    const ast = doc(para({type, children: [text(latex)]}));
+    const result: any = createViewerTransform('en')(ast as any);
+    expect(result.children[0].children[0]).toEqual({type, children: [text(latex)]});
   });
 });
