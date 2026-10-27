@@ -142,6 +142,7 @@ export default {
       // folder-picker and file-picker are full Expo modules (podspec +
       // android/build.gradle) picked up by autolinking — no config plugin.
       './modules/android-release/plugin.js',
+      './modules/ios-pod-deployment-target/plugin.js',
       ...(WITH_UITESTS ? ['./modules/ui-tests/plugin.js'] : []),
     ],
   },
