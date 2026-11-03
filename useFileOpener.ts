@@ -58,10 +58,12 @@ export function buildFolderIndex(files: FolderFile[], folderName: string, baseUr
   return {content: lines.join('\n'), uri: baseUri};
 }
 
+type OpenFile = (content: string, name: string | null, uri: string, source?: FileSource | null) => void;
+
 /**
  * Open a folder result: auto-open first numerically named file, or show index.
  */
-function openFolderResult(result: FolderResult, openFile: (content: string, name: string | null, uri: string) => void) {
+export function openFolderResult(result: FolderResult, openFile: OpenFile) {
   const sorted = sortFiles(result.files);
   if (sorted.length === 0) return;
 
@@ -76,12 +78,16 @@ function openFolderResult(result: FolderResult, openFile: (content: string, name
     readAndOpen(sorted[0].uri, sorted[0].name, openFile);
   } else {
     // No obvious entry point — show a file browser as markdown
+    // The uri is only the base for resolving the index's relative links. The
+    // index is generated, so there is no source to watch (null, not derived
+    // from the uri: that would watch the first file and Reload would replace
+    // the index with it).
     const {content, uri} = buildFolderIndex(sorted, result.folderName, sorted[0].uri);
-    openFile(content, null, uri);
+    openFile(content, null, uri, null);
   }
 }
 
-async function readAndOpen(uri: string, name: string, openFile: (content: string, name: string | null, uri: string) => void) {
+async function readAndOpen(uri: string, name: string, openFile: OpenFile) {
   try {
     const content = await new File(uri).text();
     openFile(content, name, uri);
@@ -112,7 +118,7 @@ export function useFolderOpener(onOpen?: () => void) {
  * Returns true if restored successfully.
  */
 export async function tryRestoreFolder(
-  openFile: (content: string, name: string | null, uri: string) => void
+  openFile: OpenFile
 ): Promise<boolean> {
   const folderUri = Storage.getString(StorageKeys.LAST_FOLDER_URI);
   if (!folderUri) return false;
