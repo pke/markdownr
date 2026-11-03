@@ -1,5 +1,5 @@
-import {describe, it, expect} from 'vitest';
-import {sortFiles, buildFolderIndex} from '../useFileOpener';
+import {describe, it, expect, vi} from 'vitest';
+import {sortFiles, buildFolderIndex, openFolderResult} from '../useFileOpener';
 
 const f = (name: string, relativePath = name) => ({name, uri: `file:///${relativePath}`, relativePath});
 
@@ -51,5 +51,21 @@ describe('buildFolderIndex', () => {
   it('handles an empty folder', () => {
     const result = buildFolderIndex([], 'Empty', 'file:///base/');
     expect(result.content).toBe('# Empty\n');
+  });
+});
+
+describe('openFolderResult', () => {
+  it('opens the generated index with no source to watch', () => {
+    const openFile = vi.fn();
+    openFolderResult(
+      {folderUri: 'file:///folder', folderName: 'Notes', files: [f('b.md'), f('a.md')]},
+      openFile,
+    );
+    expect(openFile).toHaveBeenCalledTimes(1);
+    const [content, name, uri, source] = openFile.mock.calls[0];
+    expect(content).toContain('# Notes');
+    expect(name).toBeNull();
+    expect(uri).toBe('file:///a.md');
+    expect(source).toBeNull();
   });
 });

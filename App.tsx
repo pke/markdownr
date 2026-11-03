@@ -114,7 +114,9 @@ export default function App() {
 
   const openFile = useCallback((content: string, name: string | null, fileUri?: string | null, sourceOverride?: FileSource | null) => {
     const uri = fileUri ?? null;
-    const source = sourceOverride ?? sourceForUri(uri);
+    // undefined: derive the source from the uri; null: nothing to watch
+    // (generated content such as a folder index).
+    const source = sourceOverride !== undefined ? sourceOverride : sourceForUri(uri);
     addRecentFile(content, name, source ?? undefined);
     setMarkdownContent(content);
     setFileName(name);
