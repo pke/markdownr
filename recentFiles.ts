@@ -1,7 +1,7 @@
 import {File, Directory, Paths} from 'expo-file-system/next';
 import {Storage, StorageKeys} from './settings';
 import {parseFrontMatter} from './frontmatter';
-import {readFileSource, type FileSource} from './fileChangeDetection';
+import {readFileSource, sourceForUri, type FileSource} from './fileChangeDetection';
 
 const MAX_RECENT_FILES = 10;
 const recentFilesDir = new Directory(Paths.cache, 'recent-files');
@@ -135,6 +135,38 @@ export async function openRecentEntry(
   if (cached == null) return false;
   openFile(cached, entry.subtitle, entry.source?.uri ?? null, entry.source ?? null);
   return true;
+}
+
+/**
+ * The live source to watch after a launch restore of `entry`. Entries carry
+ * their own source; only entries written before that field existed fall back
+ * to the persisted last-file source, and only when it points at a file with
+ * the entry's name, so a stale LAST_FILE_SOURCE (the last-opened file was
+ * deleted from recents) is never paired with another file's cache copy.
+ */
+export function restoreSourceFor(entry: RecentFileEntry): FileSource | null {
+  if (entry.source) return entry.source;
+  const persisted = persistedLastSource();
+  return persisted && uriNamesFile(persisted.uri, entry.subtitle) ? persisted : null;
+}
+
+function persistedLastSource(): FileSource | null {
+  const json = Storage.getString(StorageKeys.LAST_FILE_SOURCE);
+  if (json) {
+    try {
+      const parsed = JSON.parse(json) as FileSource;
+      if (parsed?.uri && parsed?.kind) return parsed;
+    } catch {
+      // fall through to URI-derived source
+    }
+  }
+  return sourceForUri(Storage.getString(StorageKeys.LAST_FILE_URI) || null);
+}
+
+function uriNamesFile(uri: string, fileName: string): boolean {
+  let path = uri;
+  try { path = decodeURIComponent(uri); } catch { /* keep the raw uri */ }
+  return path === fileName || path.endsWith(`/${fileName}`) || path.endsWith(`:${fileName}`);
 }
 
 /** Modification time of a recents cache copy — the "when we last read it"

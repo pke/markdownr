@@ -10,11 +10,13 @@ import * as Linking from 'expo-linking';
 import './i18n'; // initialize i18next before any screen renders
 import {openDeepLink} from './deepLink';
 import {
-  createChangeTracker, readFileSource, reloadFromSource, type FileSource,
+  createChangeTracker, readFileSource, reloadFromSource, sourceForUri, type FileSource,
 } from './fileChangeDetection';
 import {getWelcomeMarkdown} from './example';
 import {Settings, SettingsKeys, Storage, StorageKeys, addSettingsListener} from './settings';
-import {addRecentFile, getRecentFiles, loadRecentFile, clearAllRecentFiles, getCachedFileMtime} from './recentFiles';
+import {
+  addRecentFile, getRecentFiles, loadRecentFile, clearAllRecentFiles, getCachedFileMtime, restoreSourceFor,
+} from './recentFiles';
 import {MarkdownContext, type SearchMatch, type TocHeading} from './MarkdownContext';
 import {customThemes, themeNames, type ThemeName, type ThemeConfig} from './themes';
 import {ViewerScreen} from './ViewerScreen';
@@ -26,28 +28,6 @@ import {ErrorBoundary} from './ErrorBoundary';
 const Stack = createNativeStackNavigator();
 const Drawer = createDrawerNavigator();
 const navigationRef = createNavigationContainerRef();
-
-/** Classify a viewer URI for external-change detection. */
-function sourceForUri(uri: string | null): FileSource | null {
-  if (uri?.startsWith('file://')) return {uri, kind: 'file'};
-  if (uri?.startsWith('content://')) return {uri, kind: 'content'};
-  return null;
-}
-
-/** Rehydrate the persisted source descriptor (falls back to deriving one from
- * the last file URI, e.g. for state written before Phase 2). */
-function restorePersistedSource(): FileSource | null {
-  const json = Storage.getString(StorageKeys.LAST_FILE_SOURCE);
-  if (json) {
-    try {
-      const parsed = JSON.parse(json) as FileSource;
-      if (parsed?.uri && parsed?.kind) return parsed;
-    } catch {
-      // fall through to URI-derived source
-    }
-  }
-  return sourceForUri(Storage.getString(StorageKeys.LAST_FILE_URI) || null);
-}
 
 export default function App() {
   const systemColorScheme = useColorScheme();
@@ -191,14 +171,15 @@ export default function App() {
         if (!openedViaDeepLink.current && initialRecent) {
           loadRecentFile(initialRecent).then((content) => {
             if (content) {
+              const source = restoreSourceFor(initialRecent);
               setMarkdownContent(content);
+              setCurrentFileUri(source?.uri ?? null);
               // The displayed snapshot is the recents cache copy; its mtime is
               // the baseline. An edit made while the app was quit is offered
-              // for reload right away.
-              changeTrackerRef.current.track(
-                restorePersistedSource(),
-                getCachedFileMtime(initialRecent.id),
-              );
+              // for reload right away. The source must be this entry's own:
+              // the last-opened file can be a different one (e.g. after it was
+              // deleted from recents).
+              changeTrackerRef.current.track(source, getCachedFileMtime(initialRecent.id));
               runExternalChangeCheck();
             } else {
               // Cached file was purged — fall back to welcome screen

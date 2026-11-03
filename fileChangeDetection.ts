@@ -18,6 +18,13 @@ export type FileSource = {
   ref?: string;
 };
 
+/** Classify a viewer URI for external-change detection. */
+export function sourceForUri(uri: string | null): FileSource | null {
+  if (uri?.startsWith('file://')) return {uri, kind: 'file'};
+  if (uri?.startsWith('content://')) return {uri, kind: 'content'};
+  return null;
+}
+
 export type ChangeStatus = 'changed' | 'unchanged' | 'unknown';
 
 export type ChangeCheck = {
