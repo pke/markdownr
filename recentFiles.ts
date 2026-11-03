@@ -1,7 +1,7 @@
 import {File, Directory, Paths} from 'expo-file-system/next';
 import {Storage, StorageKeys} from './settings';
 import {parseFrontMatter} from './frontmatter';
-import type {FileSource} from './fileChangeDetection';
+import {readFileSource, type FileSource} from './fileChangeDetection';
 
 const MAX_RECENT_FILES = 10;
 const recentFilesDir = new Directory(Paths.cache, 'recent-files');
@@ -107,6 +107,34 @@ export async function loadRecentFile(entry: RecentFileEntry): Promise<string | n
   } catch {
     return null;
   }
+}
+
+/**
+ * Open a recents entry: prefer the live source (fresher than the cache copy,
+ * and it keeps the file watchable), fall back to the cache copy when the
+ * source is unreachable. The fallback still hands the entry's source to
+ * openFile, so one failed live read (iCloud file not downloaded, provider
+ * offline) doesn't strip the source from the entry for good. Returns false
+ * when neither the source nor the cache copy can be read.
+ */
+export async function openRecentEntry(
+  entry: RecentFileEntry,
+  openFile: (content: string, name: string | null, uri: string | null, source: FileSource | null) => void,
+  readLive: (source: FileSource) => Promise<string> = readFileSource,
+): Promise<boolean> {
+  if (entry.source) {
+    try {
+      const content = await readLive(entry.source);
+      openFile(content, entry.subtitle, entry.source.uri, entry.source);
+      return true;
+    } catch {
+      // scope expired / file moved / not downloaded: cached copy below
+    }
+  }
+  const cached = await loadRecentFile(entry);
+  if (cached == null) return false;
+  openFile(cached, entry.subtitle, entry.source?.uri ?? null, entry.source ?? null);
+  return true;
 }
 
 /** Modification time of a recents cache copy — the "when we last read it"
