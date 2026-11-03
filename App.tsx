@@ -10,8 +10,7 @@ import * as Linking from 'expo-linking';
 import './i18n'; // initialize i18next before any screen renders
 import {openDeepLink} from './deepLink';
 import {
-  checkForExternalChange, shouldShowBanner, statFileSource, readFileSource,
-  reloadFromSource, type FileSource,
+  createChangeTracker, readFileSource, reloadFromSource, type FileSource,
 } from './fileChangeDetection';
 import {getWelcomeMarkdown} from './example';
 import {Settings, SettingsKeys, Storage, StorageKeys, addSettingsListener} from './settings';
@@ -129,11 +128,8 @@ export default function App() {
 
   // --- External-change detection (see docs/superpowers/specs/2026-07-13-…) ---
   // Baseline = mtime of the displayed snapshot; a newer source mtime on app
-  // focus offers a reload. Refs, not state: only the banner visibility renders.
-  const currentSourceRef = useRef<FileSource | null>(null);
-  const baselineMtimeRef = useRef<number | null>(null);
-  const dismissedMtimeRef = useRef<number | null>(null);
-  const pendingMtimeRef = useRef<number | null>(null);
+  // focus offers a reload. A ref, not state: only the banner visibility renders.
+  const changeTrackerRef = useRef(createChangeTracker());
   const [externalChangeDetected, setExternalChangeDetected] = useState(false);
 
   const openFile = useCallback((content: string, name: string | null, fileUri?: string | null, sourceOverride?: FileSource | null) => {
@@ -146,15 +142,8 @@ export default function App() {
     Storage.setString(StorageKeys.LAST_FILE_URI, uri ?? '');
     Storage.setString(StorageKeys.LAST_FILE_SOURCE, source ? JSON.stringify(source) : '');
 
-    currentSourceRef.current = source;
-    baselineMtimeRef.current = null;
-    dismissedMtimeRef.current = null;
-    pendingMtimeRef.current = null;
+    changeTrackerRef.current.track(source);
     setExternalChangeDetected(false);
-    if (source) {
-      // Fire-and-forget: mtime of the file we just read is the new baseline.
-      statFileSource(source).then(m => { baselineMtimeRef.current = m; }).catch(() => {});
-    }
   }, []);
 
   const openedViaDeepLink = useRef(false);
@@ -174,11 +163,7 @@ export default function App() {
   );
 
   const runExternalChangeCheck = useCallback(async () => {
-    const check = await checkForExternalChange(currentSourceRef.current, baselineMtimeRef.current);
-    if (shouldShowBanner(check, dismissedMtimeRef.current)) {
-      pendingMtimeRef.current = check.sourceMtime;
-      setExternalChangeDetected(true);
-    }
+    if (await changeTrackerRef.current.check()) setExternalChangeDetected(true);
   }, []);
 
   useEffect(() => {
@@ -189,12 +174,12 @@ export default function App() {
   }, [runExternalChangeCheck]);
 
   const dismissExternalChange = useCallback(() => {
-    dismissedMtimeRef.current = pendingMtimeRef.current;
+    changeTrackerRef.current.dismiss();
     setExternalChangeDetected(false);
   }, []);
 
   const reloadCurrentFile = useCallback(async () => {
-    const source = currentSourceRef.current;
+    const source = changeTrackerRef.current.source;
     if (!source) { setExternalChangeDetected(false); return; }
     const ok = await reloadFromSource(source, fileName, openFile, readFileSource);
     if (!ok) dismissExternalChange(); // read failed: keep content, stop nagging
@@ -210,8 +195,10 @@ export default function App() {
               // The displayed snapshot is the recents cache copy; its mtime is
               // the baseline. An edit made while the app was quit is offered
               // for reload right away.
-              currentSourceRef.current = restorePersistedSource();
-              baselineMtimeRef.current = getCachedFileMtime(initialRecent.id);
+              changeTrackerRef.current.track(
+                restorePersistedSource(),
+                getCachedFileMtime(initialRecent.id),
+              );
               runExternalChangeCheck();
             } else {
               // Cached file was purged — fall back to welcome screen

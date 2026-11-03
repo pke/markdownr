@@ -106,3 +106,64 @@ export async function reloadFromSource(
   openFile(content, fileName, source.uri, source);
   return true;
 }
+
+export type ChangeTracker = {
+  /** The source of the snapshot being displayed. */
+  readonly source: FileSource | null;
+  /**
+   * Start tracking a newly displayed snapshot. Without a baseline (fresh read)
+   * the source is statted and its mtime becomes the baseline; pass one for a
+   * snapshot read earlier (launch restore: the recents cache copy's mtime).
+   */
+  track(source: FileSource | null, baselineMtime?: number | null): void;
+  /** True when the banner should be offered for the tracked snapshot. */
+  check(): Promise<boolean>;
+  /** Remember the offered change so it doesn't re-nag. */
+  dismiss(): void;
+};
+
+/**
+ * Holds the detection state for the displayed file. Every `track` starts a
+ * new generation, and async results (the baseline stat, a focus check) that
+ * finish after the displayed file changed are dropped. Otherwise a slow stat
+ * of the previous file sets the new file's baseline, or a focus check that was
+ * in flight when "Open in…" delivered a new file shows the banner on it.
+ */
+export function createChangeTracker(
+  statFn: (s: FileSource) => Promise<number | null> = statFileSource,
+): ChangeTracker {
+  let source: FileSource | null = null;
+  let baseline: number | null = null;
+  let dismissed: number | null = null;
+  let pending: number | null = null;
+  let generation = 0;
+
+  return {
+    get source() {
+      return source;
+    },
+    track(next, baselineMtime) {
+      generation++;
+      source = next;
+      baseline = baselineMtime ?? null;
+      dismissed = null;
+      pending = null;
+      if (next && baselineMtime === undefined) {
+        const gen = generation;
+        statFn(next)
+          .then(m => { if (gen === generation) baseline = m && m > 0 ? m : null; })
+          .catch(() => {});
+      }
+    },
+    async check() {
+      const gen = generation;
+      const result = await checkForExternalChange(source, baseline, statFn);
+      if (gen !== generation || !shouldShowBanner(result, dismissed)) return false;
+      pending = result.sourceMtime;
+      return true;
+    },
+    dismiss() {
+      dismissed = pending;
+    },
+  };
+}
