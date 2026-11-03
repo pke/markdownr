@@ -8,7 +8,7 @@ import {useTranslation} from 'react-i18next';
 import {MarkdownContext} from './MarkdownContext';
 import {getAboutMarkdown} from './about';
 import {ThemeSuggestion} from './ThemeSuggestion';
-import {getRecentFiles, loadRecentFile, type RecentFileEntry} from './recentFiles';
+import {getRecentFiles, openRecentEntry, type RecentFileEntry} from './recentFiles';
 
 export function TocDrawerContent({navigation}: DrawerContentComponentProps) {
   const {t} = useTranslation();
@@ -28,10 +28,9 @@ export function TocDrawerContent({navigation}: DrawerContentComponentProps) {
   };
 
   const handleOpenRecentFile = useCallback(async (entry: RecentFileEntry) => {
-    const content = await loadRecentFile(entry);
-    if (content) {
-      openFile(content, entry.subtitle);
-    }
+    // Same path as the recents screen: live source first, cache copy as a
+    // fallback, and the entry keeps its source either way.
+    await openRecentEntry(entry, openFile);
     navigation.closeDrawer();
   }, [openFile, navigation]);
 
