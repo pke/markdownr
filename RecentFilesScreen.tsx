@@ -15,8 +15,7 @@ import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import {MarkdownContext} from './MarkdownContext';
-import {getRecentFiles, loadRecentFile, deleteRecentFile, clearAllRecentFiles, type RecentFileEntry} from './recentFiles';
-import {readFileSource} from './fileChangeDetection';
+import {getRecentFiles, openRecentEntry, deleteRecentFile, clearAllRecentFiles, type RecentFileEntry} from './recentFiles';
 
 export function RecentFilesScreen() {
   const {t} = useTranslation();
@@ -35,22 +34,7 @@ export function RecentFilesScreen() {
   }, []);
 
   const handleOpenRecentFile = useCallback(async (entry: RecentFileEntry) => {
-    // Prefer the live source (fresher than our cache copy, and it keeps the
-    // file watchable); fall back to the cache when unreachable.
-    if (entry.source) {
-      try {
-        const content = await readFileSource(entry.source);
-        openFile(content, entry.subtitle, entry.source.uri, entry.source);
-        navigation.goBack();
-        return;
-      } catch {
-        // scope expired / file moved — cached copy below
-      }
-    }
-
-    const content = await loadRecentFile(entry);
-    if (content) {
-      openFile(content, entry.subtitle);
+    if (await openRecentEntry(entry, openFile)) {
       navigation.goBack();
     } else {
       Alert.alert(t('recentFiles.unavailableTitle'), t('recentFiles.unavailableMessage'));
