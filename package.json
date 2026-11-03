@@ -1,6 +1,6 @@
 {
   "name": "markdownrexpo",
-  "version": "1.15.3",
+  "version": "1.15.4",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",

@@ -4,6 +4,7 @@ import {
   shouldShowBanner,
   statFileSource,
   reloadFromSource,
+  createChangeTracker,
   type FileSource,
 } from '../fileChangeDetection';
 import {__setMtime, __clearMtimes} from './mocks/expo-file-system-next';
@@ -129,5 +130,65 @@ describe('reloadFromSource', () => {
     const openFile = vi.fn();
     expect(await reloadFromSource(src(), 'a.md', openFile, read)).toBe(false);
     expect(openFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('createChangeTracker', () => {
+  const a = src('file:///docs/a.md');
+  const b = src('file:///docs/b.md');
+  const deferred = () => {
+    let resolve!: (v: number | null) => void;
+    const promise = new Promise<number | null>(r => { resolve = r; });
+    return {promise, resolve};
+  };
+  const flush = () => new Promise(r => setTimeout(r, 0));
+
+  it('uses the fresh stat as baseline and offers a newer edit once', async () => {
+    const mtimes: Record<string, number> = {[a.uri]: 100};
+    const tracker = createChangeTracker(async s => mtimes[s.uri] ?? null);
+    tracker.track(a);
+    await flush();
+    expect(await tracker.check()).toBe(false);
+    mtimes[a.uri] = 200;
+    expect(await tracker.check()).toBe(true);
+    tracker.dismiss();
+    expect(await tracker.check()).toBe(false);
+  });
+
+  it('uses a given baseline without statting (launch restore)', async () => {
+    const stat = vi.fn().mockResolvedValue(500);
+    const tracker = createChangeTracker(stat);
+    tracker.track(a, 300);
+    expect(await tracker.check()).toBe(true);
+    expect(stat).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a previous file's late baseline stat", async () => {
+    const statA = deferred();
+    const stat = vi.fn((s: FileSource) => (s.uri === a.uri ? statA.promise : Promise.resolve(100)));
+    const tracker = createChangeTracker(stat);
+    tracker.track(a);
+    tracker.track(b);
+    await flush(); // b's baseline = 100
+    statA.resolve(50); // a's stat lands late; must not become b's baseline
+    await flush();
+    expect(await tracker.check()).toBe(false);
+  });
+
+  it('drops a focus check that finishes after another file was opened', async () => {
+    const mtimes: Record<string, number> = {[a.uri]: 100, [b.uri]: 100};
+    const pending = deferred();
+    let hold = false;
+    const tracker = createChangeTracker(s => (hold && s.uri === a.uri ? pending.promise : Promise.resolve(mtimes[s.uri])));
+    tracker.track(a);
+    await flush();
+    hold = true;
+    const check = tracker.check(); // in flight for a
+    tracker.track(b); // "Open in…" delivers b
+    pending.resolve(999); // a changed, but a is no longer displayed
+    expect(await check).toBe(false);
+    hold = false;
+    await flush();
+    expect(await tracker.check()).toBe(false);
   });
 });
