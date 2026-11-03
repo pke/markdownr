@@ -113,7 +113,15 @@ describe('reloadFromSource', () => {
     const ok = await reloadFromSource(src(), 'a.md', openFile, read);
     expect(ok).toBe(true);
     expect(read).toHaveBeenCalledWith(src());
-    expect(openFile).toHaveBeenCalledWith('# New', 'a.md', 'file:///docs/a.md');
+    expect(openFile).toHaveBeenCalledWith('# New', 'a.md', 'file:///docs/a.md', src());
+  });
+
+  it('keeps a bookmark source intact so the reloaded file stays watchable', async () => {
+    const bookmark: FileSource = {uri: 'file:///private/var/Docs/a.md', kind: 'bookmark', ref: 'key-1'};
+    const read = vi.fn().mockResolvedValue('# New');
+    const openFile = vi.fn();
+    await reloadFromSource(bookmark, 'a.md', openFile, read);
+    expect(openFile).toHaveBeenCalledWith('# New', 'a.md', bookmark.uri, bookmark);
   });
 
   it('returns false and does not open when the read fails', async () => {

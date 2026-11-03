@@ -86,13 +86,15 @@ export function shouldShowBanner(check: ChangeCheck, dismissedMtime: number | nu
 
 /**
  * Re-read the source and hand it back through openFile (which refreshes the
- * recents cache and baseline). Returns false when the read fails — the caller
+ * recents cache and baseline). The source itself is passed along so picked
+ * files keep their kind and ref: deriving it from the uri again would turn an
+ * iOS bookmark into a plain file:// source that can no longer be read. Returns false when the read fails — the caller
  * keeps the current content and marks the change dismissed.
  */
 export async function reloadFromSource(
   source: FileSource,
   fileName: string | null,
-  openFile: (content: string, name: string | null, uri: string) => void,
+  openFile: (content: string, name: string | null, uri: string, source: FileSource) => void,
   readFn: (s: FileSource) => Promise<string> = readFileSource,
 ): Promise<boolean> {
   let content: string;
@@ -101,6 +103,6 @@ export async function reloadFromSource(
   } catch {
     return false;
   }
-  openFile(content, fileName, source.uri);
+  openFile(content, fileName, source.uri, source);
   return true;
 }
