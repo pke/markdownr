@@ -1,8 +1,9 @@
-Your files just got a sixth sense!
+Fresh engine, sharper senses!
 
-• Markdownr now notices when an open file is changed by another app — a friendly banner offers to reload it, so you never read stale notes again
-• Reloading drops you right back where you were reading
-• Files you open stay live: edit them anywhere, Markdownr keeps up
-• Recent files now open their freshest version, not yesterday's copy
+• A brand-new Markdown engine under the bonnet: same pages you love, now on a faster, more modern foundation
+• Formulas behave: maths like a² + b² = c² no longer gets its superscripts scrambled
+• Change detection now keeps watching after you reload, so the "file changed" banner turns up every time, not just the first
+• Files opened from the recents list or the side menu stay live, even when iCloud is having a slow day
+• No more phantom banners when you hop quickly between files
 
 Happy reading!

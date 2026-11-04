@@ -1,8 +1,9 @@
-Deine Dateien haben jetzt einen sechsten Sinn!
+Neuer Motor, schärfere Sinne!
 
-• Markdownr merkt, wenn eine geöffnete Datei von einer anderen App geändert wurde — ein freundlicher Banner bietet an, sie neu zu laden. Nie wieder veraltete Notizen!
-• Nach dem Neuladen landest du genau dort, wo du gerade gelesen hast
-• Geöffnete Dateien bleiben aktuell: bearbeite sie, wo du willst — Markdownr bleibt auf dem Laufenden
-• Zuletzt geöffnete Dateien zeigen jetzt die frischeste Version, nicht die Kopie von gestern
+• Eine brandneue Markdown-Engine unter der Haube: dieselben Seiten, die du liebst, jetzt auf einem schnelleren, moderneren Fundament
+• Formeln benehmen sich: Bei a² + b² = c² geraten die Hochzahlen nicht mehr durcheinander
+• Die Änderungserkennung bleibt auch nach dem Neuladen wach – der Hinweis „Datei geändert“ erscheint jedes Mal, nicht nur beim ersten Mal
+• Dateien aus der Verlaufsliste oder dem Seitenmenü bleiben aktuell, selbst wenn iCloud gerade trödelt
+• Keine Phantom-Hinweise mehr, wenn du schnell zwischen Dateien wechselst
 
 Viel Freude beim Lesen!
