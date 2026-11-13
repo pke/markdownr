@@ -1,8 +1,8 @@
-# Packs data/emoji.txt and data/entities.txt into data/tables.bin with the
+# Packs data/emoji.txt, data/entities.txt and data/math.txt into data/tables.bin with the
 # Windows Compression API (cabinet.dll). The app unpacks it with the same
 # OS DLL at runtime, so no decompressor code ends up in the exe.
 # Format: 4-byte little-endian unpacked size, then the compressed stream of
-#   emoji.txt + "\0" + entities.txt
+#   emoji.txt + "\0" + entities.txt + "\0" + math.txt
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 Add-Type -TypeDefinition @'
@@ -19,7 +19,7 @@ public static class CabPack {
   }
 }
 '@
-$raw = [IO.File]::ReadAllBytes("$root\data\emoji.txt") + [byte[]](0) + [IO.File]::ReadAllBytes("$root\data\entities.txt")
+$raw = [IO.File]::ReadAllBytes("$root\data\emoji.txt") + [byte[]](0) + [IO.File]::ReadAllBytes("$root\data\entities.txt") + [byte[]](0) + [IO.File]::ReadAllBytes("$root\data\math.txt")
 $packed = [CabPack]::Pack(5, $raw)   # 5 = COMPRESS_ALGORITHM_LZMS
 [IO.File]::WriteAllBytes("$root\data\tables.bin", [BitConverter]::GetBytes([uint32]$raw.Length) + $packed)
 "tables.bin: $($raw.Length) -> $($packed.Length + 4) bytes"

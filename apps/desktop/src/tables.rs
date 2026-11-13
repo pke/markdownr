@@ -1,25 +1,32 @@
-//! Emoji and HTML entity tables. On Windows they ship LZMS-compressed
-//! (`data/tables.bin`, built by `scripts/pack-data.ps1`) and are unpacked once
-//! with the OS's own cabinet.dll, so the exe carries no decompressor.
+//! Emoji, HTML entity and LaTeX symbol tables. On Windows they ship
+//! LZMS-compressed (`data/tables.bin`, built by `scripts/pack-data.ps1`) and
+//! are unpacked once with the OS's own cabinet.dll, so the exe carries no
+//! decompressor.
 
 use std::sync::OnceLock;
 
-static TABLES: OnceLock<(&'static str, &'static str)> = OnceLock::new();
+static TABLES: OnceLock<[&'static str; 3]> = OnceLock::new();
 
 /// Packed `\n name \t emoji \n` lines.
 pub fn emoji() -> &'static str {
-    tables().0
+    tables()[0]
 }
 
 /// Packed `\n name \t value \n` lines of HTML entities (for pulldown-cmark).
 pub fn entities() -> &'static str {
-    tables().1
+    tables()[1]
 }
 
-fn tables() -> &'static (&'static str, &'static str) {
+/// Packed `\n tag name \t char flag \n` lines of LaTeX symbols (math::symbols).
+pub fn math() -> &'static str {
+    tables()[2]
+}
+
+fn tables() -> &'static [&'static str; 3] {
     TABLES.get_or_init(|| {
         let all: &'static str = Box::leak(unpack().into_boxed_str());
-        all.split_once('\0').unwrap_or((all, ""))
+        let mut parts = all.split('\0');
+        [(); 3].map(|_| parts.next().unwrap_or(""))
     })
 }
 
@@ -53,7 +60,7 @@ fn unpack() -> String {
 
 #[cfg(not(windows))]
 fn unpack() -> String {
-    [include_str!("../data/emoji.txt"), "\0", include_str!("../data/entities.txt")].concat()
+    [include_str!("../data/emoji.txt"), "\0", include_str!("../data/entities.txt"), "\0", include_str!("../data/math.txt")].concat()
 }
 
 #[cfg(test)]
@@ -62,5 +69,6 @@ mod tests {
     fn unpacks() {
         assert!(super::emoji().contains("\nheart_eyes\t😍\n"));
         assert!(super::entities().contains("\nnbsp\t\u{A0}\n"));
+        assert!(super::math().contains("\ncalpha\tαo\n"));
     }
 }
