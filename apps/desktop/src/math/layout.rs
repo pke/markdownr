@@ -6,7 +6,149 @@
 
 use super::parse::{Class, M};
 use crate::layout::RectF;
-use ttf_parser::{Face, GlyphId};
+use super::otf::Font;
+
+/// Named access to the MathConstants table (only the fields layout uses).
+#[derive(Clone, Copy)]
+struct Constants(Font);
+
+#[rustfmt::skip]
+#[allow(dead_code)]
+impl Constants {
+    fn script_percent_scale_down(&self) -> i16 { self.0.const_i16(0) }
+    fn script_script_percent_scale_down(&self) -> i16 { self.0.const_i16(2) }
+    fn display_operator_min_height(&self) -> u16 { self.0.const_i16(6) as u16 }
+    fn radical_degree_bottom_raise_percent(&self) -> i16 { self.0.const_i16(212) }
+    fn axis_height(&self) -> i16 {
+        self.0.value(1)
+    }
+    fn accent_base_height(&self) -> i16 {
+        self.0.value(2)
+    }
+    fn subscript_shift_down(&self) -> i16 {
+        self.0.value(4)
+    }
+    fn subscript_top_max(&self) -> i16 {
+        self.0.value(5)
+    }
+    fn subscript_baseline_drop_min(&self) -> i16 {
+        self.0.value(6)
+    }
+    fn superscript_shift_up(&self) -> i16 {
+        self.0.value(7)
+    }
+    fn superscript_shift_up_cramped(&self) -> i16 {
+        self.0.value(8)
+    }
+    fn superscript_bottom_min(&self) -> i16 {
+        self.0.value(9)
+    }
+    fn superscript_baseline_drop_max(&self) -> i16 {
+        self.0.value(10)
+    }
+    fn sub_superscript_gap_min(&self) -> i16 {
+        self.0.value(11)
+    }
+    fn superscript_bottom_max_with_subscript(&self) -> i16 {
+        self.0.value(12)
+    }
+    fn space_after_script(&self) -> i16 {
+        self.0.value(13)
+    }
+    fn upper_limit_gap_min(&self) -> i16 {
+        self.0.value(14)
+    }
+    fn upper_limit_baseline_rise_min(&self) -> i16 {
+        self.0.value(15)
+    }
+    fn lower_limit_gap_min(&self) -> i16 {
+        self.0.value(16)
+    }
+    fn lower_limit_baseline_drop_min(&self) -> i16 {
+        self.0.value(17)
+    }
+    fn stack_top_shift_up(&self) -> i16 {
+        self.0.value(18)
+    }
+    fn stack_top_display_style_shift_up(&self) -> i16 {
+        self.0.value(19)
+    }
+    fn stack_bottom_shift_down(&self) -> i16 {
+        self.0.value(20)
+    }
+    fn stack_bottom_display_style_shift_down(&self) -> i16 {
+        self.0.value(21)
+    }
+    fn stack_gap_min(&self) -> i16 {
+        self.0.value(22)
+    }
+    fn stack_display_style_gap_min(&self) -> i16 {
+        self.0.value(23)
+    }
+    fn fraction_numerator_shift_up(&self) -> i16 {
+        self.0.value(28)
+    }
+    fn fraction_numerator_display_style_shift_up(&self) -> i16 {
+        self.0.value(29)
+    }
+    fn fraction_denominator_shift_down(&self) -> i16 {
+        self.0.value(30)
+    }
+    fn fraction_denominator_display_style_shift_down(&self) -> i16 {
+        self.0.value(31)
+    }
+    fn fraction_numerator_gap_min(&self) -> i16 {
+        self.0.value(32)
+    }
+    fn fraction_num_display_style_gap_min(&self) -> i16 {
+        self.0.value(33)
+    }
+    fn fraction_rule_thickness(&self) -> i16 {
+        self.0.value(34)
+    }
+    fn fraction_denominator_gap_min(&self) -> i16 {
+        self.0.value(35)
+    }
+    fn fraction_denom_display_style_gap_min(&self) -> i16 {
+        self.0.value(36)
+    }
+    fn overbar_vertical_gap(&self) -> i16 {
+        self.0.value(39)
+    }
+    fn overbar_rule_thickness(&self) -> i16 {
+        self.0.value(40)
+    }
+    fn overbar_extra_ascender(&self) -> i16 {
+        self.0.value(41)
+    }
+    fn underbar_vertical_gap(&self) -> i16 {
+        self.0.value(42)
+    }
+    fn underbar_rule_thickness(&self) -> i16 {
+        self.0.value(43)
+    }
+    fn underbar_extra_descender(&self) -> i16 {
+        self.0.value(44)
+    }
+    fn radical_vertical_gap(&self) -> i16 {
+        self.0.value(45)
+    }
+    fn radical_display_style_vertical_gap(&self) -> i16 {
+        self.0.value(46)
+    }
+    fn radical_rule_thickness(&self) -> i16 {
+        self.0.value(47)
+    }
+    fn radical_extra_ascender(&self) -> i16 {
+        self.0.value(48)
+    }
+    fn radical_kern_before_degree(&self) -> i16 {
+        self.0.value(49)
+    }
+    fn radical_kern_after_degree(&self) -> i16 {
+        self.0.value(50)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Item {
@@ -23,18 +165,15 @@ pub struct MathBox {
 }
 
 pub struct MathFont {
-    face: Face<'static>,
+    face: Font,
     upem: f32,
 }
 
 impl MathFont {
-    /// `data` must outlive the program; it is leaked once per process.
-    pub fn new(data: Vec<u8>, index: u32) -> Option<Self> {
-        let data: &'static [u8] = Box::leak(data.into_boxed_slice());
-        let face = Face::parse(data, index).ok()?;
-        face.tables().math?.constants?;
-        let upem = face.units_per_em() as f32;
-        Some(MathFont { face, upem })
+    /// Font file data and face offset (see [`super::otf::faces`]); leaked once per process.
+    pub fn new(data: Vec<u8>, face: usize) -> Option<Self> {
+        let face = Font::new(data, face)?;
+        Some(MathFont { upem: face.upem, face })
     }
 
     pub fn layout(&self, src: &str, size: f32, display: bool) -> MathBox {
@@ -174,37 +313,30 @@ impl Ctx<'_> {
             _ => self.base * c.script_script_percent_scale_down() as f32 / 100.0,
         }
     }
-    fn consts(&self) -> ttf_parser::math::Constants<'static> {
-        self.f.face.tables().math.unwrap().constants.unwrap()
+    fn consts(&self) -> Constants {
+        Constants(self.f.face)
     }
     /// Font units → px at style size.
     fn u(&self, v: f32, st: Style) -> f32 {
         v * self.size(st) / self.f.upem
     }
-    fn c(&self, st: Style, get: impl Fn(&ttf_parser::math::Constants<'static>) -> ttf_parser::math::MathValue<'static>) -> f32 {
-        self.u(get(&self.consts()).value as f32, st)
+    fn c(&self, st: Style, get: impl Fn(&Constants) -> i16) -> f32 {
+        self.u(get(&self.consts()) as f32, st)
     }
     fn axis(&self, st: Style) -> f32 {
         self.c(st, |c| c.axis_height())
     }
 
     fn glyph_id(&self, c: char) -> u16 {
-        self.f.face.glyph_index(c).or_else(|| self.f.face.glyph_index('?')).map_or(0, |g| g.0)
+        self.f.face.glyph_index(c).or_else(|| self.f.face.glyph_index('?')).unwrap_or(0)
     }
 
     fn glyph_box(&self, id: u16, size: f32) -> B {
         let face = &self.f.face;
         let k = size / self.f.upem;
-        let gid = GlyphId(id);
-        let adv = face.glyph_hor_advance(gid).unwrap_or(0) as f32 * k;
-        let (asc, desc) = face.glyph_bounding_box(gid).map_or((0.0, 0.0), |r| (r.y_max as f32 * k, -(r.y_min as f32) * k));
-        let italic = face
-            .tables()
-            .math
-            .and_then(|m| m.glyph_info)
-            .and_then(|gi| gi.italic_corrections)
-            .and_then(|ic| ic.get(gid))
-            .map_or(0.0, |v| v.value as f32 * k);
+        let adv = face.advance(id).unwrap_or(0) as f32 * k;
+        let (asc, desc) = face.bbox(id).map_or((0.0, 0.0), |r| (r[3] as f32 * k, -(r[1] as f32) * k));
+        let italic = face.italic_correction(id).map_or(0.0, |v| v as f32 * k);
         B { w: adv, asc, desc, italic, items: vec![Item::Glyph { id, x: 0.0, y: 0.0, size, color: None }], glyph: Some(id) }
     }
 
@@ -216,31 +348,28 @@ impl Ctx<'_> {
     fn stretched(&self, c: char, target: f32, vertical: bool, size: f32) -> B {
         let id = self.glyph_id(c);
         let k = size / self.f.upem;
-        let Some(variants) = self.f.face.tables().math.and_then(|m| m.variants) else { return self.glyph_box(id, size) };
-        let constructions = if vertical { variants.vertical_constructions } else { variants.horizontal_constructions };
-        let Some(construction) = constructions.get(GlyphId(id)) else { return self.glyph_box(id, size) };
+        let Some(construction) = self.f.face.construction(id, vertical) else { return self.glyph_box(id, size) };
         let mut best = id;
-        for v in construction.variants {
-            best = v.variant_glyph.0;
-            if v.advance_measurement as f32 * k >= target {
+        for &(glyph, advance) in &construction.variants {
+            best = glyph;
+            if advance as f32 * k >= target {
                 return self.glyph_box(best, size);
             }
         }
-        let Some(assembly) = construction.assembly else { return self.glyph_box(best, size) };
-        let parts: Vec<_> = assembly.parts.into_iter().collect();
+        let Some((assembly_italic, parts)) = construction.assembly else { return self.glyph_box(best, size) };
         if parts.is_empty() {
             return self.glyph_box(best, size);
         }
-        let overlap = variants.min_connector_overlap as f32 * k;
+        let overlap = self.f.face.min_connector_overlap() as f32 * k;
         // Repeat extenders until the assembly is long enough.
         let mut reps = 0;
         let sequence = loop {
             let seq: Vec<_> = parts
                 .iter()
-                .flat_map(|p| std::iter::repeat_n(*p, if p.part_flags.extender() { reps } else { 1 }))
+                .flat_map(|p| std::iter::repeat_n(p, if p.extender { reps } else { 1 }))
                 .collect();
             let total: f32 = seq.iter().map(|p| p.full_advance as f32 * k).sum::<f32>() - overlap * (seq.len().saturating_sub(1)) as f32;
-            if total >= target || reps > 64 || !parts.iter().any(|p| p.part_flags.extender()) {
+            if total >= target || reps > 64 || !parts.iter().any(|p| p.extender) {
                 break seq;
             }
             reps += 1;
@@ -248,7 +377,7 @@ impl Ctx<'_> {
         let mut b = B::default();
         let mut pos = 0.0f32;
         for p in &sequence {
-            let g = self.glyph_box(p.glyph_id.0, size);
+            let g = self.glyph_box(p.glyph, size);
             if vertical {
                 // Parts go bottom → top; pos is the distance of the part's bottom from the box bottom.
                 let bottom_to_baseline = -g.desc; // glyph's own bottom relative to its baseline (y up)
@@ -259,7 +388,7 @@ impl Ctx<'_> {
             }
             pos += p.full_advance as f32 * k - overlap;
         }
-        b.italic = assembly.italics_correction.value as f32 * k;
+        b.italic = assembly_italic as f32 * k;
         b
     }
 
@@ -633,13 +762,12 @@ impl Ctx<'_> {
             self.char_box(accent, st)
         };
         let k = size / self.f.upem;
-        let gi = self.f.face.tables().math.and_then(|m| m.glyph_info);
-        let attach_of = |id: u16| gi.and_then(|g| g.top_accent_attachments).and_then(|t| t.get(GlyphId(id))).map(|v| v.value as f32 * k);
+        let attach_of = |id: u16| self.f.face.top_accent(id).map(|v| v as f32 * k);
         let base_attach = body.glyph.and_then(attach_of).unwrap_or((body.w + body.italic) / 2.0);
         // Centre the accent's ink over the attachment point.
         let acc_center = match acc.glyph {
             Some(id) => attach_of(id).unwrap_or_else(|| {
-                self.f.face.glyph_bounding_box(GlyphId(id)).map_or(acc.w / 2.0, |r| (r.x_min as f32 + r.x_max as f32) / 2.0 * k)
+                self.f.face.bbox(id).map_or(acc.w / 2.0, |r| (r[0] as f32 + r[2] as f32) / 2.0 * k)
             }),
             None => acc.w / 2.0,
         };

@@ -131,7 +131,7 @@ impl IDWriteInlineObject_Impl for InlineBox_Impl {
     }
 }
 
-/// Cambria Math: parsed for layout (ttf-parser) and as a DirectWrite face for drawing.
+/// Cambria Math: parsed for layout (math::otf) and as a DirectWrite face for drawing.
 struct MathFace {
     font: MathFont,
     face: IDWriteFontFace,
@@ -142,9 +142,9 @@ fn load_math_face(dw: &IDWriteFactory) -> Option<MathFace> {
     let path = std::path::Path::new(&windir).join("Fonts").join("cambria.ttc");
     let data = std::fs::read(&path).ok()?;
     // Cambria Math is face 1 of the collection; fall back to scanning.
-    let index = (0..ttf_parser::fonts_in_collection(&data).unwrap_or(1))
-        .find(|&i| ttf_parser::Face::parse(&data, i).ok().and_then(|f| f.tables().math).is_some())?;
-    let font = MathFont::new(data, index)?;
+    let (index, off) = crate::math::otf::faces(&data).into_iter().enumerate().find(|&(_, off)| crate::math::otf::has_math(&data, off))?;
+    let index = index as u32;
+    let font = MathFont::new(data, off)?;
     unsafe {
         let file = dw.CreateFontFileReference(&HSTRING::from(path.as_os_str()), None).ok()?;
         let face = dw.CreateFontFace(DWRITE_FONT_FACE_TYPE_TRUETYPE_COLLECTION, &[Some(file)], index, DWRITE_FONT_SIMULATIONS_NONE).ok()?;
