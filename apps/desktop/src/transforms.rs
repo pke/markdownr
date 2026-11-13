@@ -17,7 +17,14 @@ pub fn compose(node: &mut Node, transforms: &[Transform]) {
 
 /// The default pipeline used by the viewer.
 pub fn default_pipeline() -> Vec<Transform> {
-    vec![mark_transform, ins_transform, emoji_transform, heading_ids]
+    vec![mark_transform, ins_transform, sup_sub_transform, emoji_transform, heading_ids]
+}
+
+/// Intra-word `x^2^` → `Kind::Sup`, `H~2~O` → `Kind::Sub` (pulldown-cmark only
+/// recognises them at word boundaries).
+pub fn sup_sub_transform(node: &mut Node) {
+    rewrite_text_nodes(node, &|t| split_delimited(t, "^", &Kind::Sup));
+    rewrite_text_nodes(node, &|t| split_delimited(t, "~", &Kind::Sub));
 }
 
 /// Apply `f` to every text node's parent, letting it replace the children list.
@@ -208,6 +215,14 @@ mod tests {
     fn mark_needs_tight_delims() {
         let d = run("a == b == c");
         assert_eq!(d.children[0].children.len(), 1);
+    }
+
+    #[test]
+    fn intraword_sup_sub() {
+        let d = run("x^2^ and H~2~O, not ~/a ~/b");
+        let kinds: Vec<_> = d.children[0].children.iter().map(|n| n.kind.clone()).collect();
+        assert_eq!(kinds, vec![Kind::Text, Kind::Sup, Kind::Text, Kind::Sub, Kind::Text]);
+        assert!(d.children[0].plain_text().ends_with("O, not ~/a ~/b"));
     }
 
     #[test]

@@ -1,5 +1,5 @@
 /// Colour as straight RGBA bytes. Used as parley's brush type.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Ink(pub [u8; 4]);
 
 impl Ink {
@@ -8,10 +8,6 @@ impl Ink {
     }
     pub const fn rgba(hex: u32, a: u8) -> Self {
         Ink([(hex >> 16) as u8, (hex >> 8) as u8, hex as u8, a])
-    }
-    pub fn color(self) -> vello::peniko::Color {
-        let [r, g, b, a] = self.0;
-        vello::peniko::Color::from_rgba8(r, g, b, a)
     }
 }
 

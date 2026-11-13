@@ -4,7 +4,7 @@ theme: default
 ---
 # Markdownr in Rust
 
-This is the **GPU rendered** prototype: pulldown-cmark → own AST → *transforms* → parley layout → vello.
+This is the **Direct2D + DirectWrite** prototype (ClearType): pulldown-cmark → own AST → *transforms* → layout → native text engine.
 Select text across ~~one~~ several paragraphs with the mouse and press `Ctrl+C`. :rocket:
 
 Extra syntax from transforms: ==marked text==, ++inserted text++, x^2^ and H~2~O, emoticons :)
@@ -47,8 +47,8 @@ fn main() {
 | Feature | Status | Notes |
 |:--------|:------:|------:|
 | Parser | ✅ | pulldown-cmark 0.13 |
-| Layout | ✅ | parley 0.13 |
-| Rendering | ✅ | vello 0.12 (wgpu) |
+| Layout | ✅ | DirectWrite |
+| Rendering | ✅ | Direct2D, ClearType |
 | Selection | ✅ | across blocks |
 | Images | ⏳ | next step |
 
