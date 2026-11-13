@@ -87,6 +87,7 @@ pub mod utils;
 
 mod unicase;
 mod entities;
+pub use entities::set_entity_table;
 mod firstpass;
 mod linklabel;
 mod parse;

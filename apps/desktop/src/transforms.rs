@@ -107,14 +107,12 @@ pub fn ins_transform(node: &mut Node) {
 // Emoji   :grin: → 😁   :-) → 😃   (full markdown-it-emoji dataset)
 // ---------------------------------------------------------------------------
 
-#[path = "emoji_data.rs"]
-mod emoji_data;
 
 pub fn emoji(name: &str) -> Option<&'static str> {
     if name.is_empty() || name.contains(['\t', '\n']) {
         return None;
     }
-    let data = emoji_data::EMOJI;
+    let data = crate::tables::emoji();
     let key = ["\n", name, "\t"].concat();
     let start = data.find(&key)? + key.len();
     let end = data[start..].find('\n')? + start;

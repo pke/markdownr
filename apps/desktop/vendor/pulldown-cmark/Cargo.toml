@@ -44,7 +44,9 @@ repository = "https://github.com/raphlinus/pulldown-cmark"
 default = [
     "getopts",
     "html",
+    "builtin-entities",
 ]
+builtin-entities = []
 gen-tests = []
 html = ["pulldown-cmark-escape"]
 simd = ["pulldown-cmark-escape?/simd"]

@@ -24,6 +24,7 @@
 
 // Packed for size (Markdownr): one string of NL name TAB value lines instead of
 // a 2125-entry pointer table. Lookups are rare (only on `&name;`), so a scan is fine.
+#[cfg(feature = "builtin-entities")]
 const ENTITIES: &str = "
 AElig	\u{00C6}
 AMP	\u{0026}
@@ -2150,12 +2151,28 @@ zopf	\u{1D56B}
 zscr	\u{1D4CF}
 zwj	\u{200D}
 zwnj	\u{200C}\n";
+static TABLE: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+/// Markdownr: supplies the newline/tab separated entity table at runtime (the app
+/// ships it compressed). Without the `builtin-entities` feature, entity
+/// references stay literal text until this is called.
+pub fn set_entity_table(table: &'static str) {
+    let _ = TABLE.set(table);
+}
+
+fn table() -> &'static str {
+    #[cfg(feature = "builtin-entities")]
+    return TABLE.get().copied().unwrap_or(ENTITIES);
+    #[cfg(not(feature = "builtin-entities"))]
+    TABLE.get().copied().unwrap_or("")
+}
+
 pub(crate) fn get_entity(bytes: &[u8]) -> Option<&'static str> {
     let name = core::str::from_utf8(bytes).ok()?;
     if name.is_empty() || name.contains(['\t', '\n']) {
         return None;
     }
-    let mut rest = ENTITIES;
+    let mut rest = table();
     while let Some(p) = rest.find(name) {
         let start = p + name.len();
         if rest[..p].ends_with('\n') && rest[start..].starts_with('\t') {

@@ -13,6 +13,7 @@ mod layout;
 mod math;
 mod particles;
 mod settings;
+mod tables;
 mod theme;
 mod transforms;
 mod util;
