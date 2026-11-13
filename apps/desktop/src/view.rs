@@ -9,6 +9,7 @@
 use crate::ast::{Kind, Node};
 use crate::layout::{BaseStyle, DocLayout, DocSelection, Join, Layouter, Paragraph, Rect, RectF, TextBlock, Typesetter};
 use crate::particles::{Particles, Sprite};
+use crate::util::num;
 use crate::theme::{Theme, ThemeChoice, front_matter_pairs, seasonal_theme};
 use std::ops::Range;
 use std::time::{Duration, Instant};
@@ -425,7 +426,7 @@ impl<P: Paragraph> Viewer<P> {
             } else if find.matches.is_empty() {
                 "keine Treffer".to_string()
             } else {
-                format!("{} / {}", find.current + 1, find.matches.len())
+                [num(find.current as u64 + 1), num(find.matches.len() as u64)].join(" / ")
             };
             let mut cx = rx - 2.0;
             cx -= button(ts, &mut out, &mut buttons, "✕", Action::FindClose, cx, true, false) + 2.0;
@@ -439,11 +440,11 @@ impl<P: Paragraph> Viewer<P> {
             let field_w = (cx - 8.0 - field_x).max(40.0);
             out.rects.push(Rect { r: RectF { x: field_x, y: by, w: field_w, h: bh }, color: th.border, radius: 6.0 });
             out.rects.push(Rect { r: RectF { x: field_x + 1.0, y: by + 1.0, w: field_w - 2.0, h: bh - 2.0 }, color: th.background, radius: 5.0 });
-            let text = format!("⌕  {}▏", find.query);
+            let text = ["⌕  ", &find.query, "▏"].concat();
             let (para, pw, ph) = label(ts, &text, &style, field_w - 2.0 * pad);
             place(&mut out, para, &text, field_x + pad, by + (bh - ph) / 2.0, pw, ph);
         } else if avail > 60.0 {
-            let title = if self.show_source { format!("{} (Quelltext)", self.title) } else { self.title.clone() };
+            let title = if self.show_source { [&self.title, " (Quelltext)"].concat() } else { self.title.clone() };
             let bold = BaseStyle { bold: true, ..style };
             let (mut para, mut pw, mut ph) = label(ts, &title, &bold, 4000.0);
             if pw > avail {
@@ -465,7 +466,7 @@ impl<P: Paragraph> Viewer<P> {
             let current = self.current_section();
             let mut y = top + 8.0 - self.toc_scroll;
             if let Some(name) = self.seasonal_suggestion() {
-                let text = format!("Saison-Theme: {}", crate::theme::theme_def(name).map(|d| d.label()).unwrap_or_default());
+                let text = ["Saison-Theme: ".into(), crate::theme::theme_def(name).map(|d| d.label()).unwrap_or_default()].concat();
                 let s = BaseStyle { color: th.link, ..style };
                 let (para, pw, ph) = label(ts, &text, &s, dw - 32.0);
                 let row = RectF { x: 6.0, y, w: dw - 12.0, h: ph + 12.0 };

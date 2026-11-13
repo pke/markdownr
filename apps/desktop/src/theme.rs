@@ -251,7 +251,7 @@ impl ThemeDef {
     pub fn label(&self) -> String {
         let mut c = self.name.chars();
         let cap: String = c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default();
-        format!("{} {}", self.icon, cap)
+        [self.icon, " ", &cap].concat()
     }
 
     pub fn theme(&'static self, dark: bool) -> Theme {

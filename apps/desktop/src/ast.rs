@@ -179,7 +179,7 @@ pub fn parse(src: &str) -> Node {
                     Tag::Paragraph => Kind::Paragraph,
                     Tag::Heading { level, id, .. } => Kind::Heading {
                         level: level as u8,
-                        id: id.map(|s| s.to_string()).unwrap_or_default(),
+                        id: id.map(|s| s.into_string()).unwrap_or_default(),
                     },
                     Tag::BlockQuote(kind) => Kind::BlockQuote(kind.map(|k| match k {
                         BlockQuoteKind::Note => AlertKind::Note,
@@ -195,7 +195,7 @@ pub fn parse(src: &str) -> Node {
                     Tag::HtmlBlock => Kind::HtmlBlock,
                     Tag::List(start) => Kind::List { start },
                     Tag::Item => Kind::Item { task: None },
-                    Tag::FootnoteDefinition(label) => Kind::FootnoteDef { label: label.to_string() },
+                    Tag::FootnoteDefinition(label) => Kind::FootnoteDef { label: label.into_string() },
                     Tag::DefinitionList => Kind::DefList,
                     Tag::DefinitionListTitle => Kind::DefTitle,
                     Tag::DefinitionListDefinition => Kind::DefDetails,
@@ -218,8 +218,8 @@ pub fn parse(src: &str) -> Node {
                     Tag::Strikethrough => Kind::Strike,
                     Tag::Superscript => Kind::Sup,
                     Tag::Subscript => Kind::Sub,
-                    Tag::Link { dest_url, .. } => Kind::Link { url: dest_url.to_string() },
-                    Tag::Image { dest_url, .. } => Kind::Image { url: dest_url.to_string() },
+                    Tag::Link { dest_url, .. } => Kind::Link { url: dest_url.into_string() },
+                    Tag::Image { dest_url, .. } => Kind::Image { url: dest_url.into_string() },
                     Tag::MetadataBlock(MetadataBlockKind::YamlStyle | MetadataBlockKind::PlusesStyle) => {
                         Kind::FrontMatter
                     }
@@ -244,14 +244,14 @@ pub fn parse(src: &str) -> Node {
                 };
                 push_child(&mut stack, node);
             }
-            Event::Text(t) => push_child(&mut stack, Node::text(t.to_string())),
-            Event::Code(t) => push_child(&mut stack, Node::leaf(Kind::Code, t.to_string())),
-            Event::InlineMath(t) => push_child(&mut stack, Node::leaf(Kind::InlineMath, t.to_string())),
-            Event::DisplayMath(t) => push_child(&mut stack, Node::leaf(Kind::DisplayMath, t.to_string())),
-            Event::Html(t) => push_child(&mut stack, Node::text(t.to_string())),
-            Event::InlineHtml(t) => push_child(&mut stack, Node::leaf(Kind::InlineHtml, t.to_string())),
+            Event::Text(t) => push_child(&mut stack, Node::text(t.into_string())),
+            Event::Code(t) => push_child(&mut stack, Node::leaf(Kind::Code, t.into_string())),
+            Event::InlineMath(t) => push_child(&mut stack, Node::leaf(Kind::InlineMath, t.into_string())),
+            Event::DisplayMath(t) => push_child(&mut stack, Node::leaf(Kind::DisplayMath, t.into_string())),
+            Event::Html(t) => push_child(&mut stack, Node::text(t.into_string())),
+            Event::InlineHtml(t) => push_child(&mut stack, Node::leaf(Kind::InlineHtml, t.into_string())),
             Event::FootnoteReference(l) => {
-                push_child(&mut stack, Node::new(Kind::FootnoteRef { label: l.to_string() }))
+                push_child(&mut stack, Node::new(Kind::FootnoteRef { label: l.into_string() }))
             }
             Event::SoftBreak => push_child(&mut stack, Node::new(Kind::SoftBreak)),
             Event::HardBreak => push_child(&mut stack, Node::new(Kind::HardBreak)),

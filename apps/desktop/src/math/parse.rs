@@ -356,7 +356,7 @@ impl<'a> Parser<'a> {
                     let c = if self.font == Font::Bold && c.is_alphabetic() { symbols::styled(c, Font::Bold) } else { c };
                     return M::Sym(c, class);
                 }
-                M::Error(format!("\\{n}"))
+                M::Error(["\\", n].concat())
             }
         }
     }

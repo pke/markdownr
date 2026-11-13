@@ -15,6 +15,7 @@ mod particles;
 mod settings;
 mod theme;
 mod transforms;
+mod util;
 mod view;
 
 #[cfg(windows)]

@@ -71,7 +71,7 @@ fn read_doc(path: &Path) -> (String, String, Node) {
             let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
             String::from_utf8(bytes.to_vec()).unwrap_or_else(|e| e.into_bytes().iter().map(|&b| b as char).collect())
         }
-        Err(e) => format!("# Datei kann nicht geöffnet werden\n\n`{}`: {e}", path.display()),
+        Err(_) => ["# Datei kann nicht geöffnet werden\n\n`", &path.to_string_lossy(), "`"].concat(),
     };
     let doc = parse(&text);
     (path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), text, doc)
@@ -150,7 +150,7 @@ impl App {
     }
 
     fn set_title(&self) {
-        unsafe { SetWindowTextW(self.hwnd, &HSTRING::from(format!("{} – Markdownr", self.viewer.title))).ok() };
+        unsafe { SetWindowTextW(self.hwnd, &HSTRING::from([&self.viewer.title, " – Markdownr"].concat())).ok() };
     }
 
     fn apply_dark(&mut self) {
@@ -175,24 +175,18 @@ impl App {
         match self.gfx.ensure_target(w, h, dpi) {
             Ok(true) => self.viewer.invalidate(),
             Ok(false) => {}
-            Err(e) => {
-                eprintln!("render target: {e}");
+            Err(_) => {
                 return;
             }
         }
-        let before = self.viewer.last_layout_time;
         self.viewer.ensure_layout(&mut self.gfx);
-        if self.viewer.last_layout_time != before {
-            eprintln!("layout: {} blocks in {:?}", self.viewer.layout.blocks.len(), self.viewer.last_layout_time);
-        }
         let v = &self.viewer;
         let finds = v.find_highlights();
         let chrome = v.chrome_visible().then_some((&v.chrome, v.chrome_alpha));
         let sprites = v.sprites(Instant::now());
         self.gfx.now_ms = (Instant::now() - v.anim_start).as_secs_f32() * 1000.0;
         let particles = v.particles.as_ref().map(|p| (p, sprites.as_slice()));
-        if let Err(e) = self.gfx.draw(&v.layout, v.selection.as_ref(), &finds, &v.theme, v.scroll, v.view_h, chrome, particles, &v.tip_layout) {
-            eprintln!("draw: {e}");
+        if self.gfx.draw(&v.layout, v.selection.as_ref(), &finds, &v.theme, v.scroll, v.view_h, chrome, particles, &v.tip_layout).is_err() {
             self.viewer.invalidate();
             self.invalidate();
         }
@@ -339,8 +333,8 @@ fn apply(hwnd: HWND, effect: Effect) {
         Effect::Snapshot => {
             let path = std::env::temp_dir().join("markdownr-snapshot.bmp");
             match snapshot(hwnd, &path) {
-                Ok(()) => eprintln!("snapshot: {}", path.display()),
-                Err(e) => eprintln!("snapshot failed: {e}"),
+                Ok(()) => crate::util::log(&["snapshot: ", &path.to_string_lossy()]),
+                Err(_) => crate::util::log(&["snapshot failed"]),
             }
         }
         Effect::OpenUrl(url) => {
@@ -550,8 +544,8 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 if let Some((path, exit)) = snap {
                     let r = if path.extension().is_some_and(|e| e == "png") { with_app(|a| a.gfx.save_png(&path).map_err(std::io::Error::other)).unwrap_or(Ok(())) } else { snapshot(hwnd, &path) };
                     match r {
-                        Ok(()) => eprintln!("snapshot: {}", path.display()),
-                        Err(e) => eprintln!("snapshot failed: {e}"),
+                        Ok(()) => crate::util::log(&["snapshot: ", &path.to_string_lossy()]),
+                        Err(_) => crate::util::log(&["snapshot failed"]),
                     }
                     if exit {
                         DestroyWindow(hwnd).ok();
@@ -854,7 +848,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         app.update_size();
         APP.with(|c| *c.borrow_mut() = Some(app));
         with_app(|a| a.schedule());
-        if let Some(px) = std::env::var("MARKDOWNR_SCROLL").ok().and_then(|s| s.parse::<f32>().ok()) {
+        if let Some(px) = std::env::var("MARKDOWNR_SCROLL").ok().and_then(|s| crate::util::parse_f32(&s)) {
             // Layout must exist before scrolling can be clamped: lay out once now.
             with_app(|a| {
                 let (w, h) = client_size(a.hwnd);

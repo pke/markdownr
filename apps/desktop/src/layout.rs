@@ -270,7 +270,7 @@ impl<T: Typesetter> Layouter<'_, T> {
         let h = self.base * 6.0;
         let w = ctx.width.min(self.base * 24.0);
         out.rects.push(Rect { r: RectF { x: ctx.x, y: *y, w, h }, color: self.theme.code_bg, radius: 8.0 });
-        let label = format!("🖼 {}", if alt.is_empty() { url } else { alt });
+        let label = ["🖼 ", if alt.is_empty() { url } else { alt }].concat();
         let style = BaseStyle { color: self.theme.muted, size: ctx.style.size * 0.9, ..ctx.style };
         let pad = self.base;
         self.push(Inline::plain(label), &style, ctx.x + pad, *y + pad, w - 2.0 * pad, None, true, join, out);
@@ -309,7 +309,7 @@ impl<T: Typesetter> Layouter<'_, T> {
                 let mbox = self.ts.math_font().unwrap().layout(&node.text, ctx.style.size * 1.1, true);
                 let mut inline = Inline::plain(OBJECT_CHAR.to_string());
                 inline.spans.push((0..inline.text.len(), Span::Object { w: mbox.w, asc: mbox.asc, desc: mbox.desc }));
-                inline.objects.push((0, Obj::Math(mbox), format!("$$\n{}\n$$", node.text.trim())));
+                inline.objects.push((0, Obj::Math(mbox), ["$$\n", node.text.trim(), "\n$$"].concat()));
                 *y += base * 0.25;
                 let h = self.push(inline, &ctx.style, ctx.x, *y, ctx.width, Some(TextAlign::Center), true, join, out);
                 *y += h + ctx.gap + base * 0.25;
@@ -399,7 +399,7 @@ impl<T: Typesetter> Layouter<'_, T> {
                     let marker = match (&item.kind, start) {
                         (Kind::Item { task: Some(true) }, _) => "☑".to_string(),
                         (Kind::Item { task: Some(false) }, _) => "☐".to_string(),
-                        (_, Some(s)) => format!("{}.", s + idx as u64),
+                        (_, Some(s)) => crate::util::num(s + idx as u64) + ".",
                         _ => ["•", "◦", "▪"][ctx.depth % 3].to_string(),
                     };
                     let style = BaseStyle { color: theme.muted, bold: false, ..ctx.style };
@@ -412,8 +412,8 @@ impl<T: Typesetter> Layouter<'_, T> {
             Kind::FootnoteDef { label } => {
                 let style = BaseStyle { size: base * 0.85, color: theme.muted, ..ctx.style };
                 let indent = base * 2.0;
-                out.anchors.push((format!("fn-{label}"), *y - base * 0.5));
-                self.push(Inline::plain(format!("{label}.")), &style, ctx.x, *y, indent - 6.0, Some(TextAlign::End), false, Join::Line, out);
+                out.anchors.push((["fn-", label].concat(), *y - base * 0.5));
+                self.push(Inline::plain([label, "."].concat()), &style, ctx.x, *y, indent - 6.0, Some(TextAlign::End), false, Join::Line, out);
                 let inner = Ctx { x: ctx.x + indent, width: ctx.width - indent, gap: base * 0.4, style, ..ctx.clone() };
                 self.blocks(&node.children, &inner, y, out, join);
             }
@@ -560,7 +560,7 @@ impl<T: Typesetter> Layouter<'_, T> {
                     let mbox = self.ts.math_font().unwrap().layout(&node.text, size, false);
                     out.text.push(OBJECT_CHAR);
                     out.spans.push((start..out.text.len(), Span::Object { w: mbox.w, asc: mbox.asc, desc: mbox.desc }));
-                    out.objects.push((start, Obj::Math(mbox), format!("${}$", node.text)));
+                    out.objects.push((start, Obj::Math(mbox), ["$", &node.text, "$"].concat()));
                 }
                 Kind::InlineMath => {
                     out.text.push_str(&node.text);
@@ -582,8 +582,8 @@ impl<T: Typesetter> Layouter<'_, T> {
                     if unicode_script(label, true).is_none() {
                         out.spans.push((r.clone(), Span::Super));
                     }
-                    out.links.push((r.clone(), format!("#fn-{label}")));
-                    out.anchors.push((start, format!("fnref-{label}")));
+                    out.links.push((r.clone(), ["#fn-", label].concat()));
+                    out.anchors.push((start, ["fnref-", label].concat()));
                     out.spans.push((r, Span::Color(theme.link)));
                 }
                 Kind::Image { url } if self.ts.image_size(url).is_some() => {
@@ -594,11 +594,12 @@ impl<T: Typesetter> Layouter<'_, T> {
                     out.text.push(OBJECT_CHAR);
                     out.spans.push((start..out.text.len(), Span::Object { w, asc: h * 0.85, desc: h * 0.15 }));
                     let alt: String = node.children.iter().map(Node::plain_text).collect();
-                    out.objects.push((start, Obj::Image(url.clone(), w, h), format!("![{alt}]({url})")));
+                    out.objects.push((start, Obj::Image(url.clone(), w, h), ["![", alt.as_str(), "](", url.as_str(), ")"].concat()));
                 }
                 Kind::Image { url } => {
                     let alt: String = node.children.iter().map(Node::plain_text).collect();
-                    out.text.push_str(&format!("🖼 {}", if alt.is_empty() { url.as_str() } else { alt.as_str() }));
+                    out.text.push_str("🖼 ");
+                    out.text.push_str(if alt.is_empty() { url.as_str() } else { alt.as_str() });
                     out.spans.push((start..out.text.len(), Span::Color(theme.muted)));
                 }
                 kind => {
@@ -630,7 +631,7 @@ impl<T: Typesetter> Layouter<'_, T> {
                         Kind::Abbr { title } => {
                             // Dotted-underline look via underline + muted colour; hover shows the expansion.
                             out.spans.push((r.clone(), Span::Underline));
-                            out.links.push((r, format!("abbr:{title}")));
+                            out.links.push((r, ["abbr:", title].concat()));
                         }
                         Kind::Link { url } => {
                             out.spans.push((r.clone(), Span::Color(theme.link)));

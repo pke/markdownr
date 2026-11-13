@@ -30,7 +30,7 @@ impl Settings {
             match k.trim() {
                 "remember_fullscreen" => s.remember_fullscreen = v == "1",
                 "fullscreen" => s.fullscreen = v == "1",
-                "font_size" => s.font_size = v.parse().unwrap_or(s.font_size).clamp(10.0, 40.0),
+                "font_size" => s.font_size = crate::util::parse_f32(v).unwrap_or(s.font_size).clamp(10.0, 40.0),
                 "theme" => s.theme = v.to_string(),
                 "recent" if !v.is_empty() => s.recent.push(PathBuf::from(v)),
                 _ => {}
@@ -40,12 +40,16 @@ impl Settings {
     }
 
     pub fn serialize(&self) -> String {
-        let mut out = format!(
-            "remember_fullscreen={}\nfullscreen={}\nfont_size={}\ntheme={}\n",
-            self.remember_fullscreen as u8, self.fullscreen as u8, self.font_size, self.theme
-        );
+        let b = |v: bool| if v { "1" } else { "0" };
+        let size = crate::util::num(self.font_size.round() as u64);
+        let mut out = String::new();
+        for s in ["remember_fullscreen=", b(self.remember_fullscreen), "\nfullscreen=", b(self.fullscreen), "\nfont_size=", &size, "\ntheme=", &self.theme, "\n"] {
+            out.push_str(s);
+        }
         for r in &self.recent {
-            out.push_str(&format!("recent={}\n", r.display()));
+            out.push_str("recent=");
+            out.push_str(&r.to_string_lossy());
+            out.push('\n');
         }
         out
     }
@@ -78,9 +82,11 @@ impl Settings {
             s.push_str("## Zuletzt geöffnet\n\n");
             for p in recent {
                 let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let dir = p.parent().map(|d| d.display().to_string()).unwrap_or_default();
-                let url = p.display().to_string().replace('\\', "/").replace(' ', "%20");
-                s.push_str(&format!("- [{}](<file:///{}>) — {}\n", name.replace(['[', ']'], ""), url, dir.replace('\\', "\\\\")));
+                let dir = p.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+                let url = p.to_string_lossy().replace('\\', "/").replace(' ', "%20");
+                for part in ["- [", &name.replace(['[', ']'], ""), "](<file:///", &url, ">) — ", &dir.replace('\\', "\\\\"), "\n"] {
+                    s.push_str(part);
+                }
             }
         }
         s

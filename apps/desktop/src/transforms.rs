@@ -115,7 +115,7 @@ pub fn emoji(name: &str) -> Option<&'static str> {
         return None;
     }
     let data = emoji_data::EMOJI;
-    let key = format!("\n{name}\t");
+    let key = ["\n", name, "\t"].concat();
     let start = data.find(&key)? + key.len();
     let end = data[start..].find('\n')? + start;
     Some(&data[start..end])
@@ -377,7 +377,7 @@ pub fn footnote_transform(doc: &mut Node) {
             if p > 0 {
                 parts.push(Node::text(&rest[..p]));
             }
-            let label = format!("__inline_{}", counter.get());
+            let label = ["__inline_", &crate::util::num(counter.get() as u64)].concat();
             counter.set(counter.get() + 1);
             inline_defs.borrow_mut().push((label.clone(), rest[p + 2..p + 2 + end].to_string()));
             parts.push(Node::leaf(Kind::FootnoteRef { label }, ""));
@@ -423,7 +423,7 @@ pub fn footnote_transform(doc: &mut Node) {
                     order.len()
                 }
             };
-            *label = n.to_string();
+            *label = crate::util::num(n as u64);
         }
         for c in &mut node.children {
             refs(c, order);
@@ -435,9 +435,9 @@ pub fn footnote_transform(doc: &mut Node) {
         .filter_map(|mut d| {
             let Kind::FootnoteDef { label } = &d.kind else { return None };
             let n = order.iter().position(|l| l == label)? + 1;
-            d.kind = Kind::FootnoteDef { label: n.to_string() };
+            d.kind = Kind::FootnoteDef { label: crate::util::num(n as u64) };
             // Back-link to the (first) reference.
-            let back = Node::with_children(Kind::Link { url: format!("#fnref-{n}") }, vec![Node::text("\u{21A9}")]);
+            let back = Node::with_children(Kind::Link { url: ["#fnref-", &crate::util::num(n as u64)].concat() }, vec![Node::text("\u{21A9}")]);
             match d.children.iter_mut().rev().find(|c| c.kind == Kind::Paragraph) {
                 Some(p) => p.children.extend([Node::text(" "), back]),
                 None => d.children.push(Node::with_children(Kind::Paragraph, vec![back])),
@@ -588,7 +588,7 @@ pub fn heading_ids(node: &mut Node) {
             if id.is_empty() {
                 let base = slug(&node_plain(&node.children));
                 let n = seen.entry(base.clone()).or_insert(0);
-                *id = if *n == 0 { base } else { format!("{base}-{n}") };
+                *id = if *n == 0 { base } else { [&base, "-", &crate::util::num(*n as u64)].concat() };
                 *n += 1;
             }
         }
