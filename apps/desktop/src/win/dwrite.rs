@@ -157,7 +157,11 @@ pub struct Gfx {
     hwnd: HWND,
     d2d: ID2D1Factory,
     dw: IDWriteFactory,
-    rt: Option<ID2D1HwndRenderTarget>,
+    rt: Option<ID2D1RenderTarget>,
+    hwnd_rt: Option<ID2D1HwndRenderTarget>,
+    /// Offscreen WIC target (snapshots): (factory, bitmap, size).
+    offscreen: Option<(windows::Win32::Graphics::Imaging::IWICImagingFactory, windows::Win32::Graphics::Imaging::IWICBitmap, u32, u32)>,
+    pub offscreen_mode: bool,
     brushes: HashMap<Ink, ID2D1SolidColorBrush>,
     body: HSTRING,
     mono: HSTRING,
@@ -165,6 +169,7 @@ pub struct Gfx {
     typo_sub: IDWriteTypography,
     formats: HashMap<(u32, bool, bool, bool, u32), IDWriteTextFormat>,
     math: Option<MathFace>,
+    pub images: super::images::Images,
 }
 
 fn color(ink: Ink) -> D2D1_COLOR_F {
@@ -211,9 +216,13 @@ impl Gfx {
                 typo_sup: typo(DWRITE_FONT_FEATURE_TAG_SUPERSCRIPT)?,
                 typo_sub: typo(DWRITE_FONT_FEATURE_TAG_SUBSCRIPT)?,
                 math: load_math_face(&dw),
+                images: super::images::Images::new(hwnd),
                 d2d,
                 dw,
                 rt: None,
+                hwnd_rt: None,
+                offscreen: None,
+                offscreen_mode: false,
                 brushes: HashMap::new(),
                 body,
                 mono,
@@ -225,9 +234,35 @@ impl Gfx {
     /// Create the render target if needed. Returns true if it was (re)created, in
     /// which case all layouts must be rebuilt (their brushes belong to the old target).
     pub fn ensure_target(&mut self, width: u32, height: u32, dpi: f32) -> Result<bool> {
+        if self.offscreen_mode && self.offscreen.as_ref().is_some_and(|o| (o.2, o.3) != (width, height)) {
+            self.rt = None;
+        }
         if let Some(rt) = &self.rt {
             unsafe { rt.SetDpi(dpi, dpi) };
             return Ok(false);
+        }
+        if self.offscreen_mode {
+            use windows::Win32::Graphics::Imaging::*;
+            use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
+            unsafe {
+                let wic: IWICImagingFactory = CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)?;
+                let bmp = wic.CreateBitmap(width.max(1), height.max(1), &GUID_WICPixelFormat32bppBGR, WICBitmapCacheOnLoad)?;
+                let props = D2D1_RENDER_TARGET_PROPERTIES {
+                    r#type: D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+                    pixelFormat: D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_IGNORE },
+                    dpiX: dpi,
+                    dpiY: dpi,
+                    usage: D2D1_RENDER_TARGET_USAGE_NONE,
+                    minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
+                };
+                let rt = self.d2d.CreateWicBitmapRenderTarget(&bmp, &props)?;
+                rt.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
+                self.rt = Some(rt);
+                self.offscreen = Some((wic, bmp, width, height));
+            }
+            self.images.reset_device();
+            self.brushes.clear();
+            return Ok(true);
         }
         let props = D2D1_RENDER_TARGET_PROPERTIES {
             r#type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
@@ -244,15 +279,37 @@ impl Gfx {
         };
         let rt = unsafe { self.d2d.CreateHwndRenderTarget(&props, &hwnd_props)? };
         unsafe { rt.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE) };
-        self.rt = Some(rt);
+        self.rt = Some(rt.cast()?);
+        self.hwnd_rt = Some(rt);
+        self.images.reset_device();
         self.brushes.clear();
         Ok(true)
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        if let Some(rt) = &self.rt {
+        if let Some(rt) = &self.hwnd_rt {
             unsafe { rt.Resize(&D2D_SIZE_U { width: width.max(1), height: height.max(1) }).ok() };
         }
+    }
+
+    /// Write the offscreen target (snapshot mode) as PNG.
+    pub fn save_png(&self, path: &std::path::Path) -> Result<()> {
+        use windows::Win32::Graphics::Imaging::*;
+        let Some((wic, bmp, _, _)) = &self.offscreen else { return Err(windows::core::Error::empty()) };
+        unsafe {
+            let stream = wic.CreateStream()?;
+            stream.InitializeFromFilename(&HSTRING::from(path.as_os_str()), windows::Win32::Foundation::GENERIC_WRITE.0)?;
+            let enc = wic.CreateEncoder(&GUID_ContainerFormatPng, std::ptr::null())?;
+            enc.Initialize(&stream, WICBitmapEncoderNoCache)?;
+            let mut frame = None;
+            enc.CreateNewFrame(&mut frame, std::ptr::null_mut())?;
+            let frame = frame.ok_or_else(windows::core::Error::empty)?;
+            frame.Initialize(None)?;
+            frame.WriteSource(bmp, std::ptr::null())?;
+            frame.Commit()?;
+            enc.Commit()?;
+        }
+        Ok(())
     }
 
     fn brush(&mut self, ink: Ink) -> ID2D1SolidColorBrush {
@@ -289,17 +346,71 @@ impl Gfx {
         f
     }
 
-    /// Paint the visible part of the document.
-    pub fn draw(&mut self, doc: &DocLayout<DwPara>, selection: Option<&DocSelection>, theme: &Theme, scroll: f32, view_h: f32) -> Result<()> {
+    /// Paint the visible part of the document, then the chrome overlay (window
+    /// coordinates) with the given opacity.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw(
+        &mut self,
+        doc: &DocLayout<DwPara>,
+        selection: Option<&DocSelection>,
+        finds: &[(usize, std::ops::Range<usize>, bool)],
+        theme: &Theme,
+        scroll: f32,
+        view_h: f32,
+        chrome: Option<(&DocLayout<DwPara>, f32)>,
+    ) -> Result<()> {
         let Some(rt) = self.rt.clone() else { return Ok(()) };
-        let (top, bottom) = (scroll - 50.0, scroll + view_h + 50.0);
-        let visible = |y: f32, h: f32| y + h >= top && y <= bottom;
-        let text_brush = self.brush(theme.text);
-        let sel_brush = self.brush(theme.selection);
         unsafe {
             rt.BeginDraw();
             rt.SetTransform(&windows_numerics::Matrix3x2::translation(0.0, -scroll.round()));
             rt.Clear(Some(&color(theme.background)));
+            self.draw_layout(&rt, doc, selection, finds, theme, scroll, view_h);
+            if let Some((c, alpha)) = chrome {
+                rt.SetTransform(&windows_numerics::Matrix3x2::identity());
+                let params = D2D1_LAYER_PARAMETERS {
+                    contentBounds: D2D_RECT_F { left: -1e6, top: -1e6, right: 1e6, bottom: 1e6 },
+                    geometricMask: std::mem::ManuallyDrop::new(None),
+                    maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                    maskTransform: windows_numerics::Matrix3x2::identity(),
+                    opacity: alpha,
+                    opacityBrush: std::mem::ManuallyDrop::new(None),
+                    layerOptions: D2D1_LAYER_OPTIONS_INITIALIZE_FOR_CLEARTYPE,
+                };
+                rt.PushLayer(&params, None);
+                self.draw_layout(&rt, c, None, &[], theme, 0.0, view_h);
+                rt.PopLayer();
+            }
+            let r = rt.EndDraw(None, None);
+            if let Err(e) = &r {
+                if e.code() == D2DERR_RECREATE_TARGET {
+                    self.rt = None;
+                    self.hwnd_rt = None;
+                    self.brushes.clear();
+                    self.images.reset_device();
+                }
+            }
+            r
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn draw_layout(
+        &mut self,
+        rt: &ID2D1RenderTarget,
+        doc: &DocLayout<DwPara>,
+        selection: Option<&DocSelection>,
+        finds: &[(usize, std::ops::Range<usize>, bool)],
+        theme: &Theme,
+        scroll: f32,
+        view_h: f32,
+    ) {
+        let (top, bottom) = (scroll - 50.0, scroll + view_h + 50.0);
+        let visible = |y: f32, h: f32| y + h >= top && y <= bottom;
+        let text_brush = self.brush(theme.text);
+        let sel_brush = self.brush(theme.selection);
+        let find_brush = self.brush(theme.find);
+        let current_brush = self.brush(theme.find_current);
+        unsafe {
             for r in &doc.rects {
                 if !visible(r.r.y, r.r.h) {
                     continue;
@@ -311,9 +422,24 @@ impl Gfx {
                     rt.FillRectangle(&rect(r.r), &b);
                 }
             }
+
+            for img in &doc.images {
+                if !visible(img.r.y, img.r.h) {
+                    continue;
+                }
+                if let Some(bmp) = self.images.bitmap(&img.url, rt) {
+                    rt.DrawBitmap(&bmp, Some(&rect(img.r)), 1.0, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, None);
+                }
+            }
             for (i, block) in doc.blocks.iter().enumerate() {
                 if !visible(block.y, block.h) {
                     continue;
+                }
+                for (_, range, current) in finds.iter().filter(|f| f.0 == i) {
+                    let b = if *current { &current_brush } else { &find_brush };
+                    for r in block.para.range_rects(range.clone()) {
+                        rt.FillRoundedRectangle(&D2D1_ROUNDED_RECT { rect: rect(RectF { x: block.x + r.x - 1.0, y: block.y + r.y, w: r.w + 2.0, h: r.h }), radiusX: 3.0, radiusY: 3.0 }, b);
+                    }
                 }
                 if let Some(range) = selection.and_then(|s| doc.block_range(s, i)) {
                     for r in block.para.range_rects(range) {
@@ -359,20 +485,16 @@ impl Gfx {
                     }
                 }
             }
-            let r = rt.EndDraw(None, None);
-            if let Err(e) = &r {
-                if e.code() == D2DERR_RECREATE_TARGET {
-                    self.rt = None;
-                    self.brushes.clear();
-                }
-            }
-            r
         }
     }
 }
 
 impl Typesetter for Gfx {
     type Para = DwPara;
+
+    fn image_size(&self, url: &str) -> Option<(f32, f32)> {
+        self.images.size(url)
+    }
 
     fn math_font(&self) -> Option<&MathFont> {
         self.math.as_ref().map(|m| &m.font)

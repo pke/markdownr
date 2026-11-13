@@ -1,13 +1,15 @@
 //! Windows shell: plain Win32 window, Direct2D/DirectWrite rendering.
 
 mod dwrite;
+mod images;
 
 use crate::ast::Node;
-use crate::view::{Effect, Key, Mods, Viewer};
+use crate::settings::Settings;
+use crate::view::{Effect, Key, Mods, ThemeChoice, Viewer};
 use dwrite::{DwPara, Gfx};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime};
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
 use windows::Win32::Graphics::Gdi::*;
@@ -15,21 +17,36 @@ use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenC
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+use windows::Win32::UI::Controls::Dialogs::{GetOpenFileNameW, OFN_FILEMUSTEXIST, OFN_PATHMUSTEXIST, OPENFILENAMEW};
 use windows::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForWindow, SetProcessDpiAwarenessContext};
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
+use windows::Win32::UI::Input::Touch::{CloseGestureInfoHandle, GESTURECONFIG, GESTUREINFO, GID_PAN, GID_ZOOM, GetGestureInfo, HGESTUREINFO, SetGestureConfig};
 use windows::Win32::UI::Shell::{DragAcceptFiles, DragFinish, DragQueryFileW, HDROP, ShellExecuteW};
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::{BOOL, HSTRING, PCWSTR, w};
+use windows::core::{BOOL, HSTRING, PCWSTR, PWSTR, w};
+
+const TIMER_CHROME: usize = 1;
+const TIMER_WATCH: usize = 2;
+const WM_MOUSELEAVE: u32 = 0x02A3;
 
 struct App {
     hwnd: HWND,
     gfx: Gfx,
     viewer: Viewer<DwPara>,
     path: Option<PathBuf>,
+    modified: Option<SystemTime>,
     fullscreen: Option<(WINDOWPLACEMENT, i32)>,
     mouse: (f32, f32),
+    tracking: bool,
+    pan: Option<(i32, i32, i32, i32)>, // last x, y; start x, y (pixels)
+    zoom: Option<u64>,
+    chrome_timer: bool,
     snapshot: Option<PathBuf>,
     exit_after_snapshot: bool,
+    snapshot_ready: bool,
+    settings: Settings,
+    settings_path: PathBuf,
+    sample: &'static str,
 }
 
 thread_local! {
@@ -47,9 +64,20 @@ fn parse(text: &str) -> Node {
     doc
 }
 
-fn read_doc(path: &Path) -> (String, Node) {
-    let text = std::fs::read_to_string(path).unwrap_or_else(|e| format!("# Cannot open file\n\n`{}`: {e}", path.display()));
-    (path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), parse(&text))
+fn read_doc(path: &Path) -> (String, String, Node) {
+    let text = match std::fs::read(path) {
+        Ok(bytes) => {
+            let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
+            String::from_utf8(bytes.to_vec()).unwrap_or_else(|e| e.into_bytes().iter().map(|&b| b as char).collect())
+        }
+        Err(e) => format!("# Datei kann nicht geöffnet werden\n\n`{}`: {e}", path.display()),
+    };
+    let doc = parse(&text);
+    (path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), text, doc)
+}
+
+fn mtime(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
 fn system_dark() -> bool {
@@ -84,9 +112,35 @@ fn lparam_point(lp: LPARAM) -> (i32, i32) {
 }
 
 fn mods() -> Mods {
-    unsafe {
-        Mods { ctrl: GetKeyState(VK_CONTROL.0 as i32) < 0, shift: GetKeyState(VK_SHIFT.0 as i32) < 0 }
+    unsafe { Mods { ctrl: GetKeyState(VK_CONTROL.0 as i32) < 0, shift: GetKeyState(VK_SHIFT.0 as i32) < 0 } }
+}
+
+/// Mouse message synthesised from touch or pen input.
+fn from_touch() -> bool {
+    (unsafe { GetMessageExtraInfo() }.0 as u32 & 0xFFFF_FF00) == 0xFF51_5700
+}
+
+fn settings_path() -> PathBuf {
+    let base = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    base.join("Markdownr").join("settings.ini")
+}
+
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Some(v) = s.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
     }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 impl App {
@@ -131,35 +185,143 @@ impl App {
             eprintln!("layout: {} blocks in {:?}", self.viewer.layout.blocks.len(), self.viewer.last_layout_time);
         }
         let v = &self.viewer;
-        if let Err(e) = self.gfx.draw(&v.layout, v.selection.as_ref(), &v.theme, v.scroll, v.view_h) {
+        let finds = v.find_highlights();
+        let chrome = v.chrome_visible().then_some((&v.chrome, v.chrome_alpha));
+        if let Err(e) = self.gfx.draw(&v.layout, v.selection.as_ref(), &finds, &v.theme, v.scroll, v.view_h, chrome) {
             eprintln!("draw: {e}");
             self.viewer.invalidate();
             self.invalidate();
         }
     }
 
+    /// Drive the chrome fade: (re)arm or stop the animation timer.
+    fn schedule(&mut self) {
+        let (repaint, next) = self.viewer.tick(Instant::now());
+        if repaint {
+            self.invalidate();
+        }
+        unsafe {
+            match next {
+                Some(d) => {
+                    SetTimer(Some(self.hwnd), TIMER_CHROME, d.as_millis().clamp(10, 60_000) as u32, None);
+                    self.chrome_timer = true;
+                }
+                None if self.chrome_timer => {
+                    KillTimer(Some(self.hwnd), TIMER_CHROME).ok();
+                    self.chrome_timer = false;
+                }
+                None => {}
+            }
+        }
+    }
+
     fn load(&mut self, path: PathBuf) {
-        let (title, doc) = read_doc(&path);
-        self.viewer.set_document(title, doc);
+        let (title, source, doc) = read_doc(&path);
+        let same = self.path.as_ref() == Some(&path);
+        self.gfx.images.set_base(path.parent().map(Path::to_path_buf));
+        self.viewer.set_document(title, source, doc, same);
+        self.modified = mtime(&path);
+        self.settings.add_recent(&path);
+        self.settings.save(&self.settings_path);
         self.path = Some(path);
         self.set_title();
         self.invalidate();
     }
 
+    fn load_text(&mut self, title: &str, text: &str) {
+        self.path = None;
+        self.modified = None;
+        self.gfx.images.set_base(std::env::current_dir().ok());
+        self.viewer.set_document(title.to_string(), text.to_string(), parse(text), false);
+        self.set_title();
+        self.invalidate();
+    }
+
+    fn reload(&mut self) {
+        match self.path.clone() {
+            Some(p) => {
+                let (title, source, doc) = read_doc(&p);
+                self.viewer.set_document(title, source, doc, true);
+                self.modified = mtime(&p);
+                self.set_title();
+            }
+            None => {
+                let start = self.settings.start_page();
+                self.viewer.set_document("Markdownr".into(), start.clone(), parse(&start), true);
+            }
+        }
+        self.invalidate();
+    }
+
+    /// Reload when the file changed on disk (polled once a second).
+    fn watch(&mut self) {
+        if let Some(p) = &self.path {
+            let now = mtime(p);
+            if now.is_some() && now != self.modified {
+                self.reload();
+            }
+        }
+    }
+
+    fn open_dialog(&mut self) {
+        let mut buf = [0u16; 2048];
+        let filter: Vec<u16> = "Markdown (*.md;*.markdown;*.txt)\0*.md;*.markdown;*.mdown;*.mkd;*.txt\0Alle Dateien\0*.*\0\0".encode_utf16().collect();
+        let mut ofn = OPENFILENAMEW {
+            lStructSize: size_of::<OPENFILENAMEW>() as u32,
+            hwndOwner: self.hwnd,
+            lpstrFilter: PCWSTR(filter.as_ptr()),
+            lpstrFile: PWSTR(buf.as_mut_ptr()),
+            nMaxFile: buf.len() as u32,
+            Flags: OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST,
+            ..Default::default()
+        };
+        if unsafe { GetOpenFileNameW(&mut ofn) }.as_bool() {
+            let n = buf.iter().position(|&c| c == 0).unwrap_or(0);
+            self.load(PathBuf::from(String::from_utf16_lossy(&buf[..n])));
+        }
+    }
+
     fn open_url(&mut self, url: &str) {
         let lower = url.to_ascii_lowercase();
+        match lower.as_str() {
+            "markdownr:open" => return self.open_dialog(),
+            "markdownr:sample" => {
+                let sample = self.sample;
+                return self.load_text("Beispiel", sample);
+            }
+            _ => {}
+        }
         if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("mailto:") {
             unsafe { ShellExecuteW(Some(self.hwnd), w!("open"), &HSTRING::from(url), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
             return;
         }
-        // Relative Markdown link: open next to the current file.
-        let file = url.split('#').next().unwrap_or("");
-        if let Some(dir) = self.path.as_ref().and_then(|p| p.parent()) {
-            let target = dir.join(file);
-            if target.is_file() {
-                self.load(target);
-            }
+        let file = percent_decode(url.split('#').next().unwrap_or(""));
+        let file = file.strip_prefix("file:///").or_else(|| file.strip_prefix("file://")).unwrap_or(&file).to_string();
+        let p = Path::new(&file);
+        let target = if p.is_absolute() {
+            p.to_path_buf()
+        } else if let Some(dir) = self.path.as_ref().and_then(|p| p.parent()) {
+            dir.join(p)
+        } else {
+            return;
+        };
+        if !target.is_file() {
+            return;
         }
+        let ext = target.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        if matches!(ext.as_str(), "md" | "markdown" | "mdown" | "mkd" | "txt") {
+            self.load(target);
+        } else {
+            unsafe { ShellExecuteW(Some(self.hwnd), w!("open"), &HSTRING::from(target.as_os_str()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
+        }
+    }
+
+    fn save_settings(&mut self) {
+        self.settings.font_size = self.viewer.font_size;
+        self.settings.theme = self.viewer.theme_choice.name().to_string();
+        self.settings.remember_fullscreen = self.viewer.remember_fullscreen;
+        self.settings.fullscreen = self.viewer.remember_fullscreen && self.fullscreen.is_some();
+        self.settings.save(&self.settings_path);
     }
 }
 
@@ -179,8 +341,18 @@ fn apply(hwnd: HWND, effect: Effect) {
         Effect::OpenUrl(url) => {
             with_app(|a| a.open_url(&url));
         }
+        Effect::OpenDialog => {
+            with_app(|a| a.open_dialog());
+        }
+        Effect::Reload => {
+            with_app(|a| a.reload());
+        }
         Effect::Quit => unsafe { DestroyWindow(hwnd).ok().unwrap_or_default() },
     }
+    with_app(|a| {
+        a.schedule();
+        a.invalidate();
+    });
 }
 
 fn toggle_fullscreen(hwnd: HWND, want: Option<bool>) {
@@ -191,6 +363,7 @@ fn toggle_fullscreen(hwnd: HWND, want: Option<bool>) {
                 with_app(|a| a.fullscreen = Some((placement, style)));
                 return;
             }
+            with_app(|a| a.viewer.set_fullscreen(false));
             SetWindowLongW(hwnd, GWL_STYLE, style);
             SetWindowPlacement(hwnd, &placement).ok();
             SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED).ok();
@@ -204,7 +377,10 @@ fn toggle_fullscreen(hwnd: HWND, want: Option<bool>) {
             let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
             let mut mi = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
             GetMonitorInfoW(monitor, &mut mi).ok().ok();
-            with_app(|a| a.fullscreen = Some((placement, style)));
+            with_app(|a| {
+                a.fullscreen = Some((placement, style));
+                a.viewer.set_fullscreen(true);
+            });
             // Borderless over the whole monitor, covering the taskbar.
             SetWindowLongW(hwnd, GWL_STYLE, style & !(WS_OVERLAPPEDWINDOW.0 as i32));
             let r = mi.rcMonitor;
@@ -285,17 +461,73 @@ fn key_from_vk(vk: u16) -> Option<Key> {
         VK_SPACE => Key::Space,
         VK_DOWN => Key::Down,
         VK_UP => Key::Up,
+        VK_LEFT => Key::Left,
+        VK_RIGHT => Key::Right,
         VK_HOME => Key::Home,
         VK_END => Key::End,
+        VK_F3 => Key::F3,
+        VK_F5 => Key::F5,
         VK_F11 => Key::F11,
         VK_F12 => Key::F12,
         VK_ESCAPE => Key::Escape,
+        VK_RETURN => Key::Enter,
+        VK_BACK => Key::Backspace,
         VK_OEM_PLUS | VK_ADD => Key::Char('+'),
         VK_OEM_MINUS | VK_SUBTRACT => Key::Char('-'),
         VK_NUMPAD0 => Key::Char('0'),
         _ if (0x30..=0x39).contains(&vk) || (0x41..=0x5a).contains(&vk) => Key::Char(vk as u8 as char),
         _ => return None,
     })
+}
+
+fn gesture(hwnd: HWND, lp: LPARAM) -> bool {
+    let handle = HGESTUREINFO(lp.0 as *mut _);
+    let mut gi = GESTUREINFO { cbSize: size_of::<GESTUREINFO>() as u32, ..Default::default() };
+    if unsafe { GetGestureInfo(handle, &mut gi) }.is_err() {
+        return false;
+    }
+    const GF_BEGIN: u32 = 1;
+    const GF_END: u32 = 4;
+    let (x, y) = (gi.ptsLocation.x as i32, gi.ptsLocation.y as i32);
+    let handled = with_app(|a| {
+        let s = dpi_scale(hwnd);
+        if gi.dwID == GID_PAN.0 {
+            if gi.dwFlags & GF_BEGIN != 0 || a.pan.is_none() {
+                a.pan = Some((x, y, x, y));
+            }
+            let (_, ly, sx, sy) = a.pan.unwrap();
+            a.viewer.scroll_by(-(y - ly) as f32 / s);
+            a.pan = Some((x, y, sx, sy));
+            if gi.dwFlags & GF_END != 0 {
+                a.viewer.swipe((x - sx) as f32 / s, (y - sy) as f32 / s);
+                a.pan = None;
+            }
+            a.invalidate();
+            true
+        } else if gi.dwID == GID_ZOOM.0 {
+            if gi.dwFlags & GF_BEGIN != 0 {
+                a.zoom = Some(gi.ullArguments);
+            } else if let Some(start) = a.zoom {
+                let ratio = gi.ullArguments as f32 / start.max(1) as f32;
+                if !(0.85..=1.15).contains(&ratio) {
+                    a.viewer.zoom_by(ratio);
+                    a.zoom = Some(gi.ullArguments);
+                    a.invalidate();
+                }
+            }
+            if gi.dwFlags & GF_END != 0 {
+                a.zoom = None;
+            }
+            true
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false);
+    if handled {
+        unsafe { CloseGestureInfoHandle(handle).ok() };
+    }
+    handled
 }
 
 extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
@@ -306,12 +538,13 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 BeginPaint(hwnd, &mut ps);
                 let snap = with_app(|a| {
                     a.paint();
-                    a.snapshot.take().map(|p| (p, a.exit_after_snapshot))
+                    if a.snapshot_ready { a.snapshot.take().map(|p| (p, a.exit_after_snapshot)) } else { None }
                 })
                 .flatten();
                 let _ = EndPaint(hwnd, &ps);
                 if let Some((path, exit)) = snap {
-                    match snapshot(hwnd, &path) {
+                    let r = if path.extension().is_some_and(|e| e == "png") { with_app(|a| a.gfx.save_png(&path).map_err(std::io::Error::other)).unwrap_or(Ok(())) } else { snapshot(hwnd, &path) };
+                    match r {
                         Ok(()) => eprintln!("snapshot: {}", path.display()),
                         Err(e) => eprintln!("snapshot failed: {e}"),
                     }
@@ -341,14 +574,46 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 });
                 LRESULT(0)
             }
+            WM_TIMER => {
+                with_app(|a| match wp.0 {
+                    TIMER_CHROME => a.schedule(),
+                    TIMER_WATCH => a.watch(),
+                    3 => {
+                        KillTimer(Some(hwnd), 3).ok();
+                        a.snapshot_ready = true;
+                        a.invalidate();
+                    }
+                    _ => {}
+                });
+                LRESULT(0)
+            }
+            images::WM_IMAGE_LOADED => {
+                with_app(|a| {
+                    if a.gfx.images.collect() {
+                        a.viewer.invalidate();
+                        a.invalidate();
+                    }
+                });
+                LRESULT(0)
+            }
             WM_MOUSEWHEEL => {
                 let delta = ((wp.0 >> 16) & 0xffff) as i16 as f32 / 120.0;
+                let mut pt = POINT { x: lparam_point(lp).0, y: lparam_point(lp).1 };
+                ScreenToClient(hwnd, &mut pt).ok().ok();
                 with_app(|a| {
+                    let s = dpi_scale(hwnd);
                     let step = a.viewer.font_size * 3.0;
-                    a.viewer.wheel(-delta * step, mods());
+                    a.viewer.wheel(-delta * step, mods(), pt.x as f32 / s, pt.y as f32 / s);
                     a.invalidate();
                 });
                 LRESULT(0)
+            }
+            WM_GESTURE => {
+                if gesture(hwnd, lp) {
+                    LRESULT(0)
+                } else {
+                    DefWindowProcW(hwnd, msg, wp, lp)
+                }
             }
             WM_LBUTTONDOWN => {
                 SetCapture(hwnd);
@@ -364,9 +629,11 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             WM_LBUTTONUP => {
                 ReleaseCapture().ok();
                 let (x, y) = lparam_point(lp);
+                let tap = from_touch();
                 let effect = with_app(|a| {
                     let s = dpi_scale(hwnd);
-                    let e = a.viewer.release(x as f32 / s, y as f32 / s);
+                    let e = a.viewer.release(x as f32 / s, y as f32 / s, tap, Instant::now());
+                    a.schedule();
                     a.invalidate();
                     e
                 })
@@ -378,18 +645,43 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             }
             WM_MOUSEMOVE => {
                 let (x, y) = lparam_point(lp);
+                let touch = from_touch();
                 with_app(|a| {
+                    if !a.tracking {
+                        let mut tme = TRACKMOUSEEVENT { cbSize: size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE, hwndTrack: hwnd, dwHoverTime: 0 };
+                        a.tracking = TrackMouseEvent(&mut tme).is_ok();
+                    }
                     let s = dpi_scale(hwnd);
                     a.mouse = (x as f32 / s, y as f32 / s);
-                    if a.viewer.mouse_move(a.mouse.0, a.mouse.1) {
+                    if !touch && a.viewer.mouse_move(a.mouse.0, a.mouse.1, Instant::now()) {
                         a.invalidate();
                     }
+                    a.schedule();
+                });
+                LRESULT(0)
+            }
+            WM_MOUSELEAVE => {
+                with_app(|a| {
+                    a.tracking = false;
+                    a.viewer.mouse_leave();
+                    a.schedule();
+                    a.invalidate();
                 });
                 LRESULT(0)
             }
             WM_SETCURSOR if (lp.0 & 0xffff) as u32 == HTCLIENT => {
-                let link = with_app(|a| a.viewer.over_link(a.mouse.0, a.mouse.1)).unwrap_or(false);
-                if let Ok(c) = LoadCursorW(None, if link { IDC_HAND } else { IDC_IBEAM }) {
+                let cursor = with_app(|a| {
+                    let (x, y) = a.mouse;
+                    if a.viewer.over_button(x, y) || a.viewer.over_link(x, y) {
+                        IDC_HAND
+                    } else if a.viewer.over_chrome_area(x, y) {
+                        IDC_ARROW
+                    } else {
+                        IDC_IBEAM
+                    }
+                })
+                .unwrap_or(IDC_ARROW);
+                if let Ok(c) = LoadCursorW(None, cursor) {
                     SetCursor(Some(c));
                 }
                 LRESULT(1)
@@ -397,13 +689,24 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             WM_KEYDOWN | WM_SYSKEYDOWN => {
                 let Some(key) = key_from_vk(wp.0 as u16) else { return DefWindowProcW(hwnd, msg, wp, lp) };
                 let effect = with_app(|a| {
-                    let e = a.viewer.key(key, mods(), a.fullscreen.is_some());
+                    let e = a.viewer.key(key, mods(), Instant::now());
+                    a.schedule();
                     a.invalidate();
                     e
                 })
                 .flatten();
                 if let Some(e) = effect {
                     apply(hwnd, e);
+                }
+                LRESULT(0)
+            }
+            WM_CHAR => {
+                if let Some(c) = char::from_u32(wp.0 as u32) {
+                    with_app(|a| {
+                        if a.viewer.text_input(c) {
+                            a.invalidate();
+                        }
+                    });
                 }
                 LRESULT(0)
             }
@@ -417,6 +720,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 LRESULT(0)
             }
             WM_DESTROY => {
+                with_app(|a| a.save_settings());
                 PostQuitMessage(0);
                 LRESULT(0)
             }
@@ -425,9 +729,10 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
     }
 }
 
-pub fn run(path: Option<PathBuf>, fallback_title: &str, fallback_text: &str) {
+pub fn run(path: Option<PathBuf>, sample: &'static str) {
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
         let instance = GetModuleHandleW(None).expect("module handle");
         let class = w!("MarkdownrWindow");
         let wc = WNDCLASSEXW {
@@ -459,23 +764,68 @@ pub fn run(path: Option<PathBuf>, fallback_title: &str, fallback_text: &str) {
         let s = dpi_scale(hwnd);
         SetWindowPos(hwnd, None, 0, 0, (980.0 * s) as i32, (820.0 * s) as i32, SWP_NOMOVE | SWP_NOZORDER).ok();
         DragAcceptFiles(hwnd, true);
+        // Touch: one-finger pan in both directions (with inertia) and pinch zoom.
+        let configs = [
+            GESTURECONFIG { dwID: GID_PAN, dwWant: 0x2 | 0x4 | 0x10, dwBlock: 0x8 },
+            GESTURECONFIG { dwID: GID_ZOOM, dwWant: 1, dwBlock: 0 },
+        ];
+        SetGestureConfig(hwnd, 0, &configs, size_of::<GESTURECONFIG>() as u32).ok();
 
-        let (title, doc) = match &path {
+        let settings_path = std::env::var_os("MARKDOWNR_SETTINGS").map(PathBuf::from).unwrap_or_else(settings_path);
+        let mut settings = Settings::load(&settings_path);
+        let sample_mode = std::env::var_os("MARKDOWNR_SAMPLE").is_some();
+        let (title, source, doc) = match &path {
             Some(p) => read_doc(p),
-            None => (fallback_title.to_string(), parse(fallback_text)),
+            None if sample_mode => ("Beispiel".into(), sample.to_string(), parse(sample)),
+            None => {
+                let start = settings.start_page();
+                ("Markdownr".into(), start.clone(), parse(&start))
+            }
         };
+        if let Some(p) = &path {
+            settings.add_recent(p);
+            settings.save(&settings_path);
+        }
+        let mut viewer = Viewer::new(title, source, doc);
+        viewer.font_size = settings.font_size;
+        viewer.theme_choice = ThemeChoice::from_name(&settings.theme);
+        viewer.remember_fullscreen = settings.remember_fullscreen;
+        let start_fullscreen = settings.remember_fullscreen && settings.fullscreen;
+        let mut gfx = Gfx::new(hwnd).expect("Direct2D/DirectWrite");
+        gfx.offscreen_mode = std::env::var("MARKDOWNR_SNAPSHOT").is_ok_and(|p| p.ends_with(".png"));
+        gfx.images.set_base(path.as_ref().and_then(|p| p.parent().map(Path::to_path_buf)).or_else(|| std::env::current_dir().ok()));
         let mut app = App {
             hwnd,
-            gfx: Gfx::new(hwnd).expect("Direct2D/DirectWrite"),
-            viewer: Viewer::new(title, doc),
+            gfx,
+            viewer,
+            modified: path.as_deref().and_then(mtime),
             path,
             fullscreen: None,
             mouse: (0.0, 0.0),
+            tracking: false,
+            pan: None,
+            zoom: None,
+            chrome_timer: false,
             snapshot: std::env::var_os("MARKDOWNR_SNAPSHOT").map(PathBuf::from),
             exit_after_snapshot: std::env::var_os("MARKDOWNR_SNAPSHOT_EXIT").is_some(),
+            snapshot_ready: false,
+            settings,
+            settings_path,
+            sample,
         };
-        if let Some(px) = std::env::var("MARKDOWNR_SCROLL").ok().and_then(|s| s.parse::<f32>().ok()) {
-            app.viewer.scroll = px;
+        // Test hooks for snapshots: open the TOC / run a search at start.
+        if std::env::var_os("MARKDOWNR_TOC").is_some() {
+            app.viewer.key(Key::Char('T'), Mods { ctrl: true, shift: false }, Instant::now());
+        }
+        if let Ok(q) = std::env::var("MARKDOWNR_FIND") {
+            app.viewer.key(Key::Char('F'), Mods { ctrl: true, shift: false }, Instant::now());
+            q.chars().for_each(|c| {
+                app.viewer.text_input(c);
+            });
+        }
+        if std::env::var_os("MARKDOWNR_CHROME").is_some() {
+            app.viewer.chrome_alpha = 1.0;
+            app.viewer.show_chrome(Instant::now() + Duration::from_secs(3600));
         }
         app.apply_dark();
         app.set_title();
@@ -492,7 +842,12 @@ pub fn run(path: Option<PathBuf>, fallback_title: &str, fallback_text: &str) {
                 }
             });
         }
+        SetTimer(Some(hwnd), TIMER_WATCH, 1000, None);
+        SetTimer(Some(hwnd), 3, 1500, None);
         let _ = ShowWindow(hwnd, SW_SHOW);
+        if start_fullscreen {
+            toggle_fullscreen(hwnd, Some(true));
+        }
 
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {

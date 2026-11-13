@@ -31,15 +31,24 @@ Extra syntax from transforms: ==marked text==, ++inserted text++, x^2^ and H~2~O
 > GitHub-style alerts are supported by pulldown-cmark out of the box.
 
 > [!WARNING]
-> Images, syntax highlighting and math are still placeholders in this prototype.
+> Remote images load in the background; SVG is not supported yet.
+
+## Images
+
+![Banner](assets/banner.png)
 
 ## Code
 
 ```rust
+/// Parse and print a document.
 fn main() {
     let doc = markdownr::parse("# Hello");
-    println!("{doc:?}");
+    println!("{doc:?} {}", 42);
 }
+```
+
+```json
+{ "name": "markdownr", "version": "0.1.0", "native": true }
 ```
 
 ## Table

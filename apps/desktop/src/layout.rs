@@ -81,10 +81,27 @@ pub trait Paragraph {
 pub trait Typesetter {
     type Para: Paragraph;
     fn paragraph(&mut self, text: &str, spans: &[(Range<usize>, Span)], base: &BaseStyle, max_width: f32) -> Self::Para;
+    /// Pixel size of an image, if it is already loaded. Platforms load images
+    /// asynchronously and request a relayout once they arrive.
+    fn image_size(&self, _url: &str) -> Option<(f32, f32)> {
+        None
+    }
     /// The OpenType MATH font used for formulas, if the platform has one.
     fn math_font(&self) -> Option<&MathFont> {
         None
     }
+}
+
+/// A decoded image positioned in the document.
+pub struct ImagePlacement {
+    pub url: String,
+    pub r: RectF,
+}
+
+/// What an inline object (U+FFFC) stands for.
+enum Obj {
+    Math(MathBox),
+    Image(String, f32, f32),
 }
 
 /// A formula positioned in the document: `y` is its baseline.
@@ -140,6 +157,7 @@ pub struct DocLayout<P> {
     pub blocks: Vec<TextBlock<P>>,
     pub rects: Vec<Rect>,
     pub math: Vec<MathPlacement>,
+    pub images: Vec<ImagePlacement>,
     pub toc: Vec<TocEntry>,
     pub front_matter: Option<String>,
     pub height: f32,
@@ -147,7 +165,7 @@ pub struct DocLayout<P> {
 
 impl<P> Default for DocLayout<P> {
     fn default() -> Self {
-        DocLayout { blocks: Vec::new(), rects: Vec::new(), math: Vec::new(), toc: Vec::new(), front_matter: None, height: 0.0 }
+        DocLayout { blocks: Vec::new(), rects: Vec::new(), math: Vec::new(), images: Vec::new(), toc: Vec::new(), front_matter: None, height: 0.0 }
     }
 }
 
@@ -167,7 +185,7 @@ struct Inline {
     backgrounds: Vec<(Range<usize>, Ink)>,
     links: Vec<(Range<usize>, String)>,
     /// (byte of the U+FFFC, laid-out formula, copy text)
-    objects: Vec<(usize, MathBox, String)>,
+    objects: Vec<(usize, Obj, String)>,
 }
 
 impl Inline {
@@ -233,6 +251,14 @@ impl<T: Typesetter> Layouter<'_, T> {
     }
 
     fn image_placeholder(&mut self, url: &str, alt: &str, ctx: &Ctx, y: &mut f32, out: &mut DocLayout<T::Para>, join: Join) {
+        if let Some((iw, ih)) = self.ts.image_size(url) {
+            // Natural size in DIPs, shrunk to the column.
+            let w = iw.min(ctx.width);
+            let h = ih * w / iw.max(1.0);
+            out.images.push(ImagePlacement { url: url.to_string(), r: RectF { x: ctx.x, y: *y, w, h } });
+            *y += h + ctx.gap;
+            return;
+        }
         let h = self.base * 6.0;
         let w = ctx.width.min(self.base * 24.0);
         out.rects.push(Rect { r: RectF { x: ctx.x, y: *y, w, h }, color: self.theme.code_bg, radius: 8.0 });
@@ -270,7 +296,7 @@ impl<T: Typesetter> Layouter<'_, T> {
                 let mbox = self.ts.math_font().unwrap().layout(&node.text, ctx.style.size * 1.1, true);
                 let mut inline = Inline::plain(OBJECT_CHAR.to_string());
                 inline.spans.push((0..inline.text.len(), Span::Object { w: mbox.w, asc: mbox.asc, desc: mbox.desc }));
-                inline.objects.push((0, mbox, format!("$$\n{}\n$$", node.text.trim())));
+                inline.objects.push((0, Obj::Math(mbox), format!("$$\n{}\n$$", node.text.trim())));
                 *y += base * 0.25;
                 let h = self.push(inline, &ctx.style, ctx.x, *y, ctx.width, Some(TextAlign::Center), true, join, out);
                 *y += h + ctx.gap + base * 0.25;
@@ -290,7 +316,28 @@ impl<T: Typesetter> Layouter<'_, T> {
                 out.rects.push(Rect { r: RectF { x: ctx.x, y: y0, w: ctx.width, h: 0.0 }, color: theme.code_bg, radius: 6.0 });
                 let align = (node.kind == Kind::DisplayMath).then_some(TextAlign::Center);
                 let text = node.text.trim_end_matches('\n').to_string();
-                let h = self.push(Inline::plain(text), &style, ctx.x + pad, y0 + pad, ctx.width - 2.0 * pad, align, true, join, out) + 2.0 * pad;
+                let mut inline = Inline::plain(text);
+                if let Kind::CodeBlock { lang } = &node.kind {
+                    for (r, tok) in crate::highlight::highlight(lang, &inline.text) {
+                        use crate::highlight::Tok;
+                        let ink = match tok {
+                            Tok::Keyword => theme.syn_keyword,
+                            Tok::Literal | Tok::Number => theme.syn_number,
+                            Tok::Type => theme.syn_type,
+                            Tok::String => theme.syn_string,
+                            Tok::Comment => theme.syn_comment,
+                            Tok::Function => theme.syn_function,
+                            Tok::Tag => theme.syn_tag,
+                            Tok::Attr => theme.syn_attr,
+                            Tok::Punct => continue,
+                        };
+                        inline.spans.push((r.clone(), Span::Color(ink)));
+                        if tok == Tok::Comment {
+                            inline.spans.push((r, Span::Italic));
+                        }
+                    }
+                }
+                let h = self.push(inline, &style, ctx.x + pad, y0 + pad, ctx.width - 2.0 * pad, align, true, join, out) + 2.0 * pad;
                 out.rects[bg].r.h = h;
                 *y += h + ctx.gap;
             }
@@ -477,7 +524,7 @@ impl<T: Typesetter> Layouter<'_, T> {
                     let mbox = self.ts.math_font().unwrap().layout(&node.text, size, false);
                     out.text.push(OBJECT_CHAR);
                     out.spans.push((start..out.text.len(), Span::Object { w: mbox.w, asc: mbox.asc, desc: mbox.desc }));
-                    out.objects.push((start, mbox, format!("${}$", node.text)));
+                    out.objects.push((start, Obj::Math(mbox), format!("${}$", node.text)));
                 }
                 Kind::InlineMath => {
                     out.text.push_str(&node.text);
@@ -495,6 +542,16 @@ impl<T: Typesetter> Layouter<'_, T> {
                     let r = start..out.text.len();
                     out.spans.push((r.clone(), Span::Super));
                     out.spans.push((r, Span::Color(theme.link)));
+                }
+                Kind::Image { url } if self.ts.image_size(url).is_some() => {
+                    let (iw, ih) = self.ts.image_size(url).unwrap();
+                    // Inline images (badges, icons) keep their natural size, capped to ~4 lines.
+                    let scale = (size * 6.0 / ih.max(1.0)).min(1.0);
+                    let (w, h) = (iw * scale, ih * scale);
+                    out.text.push(OBJECT_CHAR);
+                    out.spans.push((start..out.text.len(), Span::Object { w, asc: h * 0.85, desc: h * 0.15 }));
+                    let alt: String = node.children.iter().map(Node::plain_text).collect();
+                    out.objects.push((start, Obj::Image(url.clone(), w, h), format!("![{alt}]({url})")));
                 }
                 Kind::Image { url } => {
                     let alt: String = node.children.iter().map(Node::plain_text).collect();
@@ -544,9 +601,12 @@ impl<T: Typesetter> Layouter<'_, T> {
             }
         }
         let mut object_sources = Vec::with_capacity(inline.objects.len());
-        for (byte, mbox, source) in inline.objects {
+        for (byte, obj, source) in inline.objects {
             let (ox, oy) = para.object_origin(byte);
-            out.math.push(MathPlacement { x: x + ox, y: y + oy + mbox.asc, mbox, color });
+            match obj {
+                Obj::Math(mbox) => out.math.push(MathPlacement { x: x + ox, y: y + oy + mbox.asc, mbox, color }),
+                Obj::Image(url, w, h) => out.images.push(ImagePlacement { url, r: RectF { x: x + ox, y: y + oy, w, h } }),
+            }
             object_sources.push((byte, source));
         }
         let (w, h) = para.size();

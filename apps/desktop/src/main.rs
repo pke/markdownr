@@ -8,8 +8,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ast;
+mod highlight;
 mod layout;
 mod math;
+mod settings;
 mod theme;
 mod transforms;
 mod view;
@@ -22,7 +24,7 @@ const SAMPLE: &str = include_str!("../assets/sample.md");
 fn main() {
     let path = std::env::args_os().nth(1).map(std::path::PathBuf::from);
     #[cfg(windows)]
-    win::run(path, "Welcome", SAMPLE);
+    win::run(path, SAMPLE);
     #[cfg(not(windows))]
     {
         let _ = (path, SAMPLE);
