@@ -60,7 +60,7 @@ fn with_app<R>(f: impl FnOnce(&mut App) -> R) -> Option<R> {
 }
 
 fn parse(text: &str) -> Node {
-    let mut doc = crate::ast::parse(text);
+    let mut doc = crate::ast::parse(&crate::transforms::preprocess_html(text));
     crate::transforms::compose(&mut doc, &crate::transforms::default_pipeline());
     doc
 }
@@ -189,8 +189,9 @@ impl App {
         let finds = v.find_highlights();
         let chrome = v.chrome_visible().then_some((&v.chrome, v.chrome_alpha));
         let sprites = v.sprites(Instant::now());
+        self.gfx.now_ms = (Instant::now() - v.anim_start).as_secs_f32() * 1000.0;
         let particles = v.particles.as_ref().map(|p| (p, sprites.as_slice()));
-        if let Err(e) = self.gfx.draw(&v.layout, v.selection.as_ref(), &finds, &v.theme, v.scroll, v.view_h, chrome, particles) {
+        if let Err(e) = self.gfx.draw(&v.layout, v.selection.as_ref(), &finds, &v.theme, v.scroll, v.view_h, chrome, particles, &v.tip_layout) {
             eprintln!("draw: {e}");
             self.viewer.invalidate();
             self.invalidate();
@@ -737,6 +738,13 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
+        {
+            let mut buf = [0u16; 85];
+            let n = windows::Win32::Globalization::GetUserDefaultLocaleName(&mut buf);
+            if n > 1 {
+                crate::transforms::set_locale(&String::from_utf16_lossy(&buf[..n as usize - 1]));
+            }
+        }
         let instance = GetModuleHandleW(None).expect("module handle");
         let class = w!("MarkdownrWindow");
         let wc = WNDCLASSEXW {

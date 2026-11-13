@@ -103,6 +103,9 @@ pub struct Viewer<P> {
     /// Toolbar, drawer and find bar in window coordinates.
     pub chrome: DocLayout<P>,
     pub chrome_alpha: f32,
+    /// Abbreviation tooltip (text, window x, y) and its layout.
+    tip: Option<(String, f32, f32)>,
+    pub tip_layout: DocLayout<P>,
     pub particles: Option<Particles>,
     pub anim_start: Instant,
     /// System "show animations" off: no particles.
@@ -157,6 +160,8 @@ impl<P: Paragraph> Viewer<P> {
             show_source: false,
             chrome: DocLayout::default(),
             chrome_alpha: 0.0,
+            tip: None,
+            tip_layout: DocLayout::default(),
             particles: None,
             anim_start: Instant::now(),
             reduce_motion: false,
@@ -338,6 +343,17 @@ impl<P: Paragraph> Viewer<P> {
             None
         };
         let mut repaint = before != self.chrome_alpha;
+        if !self.layout.cycles.is_empty() && !self.reduce_motion {
+            // Wake for the next quote crossfade (every 10 s, 600 ms long).
+            let t = (now - self.anim_start).as_millis() as u64 % 10_000;
+            let wait = if t < 650 { 33 } else { 10_000 - t };
+            let d = Duration::from_millis(wait);
+            repaint |= t < 650;
+            let next = Some(next.map_or(d, |n| n.min(d)));
+            if self.particles.is_none() {
+                return (repaint, next);
+            }
+        }
         if self.particles.is_some() && !self.reduce_motion {
             repaint = true;
             let frame = Some(Duration::from_millis(33));
@@ -489,6 +505,17 @@ impl<P: Paragraph> Viewer<P> {
             out.height = y + self.toc_scroll - top + 8.0; // content height of the drawer
         }
         self.chrome = out;
+        let mut tip_out: DocLayout<P> = DocLayout::default();
+        if let Some((text, tx, ty)) = &self.tip {
+            let (para, pw, ph) = label(ts, text, &style, 360.0);
+            let (bw, bh) = (pw + 20.0, ph + 12.0);
+            let bx = (tx - bw / 2.0).clamp(4.0, (self.view_w - bw - 4.0).max(4.0));
+            let by = if ty + 24.0 + bh < self.view_h { ty + 24.0 } else { ty - 12.0 - bh };
+            tip_out.rects.push(Rect { r: RectF { x: bx - 1.0, y: by - 1.0, w: bw + 2.0, h: bh + 2.0 }, color: th.border, radius: 7.0 });
+            tip_out.rects.push(Rect { r: RectF { x: bx, y: by, w: bw, h: bh }, color: th.chrome_bg, radius: 6.0 });
+            place(&mut tip_out, para, text, bx + 10.0, by + 6.0, pw, ph);
+        }
+        self.tip_layout = tip_out;
         self.buttons = buttons;
     }
 
@@ -774,6 +801,13 @@ impl<P: Paragraph> Viewer<P> {
                 self.show_chrome(now);
                 repaint |= !was;
             }
+            let (dx, dy) = self.doc_point(x, y);
+            let tip = if self.over_chrome(x, y) { None } else { self.layout.link_at(dx, dy).and_then(|u| u.strip_prefix("abbr:")).map(str::to_string) };
+            if tip.as_deref() != self.tip.as_ref().map(|t| t.0.as_str()) {
+                self.tip = tip.map(|t| (t, x, y));
+                self.chrome_dirty = true;
+                repaint = true;
+            }
             let hover = self.chrome_hit(x, y);
             if hover != self.hover {
                 self.hover = hover;
@@ -829,9 +863,16 @@ impl<P: Paragraph> Viewer<P> {
             }
             return None;
         };
+        if let Some(title) = url.strip_prefix("abbr:") {
+            self.tip = Some((title.to_string(), x, y));
+            self.chrome_dirty = true;
+            return None;
+        }
         if let Some(id) = url.strip_prefix('#') {
-            if let Some(entry) = self.layout.toc.iter().find(|e| e.id == id) {
-                self.scroll = entry.y - self.font_size;
+            let target = self.layout.toc.iter().find(|e| e.id == id).map(|e| e.y - self.font_size)
+                .or_else(|| self.layout.anchors.iter().find(|(a, _)| a == id).map(|(_, ay)| *ay));
+            if let Some(ty) = target {
+                self.scroll = ty;
                 self.clamp_scroll();
                 self.selection = None;
             }

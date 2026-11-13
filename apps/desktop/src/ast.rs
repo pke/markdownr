@@ -48,6 +48,8 @@ pub enum Kind {
     TableCell,
     Rule,
     DisplayMath,
+    /// `:::quotes` … `:::` — blockquotes shown one at a time, crossfading.
+    QuoteCycle,
     // Inlines
     Text,
     Code,
@@ -67,6 +69,8 @@ pub enum Kind {
     SoftBreak,
     HardBreak,
     FootnoteRef { label: String },
+    /// Abbreviation with its expansion (`*[HTML]: Hyper Text Markup Language`).
+    Abbr { title: String },
 }
 
 impl Kind {
@@ -89,6 +93,7 @@ impl Kind {
                 | Kind::SoftBreak
                 | Kind::HardBreak
                 | Kind::FootnoteRef { .. }
+                | Kind::Abbr { .. }
         )
     }
 }

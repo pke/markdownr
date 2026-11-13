@@ -171,6 +171,8 @@ pub struct Gfx {
     sprite_layouts: HashMap<(&'static str, u32), IDWriteTextLayout>,
     math: Option<MathFace>,
     pub images: super::images::Images,
+    /// Animation clock for time-based effects (quote crossfades), ms.
+    pub now_ms: f32,
 }
 
 fn color(ink: Ink) -> D2D1_COLOR_F {
@@ -218,6 +220,7 @@ impl Gfx {
                 typo_sub: typo(DWRITE_FONT_FEATURE_TAG_SUBSCRIPT)?,
                 math: load_math_face(&dw),
                 images: super::images::Images::new(hwnd),
+                now_ms: 0.0,
                 d2d,
                 dw,
                 rt: None,
@@ -361,6 +364,7 @@ impl Gfx {
         view_h: f32,
         chrome: Option<(&DocLayout<DwPara>, f32)>,
         particles: Option<(&crate::particles::Particles, &[crate::particles::Sprite])>,
+        tip: &DocLayout<DwPara>,
     ) -> Result<()> {
         let Some(rt) = self.rt.clone() else { return Ok(()) };
         unsafe {
@@ -386,6 +390,9 @@ impl Gfx {
                 rt.PushLayer(&params, None);
                 self.draw_layout(&rt, c, None, &[], theme, 0.0, view_h);
                 rt.PopLayer();
+            }
+            if !tip.rects.is_empty() {
+                self.draw_layout(&rt, tip, None, &[], theme, 0.0, view_h);
             }
             let r = rt.EndDraw(None, None);
             if let Err(e) = &r {
@@ -512,16 +519,50 @@ impl Gfx {
         let sel_brush = self.brush(theme.selection);
         let find_brush = self.brush(theme.find);
         let current_brush = self.brush(theme.find_current);
+        // `:::quotes` crossfade: opacity per block / rect (absent = 1).
+        let mut block_alpha: HashMap<usize, f32> = HashMap::new();
+        let mut rect_alpha: HashMap<usize, f32> = HashMap::new();
+        for group in &doc.cycles {
+            let n = group.len().max(1);
+            let period = 10_000.0;
+            let k = (self.now_ms / period) as usize;
+            let (cur, prev) = (k % n, (k + n - 1) % n);
+            let f = if k == 0 { 1.0 } else { ((self.now_ms % period) / 600.0).min(1.0) };
+            for (qi, (br, rr)) in group.iter().enumerate() {
+                let a = if qi == cur { f } else if qi == prev && f < 1.0 { 1.0 - f } else { 0.0 };
+                br.clone().for_each(|b| _ = block_alpha.insert(b, a));
+                rr.clone().for_each(|r| _ = rect_alpha.insert(r, a));
+            }
+        }
+        let fade_layer = |rt: &ID2D1RenderTarget, a: f32| unsafe {
+            let params = D2D1_LAYER_PARAMETERS {
+                contentBounds: D2D_RECT_F { left: -1e6, top: -1e6, right: 1e6, bottom: 1e6 },
+                geometricMask: std::mem::ManuallyDrop::new(None),
+                maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                maskTransform: windows_numerics::Matrix3x2::identity(),
+                opacity: a,
+                opacityBrush: std::mem::ManuallyDrop::new(None),
+                layerOptions: D2D1_LAYER_OPTIONS_INITIALIZE_FOR_CLEARTYPE,
+            };
+            rt.PushLayer(&params, None);
+        };
         unsafe {
-            for r in &doc.rects {
-                if !visible(r.r.y, r.r.h) {
+            for (ri, r) in doc.rects.iter().enumerate() {
+                let a = rect_alpha.get(&ri).copied().unwrap_or(1.0);
+                if !visible(r.r.y, r.r.h) || a <= 0.0 {
                     continue;
+                }
+                if a < 1.0 {
+                    fade_layer(rt, a);
                 }
                 let b = self.brush(r.color);
                 if r.radius > 0.0 {
                     rt.FillRoundedRectangle(&D2D1_ROUNDED_RECT { rect: rect(r.r), radiusX: r.radius, radiusY: r.radius }, &b);
                 } else {
                     rt.FillRectangle(&rect(r.r), &b);
+                }
+                if a < 1.0 {
+                    rt.PopLayer();
                 }
             }
 
@@ -534,8 +575,12 @@ impl Gfx {
                 }
             }
             for (i, block) in doc.blocks.iter().enumerate() {
-                if !visible(block.y, block.h) {
+                let a = block_alpha.get(&i).copied().unwrap_or(1.0);
+                if !visible(block.y, block.h) || a <= 0.0 {
                     continue;
+                }
+                if a < 1.0 {
+                    fade_layer(rt, a);
                 }
                 for (_, range, current) in finds.iter().filter(|f| f.0 == i) {
                     let b = if *current { &current_brush } else { &find_brush };
@@ -554,6 +599,9 @@ impl Gfx {
                     &text_brush,
                     D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
                 );
+                if a < 1.0 {
+                    rt.PopLayer();
+                }
             }
             for &(hx, hy, hs) in &doc.hats {
                 if visible(hy, hs) {

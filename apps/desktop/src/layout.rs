@@ -160,6 +160,10 @@ pub struct DocLayout<P> {
     pub images: Vec<ImagePlacement>,
     /// Santa hats on headings (Christmas theme): (x, y, size), top-left corner.
     pub hats: Vec<(f32, f32, f32)>,
+    /// Jump targets besides headings: (id, y).
+    pub anchors: Vec<(String, f32)>,
+    /// `:::quotes` groups: per quote the block and rect index ranges.
+    pub cycles: Vec<Vec<(Range<usize>, Range<usize>)>>,
     pub toc: Vec<TocEntry>,
     pub front_matter: Option<String>,
     pub height: f32,
@@ -167,7 +171,7 @@ pub struct DocLayout<P> {
 
 impl<P> Default for DocLayout<P> {
     fn default() -> Self {
-        DocLayout { blocks: Vec::new(), rects: Vec::new(), math: Vec::new(), images: Vec::new(), hats: Vec::new(), toc: Vec::new(), front_matter: None, height: 0.0 }
+        DocLayout { blocks: Vec::new(), rects: Vec::new(), math: Vec::new(), images: Vec::new(), hats: Vec::new(), anchors: Vec::new(), cycles: Vec::new(), toc: Vec::new(), front_matter: None, height: 0.0 }
     }
 }
 
@@ -188,6 +192,8 @@ struct Inline {
     links: Vec<(Range<usize>, String)>,
     /// (byte of the U+FFFC, laid-out formula, copy text)
     objects: Vec<(usize, Obj, String)>,
+    /// (byte, anchor id) — jump targets inside the paragraph (footnote references).
+    anchors: Vec<(usize, String)>,
 }
 
 impl Inline {
@@ -406,6 +412,7 @@ impl<T: Typesetter> Layouter<'_, T> {
             Kind::FootnoteDef { label } => {
                 let style = BaseStyle { size: base * 0.85, color: theme.muted, ..ctx.style };
                 let indent = base * 2.0;
+                out.anchors.push((format!("fn-{label}"), *y - base * 0.5));
                 self.push(Inline::plain(format!("{label}.")), &style, ctx.x, *y, indent - 6.0, Some(TextAlign::End), false, Join::Line, out);
                 let inner = Ctx { x: ctx.x + indent, width: ctx.width - indent, gap: base * 0.4, style, ..ctx.clone() };
                 self.blocks(&node.children, &inner, y, out, join);
@@ -424,6 +431,22 @@ impl<T: Typesetter> Layouter<'_, T> {
                 *y += ctx.gap * 0.5;
             }
             Kind::Table { aligns } => self.table(node, aligns, ctx, y, out, join),
+            Kind::QuoteCycle => {
+                // All quotes are laid out at the same place; the renderer shows one
+                // at a time (10 s each, 600 ms crossfade, like the iOS QuoteCycler).
+                let y0 = *y;
+                let mut max_y = y0;
+                let mut group = Vec::new();
+                for q in &node.children {
+                    let (b0, r0) = (out.blocks.len(), out.rects.len());
+                    let mut qy = y0;
+                    self.block(q, ctx, &mut qy, out, join);
+                    max_y = max_y.max(qy);
+                    group.push((b0..out.blocks.len(), r0..out.rects.len()));
+                }
+                out.cycles.push(group);
+                *y = max_y;
+            }
             Kind::Rule if theme.hr_emojis.is_some() => {
                 let text = theme.hr_emojis.unwrap().join("   ");
                 let style = BaseStyle { size: base * 1.25, line_height: 1.4, ..ctx.style };
@@ -461,8 +484,9 @@ impl<T: Typesetter> Layouter<'_, T> {
                 let style = BaseStyle { bold: *header, ..ctx.style };
                 let para = self.ts.paragraph(&inline.text, &inline.spans, &style, 1.0e6);
                 let (min, max) = para.content_widths();
-                natural[ci] = natural[ci].max(max + 2.0 * pad);
-                minimum[ci] = minimum[ci].max(min + 2.0 * pad);
+                // Round up: laying out at exactly the measured width can wrap the last letter.
+                natural[ci] = natural[ci].max((max + 1.0).ceil() + 2.0 * pad);
+                minimum[ci] = minimum[ci].max((min + 1.0).ceil() + 2.0 * pad);
                 built.push((para, inline));
             }
             cells.push(built);
@@ -558,6 +582,8 @@ impl<T: Typesetter> Layouter<'_, T> {
                     if unicode_script(label, true).is_none() {
                         out.spans.push((r.clone(), Span::Super));
                     }
+                    out.links.push((r.clone(), format!("#fn-{label}")));
+                    out.anchors.push((start, format!("fnref-{label}")));
                     out.spans.push((r, Span::Color(theme.link)));
                 }
                 Kind::Image { url } if self.ts.image_size(url).is_some() => {
@@ -601,6 +627,11 @@ impl<T: Typesetter> Layouter<'_, T> {
                             out.spans.push((r.clone(), Span::Underline));
                             out.spans.push((r, Span::Color(theme.ins)));
                         }
+                        Kind::Abbr { title } => {
+                            // Dotted-underline look via underline + muted colour; hover shows the expansion.
+                            out.spans.push((r.clone(), Span::Underline));
+                            out.links.push((r, format!("abbr:{title}")));
+                        }
                         Kind::Link { url } => {
                             out.spans.push((r.clone(), Span::Color(theme.link)));
                             out.links.push((r, url.clone()));
@@ -641,6 +672,10 @@ impl<T: Typesetter> Layouter<'_, T> {
             object_sources.push((byte, source));
         }
         let (w, h) = para.size();
+        for (b, id) in &inline.anchors {
+            let ry = para.range_rects(*b..*b + 1).first().map_or(0.0, |r| r.y);
+            out.anchors.push((id.clone(), y + ry - self.base * 2.0));
+        }
         out.blocks.push(TextBlock { para, text: inline.text, x, y, w, h, selectable, join, links: inline.links, object_sources });
         h
     }
