@@ -587,8 +587,10 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 LRESULT(0)
             }
             images::WM_IMAGE_LOADED => {
+                // SAFETY: lParam is the Job box posted by the image loader.
+                let ready = with_app(|a| unsafe { a.gfx.images.collect(lp.0) });
                 with_app(|a| {
-                    if a.gfx.images.collect() {
+                    if ready == Some(true) {
                         a.viewer.invalidate();
                         a.invalidate();
                     }

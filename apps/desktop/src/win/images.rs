@@ -1,10 +1,11 @@
-//! Image loading: WIC decodes local files and downloads (urlmon cache) on worker
-//! threads; the UI thread turns the pixels into Direct2D bitmaps on first draw.
+//! Image loading: WIC decodes local files and downloads (urlmon cache) on the
+//! Windows thread pool (WIC itself is synchronous); each result travels back
+//! boxed in the lParam of WM_IMAGE_LOADED, so no Rust threads or channels are
+//! needed. The UI thread turns the pixels into Direct2D bitmaps on first draw.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{Receiver, Sender, channel};
 use windows::Win32::Foundation::{GENERIC_READ, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Direct2D::Common::{D2D_SIZE_U, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_PIXEL_FORMAT};
 use windows::Win32::Graphics::Direct2D::{D2D1_BITMAP_PROPERTIES, ID2D1Bitmap, ID2D1RenderTarget};
@@ -19,6 +20,30 @@ pub const WM_IMAGE_LOADED: u32 = WM_APP + 1;
 
 type Decoded = Option<(u32, u32, Vec<u8>)>;
 
+/// Work item handed to the thread pool and back to the UI thread.
+struct Job {
+    url: String,
+    source: Option<Source>,
+    hwnd: isize,
+    decoded: Decoded,
+}
+
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn TrySubmitThreadpoolCallback(cb: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void), ctx: *mut core::ffi::c_void, env: *const core::ffi::c_void) -> i32;
+}
+
+unsafe extern "system" fn run_job(_instance: *mut core::ffi::c_void, ctx: *mut core::ffi::c_void) {
+    // SAFETY: ctx is the Box<Job> leaked in Images::size.
+    let mut job = unsafe { Box::from_raw(ctx as *mut Job) };
+    job.decoded = job.source.take().and_then(|s| unsafe { load(&s) });
+    let hwnd = HWND(job.hwnd as *mut _);
+    let ptr = Box::into_raw(job);
+    if unsafe { PostMessageW(Some(hwnd), WM_IMAGE_LOADED, WPARAM(0), LPARAM(ptr as isize)) }.is_err() {
+        drop(unsafe { Box::from_raw(ptr) });
+    }
+}
+
 enum State {
     Loading,
     Failed,
@@ -29,14 +54,11 @@ pub struct Images {
     map: RefCell<HashMap<String, State>>,
     base: RefCell<Option<PathBuf>>,
     hwnd: isize,
-    tx: Sender<(String, Decoded)>,
-    rx: Receiver<(String, Decoded)>,
 }
 
 impl Images {
     pub fn new(hwnd: HWND) -> Self {
-        let (tx, rx) = channel();
-        Images { map: RefCell::default(), base: RefCell::default(), hwnd: hwnd.0 as isize, tx, rx }
+        Images { map: RefCell::default(), base: RefCell::default(), hwnd: hwnd.0 as isize }
     }
 
     /// Directory that relative image paths are resolved against.
@@ -55,30 +77,35 @@ impl Images {
         }
         self.map.borrow_mut().insert(url.to_string(), State::Loading);
         let source = resolve(url, self.base.borrow().as_deref());
-        let (tx, hwnd, url) = (self.tx.clone(), self.hwnd, url.to_string());
-        std::thread::spawn(move || {
-            let decoded = source.and_then(|s| unsafe { load(&s) });
-            let _ = tx.send((url, decoded));
-            unsafe { PostMessageW(Some(HWND(hwnd as *mut _)), WM_IMAGE_LOADED, WPARAM(0), LPARAM(0)).ok() };
-        });
+        let job = Box::into_raw(Box::new(Job { url: url.to_string(), source, hwnd: self.hwnd, decoded: None }));
+        // SAFETY: run_job takes ownership of the box; reclaim it if submission fails.
+        if unsafe { TrySubmitThreadpoolCallback(run_job, job as *mut _, core::ptr::null()) } == 0 {
+            drop(unsafe { Box::from_raw(job) });
+            self.map.borrow_mut().insert(url.to_string(), State::Failed);
+        }
         None
     }
 
-    /// Take finished loads; returns true if any image became available.
-    pub fn collect(&self) -> bool {
-        let mut any = false;
-        let mut map = self.map.borrow_mut();
-        while let Ok((url, decoded)) = self.rx.try_recv() {
-            let state = match decoded {
-                Some((w, h, pixels)) => {
-                    any = true;
-                    State::Ready { w, h, pixels, bitmap: None }
-                }
-                None => State::Failed,
-            };
-            map.insert(url, state);
+    /// Takes a finished load from WM_IMAGE_LOADED's lParam; true if an image became available.
+    ///
+    /// # Safety
+    /// `lparam` must be the pointer posted by `run_job`, used exactly once.
+    pub unsafe fn collect(&self, lparam: isize) -> bool {
+        if lparam == 0 {
+            return false;
         }
-        any
+        let job = unsafe { Box::from_raw(lparam as *mut Job) };
+        let mut map = self.map.borrow_mut();
+        // A newer document may have cleared the map; drop stale results.
+        if !map.contains_key(&job.url) {
+            return false;
+        }
+        let (state, ok) = match job.decoded {
+            Some((w, h, pixels)) => (State::Ready { w, h, pixels, bitmap: None }, true),
+            None => (State::Failed, false),
+        };
+        map.insert(job.url, state);
+        ok
     }
 
     /// Drop device-dependent bitmaps (render target was recreated).
