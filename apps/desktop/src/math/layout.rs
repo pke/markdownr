@@ -1,0 +1,746 @@
+//! TeX-style math layout driven by an OpenType MATH table (Cambria Math on
+//! Windows, STIX Two / Latin Modern Math elsewhere). Produces positioned glyph
+//! ids and rules; the platform draws them with its own glyph renderer.
+//!
+//! Coordinates: x to the right, y DOWN, relative to the formula's baseline.
+
+use super::parse::{Class, M};
+use crate::layout::RectF;
+use ttf_parser::{Face, GlyphId};
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Item {
+    Glyph { id: u16, x: f32, y: f32, size: f32, color: Option<[u8; 3]> },
+    Rule { r: RectF, color: Option<[u8; 3]> },
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MathBox {
+    pub w: f32,
+    pub asc: f32,
+    pub desc: f32,
+    pub items: Vec<Item>,
+}
+
+pub struct MathFont {
+    face: Face<'static>,
+    upem: f32,
+}
+
+impl MathFont {
+    /// `data` must outlive the program; it is leaked once per process.
+    pub fn new(data: Vec<u8>, index: u32) -> Option<Self> {
+        let data: &'static [u8] = Box::leak(data.into_boxed_slice());
+        let face = Face::parse(data, index).ok()?;
+        face.tables().math?.constants?;
+        let upem = face.units_per_em() as f32;
+        Some(MathFont { face, upem })
+    }
+
+    pub fn layout(&self, src: &str, size: f32, display: bool) -> MathBox {
+        let tree = super::parse::parse(src);
+        let mut l = Ctx { f: self, base: size };
+        let st = Style { level: if display { 0 } else { 1 }, cramped: false };
+        let b = l.node(&tree, st);
+        MathBox { w: b.w, asc: b.asc, desc: b.desc, items: b.items }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Style {
+    /// 0 = display, 1 = text, 2 = script, 3 = scriptscript
+    level: u8,
+    cramped: bool,
+}
+
+impl Style {
+    fn display(self) -> bool {
+        self.level == 0
+    }
+    fn sup(self) -> Style {
+        Style { level: if self.level < 2 { 2 } else { 3 }, cramped: self.cramped }
+    }
+    fn sub(self) -> Style {
+        Style { cramped: true, ..self.sup() }
+    }
+    fn frac_num(self) -> Style {
+        Style { level: match self.level { 0 => 1, 1 => 2, _ => 3 }, cramped: self.cramped }
+    }
+    fn frac_den(self) -> Style {
+        Style { cramped: true, ..self.frac_num() }
+    }
+    fn cramp(self) -> Style {
+        Style { cramped: true, ..self }
+    }
+}
+
+#[derive(Clone, Default, Debug)]
+struct B {
+    w: f32,
+    asc: f32,
+    desc: f32,
+    italic: f32,
+    items: Vec<Item>,
+    /// Glyph id if this box is a single glyph (for accent attachment / italic correction).
+    glyph: Option<u16>,
+}
+
+impl B {
+    fn shift(&mut self, dx: f32, dy: f32) {
+        for it in &mut self.items {
+            match it {
+                Item::Glyph { x, y, .. } => {
+                    *x += dx;
+                    *y += dy;
+                }
+                Item::Rule { r, .. } => {
+                    r.x += dx;
+                    r.y += dy;
+                }
+            }
+        }
+    }
+    /// Append `other` at horizontal offset `dx` and baseline offset `dy` (down).
+    fn add(&mut self, mut other: B, dx: f32, dy: f32) {
+        self.asc = self.asc.max(other.asc - dy);
+        self.desc = self.desc.max(other.desc + dy);
+        self.w = self.w.max(dx + other.w);
+        other.shift(dx, dy);
+        self.items.extend(other.items);
+        self.glyph = None;
+    }
+    fn rule(&mut self, x: f32, y: f32, w: f32, h: f32) {
+        self.items.push(Item::Rule { r: RectF { x, y, w, h }, color: None });
+        self.asc = self.asc.max(-y);
+        self.desc = self.desc.max(y + h);
+        self.w = self.w.max(x + w);
+    }
+    fn colorize(&mut self, c: [u8; 3]) {
+        for it in &mut self.items {
+            match it {
+                Item::Glyph { color, .. } | Item::Rule { color, .. } => {
+                    color.get_or_insert(c);
+                }
+            }
+        }
+    }
+}
+
+struct Ctx<'f> {
+    f: &'f MathFont,
+    base: f32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Sp {
+    None,
+    Thin,
+    Med,
+    Thick,
+}
+
+fn spacing(left: Class, right: Class, script: bool) -> Sp {
+    use Class::*;
+    let sp = match (left, right) {
+        (Ord, Op) | (Ord, Inner) | (Op, Ord) | (Op, Op) | (Op, Inner) => Sp::Thin,
+        (Ord, Bin) | (Bin, Ord) | (Bin, Op) | (Bin, Open) | (Bin, Inner) | (Close, Bin) | (Inner, Bin) => Sp::Med,
+        (Ord, Rel) | (Op, Rel) | (Rel, Ord) | (Rel, Op) | (Rel, Open) | (Rel, Inner) | (Close, Rel) | (Inner, Rel) => Sp::Thick,
+        (Close, Op) | (Close, Inner) | (Inner, Ord) | (Inner, Op) | (Inner, Open) | (Inner, Punct) | (Inner, Inner) => Sp::Thin,
+        (Punct, Ord) | (Punct, Op) | (Punct, Rel) | (Punct, Open) | (Punct, Close) | (Punct, Punct) | (Punct, Inner) => Sp::Thin,
+        _ => Sp::None,
+    };
+    if script && matches!(sp, Sp::Med | Sp::Thick) { Sp::None } else { sp }
+}
+
+fn class_of(m: &M) -> Option<Class> {
+    Some(match m {
+        M::Sym(_, c) | M::Text(_, c) | M::BigDelim(_, _, c) => *c,
+        M::BigOp { .. } | M::LimitFunc(_) => Class::Op,
+        M::Frac { .. } | M::Delimited { .. } | M::Matrix { .. } => Class::Inner,
+        M::Scripts { base, .. } => class_of(base).unwrap_or(Class::Ord),
+        M::Space(_) => return None,
+        M::Color(_, inner) => class_of(inner).unwrap_or(Class::Ord),
+        M::Row(items) if items.len() == 1 => class_of(&items[0]).unwrap_or(Class::Ord),
+        _ => Class::Ord,
+    })
+}
+
+impl Ctx<'_> {
+    fn size(&self, st: Style) -> f32 {
+        let c = self.consts();
+        match st.level {
+            0 | 1 => self.base,
+            2 => self.base * c.script_percent_scale_down() as f32 / 100.0,
+            _ => self.base * c.script_script_percent_scale_down() as f32 / 100.0,
+        }
+    }
+    fn consts(&self) -> ttf_parser::math::Constants<'static> {
+        self.f.face.tables().math.unwrap().constants.unwrap()
+    }
+    /// Font units → px at style size.
+    fn u(&self, v: f32, st: Style) -> f32 {
+        v * self.size(st) / self.f.upem
+    }
+    fn c(&self, st: Style, get: impl Fn(&ttf_parser::math::Constants<'static>) -> ttf_parser::math::MathValue<'static>) -> f32 {
+        self.u(get(&self.consts()).value as f32, st)
+    }
+    fn axis(&self, st: Style) -> f32 {
+        self.c(st, |c| c.axis_height())
+    }
+
+    fn glyph_id(&self, c: char) -> u16 {
+        self.f.face.glyph_index(c).or_else(|| self.f.face.glyph_index('?')).map_or(0, |g| g.0)
+    }
+
+    fn glyph_box(&self, id: u16, size: f32) -> B {
+        let face = &self.f.face;
+        let k = size / self.f.upem;
+        let gid = GlyphId(id);
+        let adv = face.glyph_hor_advance(gid).unwrap_or(0) as f32 * k;
+        let (asc, desc) = face.glyph_bounding_box(gid).map_or((0.0, 0.0), |r| (r.y_max as f32 * k, -(r.y_min as f32) * k));
+        let italic = face
+            .tables()
+            .math
+            .and_then(|m| m.glyph_info)
+            .and_then(|gi| gi.italic_corrections)
+            .and_then(|ic| ic.get(gid))
+            .map_or(0.0, |v| v.value as f32 * k);
+        B { w: adv, asc, desc, italic, items: vec![Item::Glyph { id, x: 0.0, y: 0.0, size, color: None }], glyph: Some(id) }
+    }
+
+    fn char_box(&self, c: char, st: Style) -> B {
+        self.glyph_box(self.glyph_id(c), self.size(st))
+    }
+
+    /// Glyph stretched to at least `target` (height if vertical, width if not).
+    fn stretched(&self, c: char, target: f32, vertical: bool, size: f32) -> B {
+        let id = self.glyph_id(c);
+        let k = size / self.f.upem;
+        let Some(variants) = self.f.face.tables().math.and_then(|m| m.variants) else { return self.glyph_box(id, size) };
+        let constructions = if vertical { variants.vertical_constructions } else { variants.horizontal_constructions };
+        let Some(construction) = constructions.get(GlyphId(id)) else { return self.glyph_box(id, size) };
+        let mut best = id;
+        for v in construction.variants {
+            best = v.variant_glyph.0;
+            if v.advance_measurement as f32 * k >= target {
+                return self.glyph_box(best, size);
+            }
+        }
+        let Some(assembly) = construction.assembly else { return self.glyph_box(best, size) };
+        let parts: Vec<_> = assembly.parts.into_iter().collect();
+        if parts.is_empty() {
+            return self.glyph_box(best, size);
+        }
+        let overlap = variants.min_connector_overlap as f32 * k;
+        // Repeat extenders until the assembly is long enough.
+        let mut reps = 0;
+        let sequence = loop {
+            let seq: Vec<_> = parts
+                .iter()
+                .flat_map(|p| std::iter::repeat_n(*p, if p.part_flags.extender() { reps } else { 1 }))
+                .collect();
+            let total: f32 = seq.iter().map(|p| p.full_advance as f32 * k).sum::<f32>() - overlap * (seq.len().saturating_sub(1)) as f32;
+            if total >= target || reps > 64 || !parts.iter().any(|p| p.part_flags.extender()) {
+                break seq;
+            }
+            reps += 1;
+        };
+        let mut b = B::default();
+        let mut pos = 0.0f32;
+        for p in &sequence {
+            let g = self.glyph_box(p.glyph_id.0, size);
+            if vertical {
+                // Parts go bottom → top; pos is the distance of the part's bottom from the box bottom.
+                let bottom_to_baseline = -g.desc; // glyph's own bottom relative to its baseline (y up)
+                let dy = -(pos - bottom_to_baseline); // y down
+                b.add(g, 0.0, dy);
+            } else {
+                b.add(g, pos, 0.0);
+            }
+            pos += p.full_advance as f32 * k - overlap;
+        }
+        b.italic = assembly.italics_correction.value as f32 * k;
+        b
+    }
+
+    /// Re-centre a box vertically on the math axis.
+    fn center_on_axis(&self, mut b: B, st: Style) -> B {
+        let h = b.asc + b.desc;
+        let a = self.axis(st);
+        let new_asc = h / 2.0 + a;
+        let dy = new_asc - b.asc; // move up by dy
+        b.shift(0.0, -dy);
+        b.asc = new_asc;
+        b.desc = h - new_asc;
+        b
+    }
+
+    fn row(&mut self, items: &[M], st: Style) -> B {
+        let mut out = B::default();
+        let mut x = 0.0;
+        let mut prev: Option<Class> = None;
+        let script = st.level >= 2;
+        let classes: Vec<Option<Class>> = items.iter().map(class_of).collect();
+        let single = items.len() == 1;
+        for (i, m) in items.iter().enumerate() {
+            let mut class = classes[i];
+            // A binary operator in a non-binary position becomes ordinary (unary minus).
+            if class == Some(Class::Bin) {
+                let next = classes[i + 1..].iter().flatten().next().copied();
+                if matches!(prev, None | Some(Class::Bin | Class::Op | Class::Rel | Class::Open | Class::Punct))
+                    || matches!(next, None | Some(Class::Rel | Class::Close | Class::Punct))
+                {
+                    class = Some(Class::Ord);
+                }
+            }
+            if let (Some(p), Some(c)) = (prev, class) {
+                let em = self.size(st);
+                x += match spacing(p, c, script) {
+                    Sp::None => 0.0,
+                    Sp::Thin => em * 3.0 / 18.0,
+                    Sp::Med => em * 4.0 / 18.0,
+                    Sp::Thick => em * 5.0 / 18.0,
+                };
+            }
+            let b = self.node(m, st);
+            let w = b.w;
+            let glyph = b.glyph;
+            let italic = b.italic;
+            out.add(b, x, 0.0);
+            x += w;
+            if single {
+                out.glyph = glyph;
+                out.italic = italic;
+            }
+            if class.is_some() {
+                prev = class;
+            }
+        }
+        out.w = out.w.max(x);
+        out
+    }
+
+    fn text(&mut self, s: &str, st: Style) -> B {
+        let mut b = B::default();
+        let mut x = 0.0;
+        for c in s.chars() {
+            let g = if c == ' ' { B { w: self.size(st) * 0.25, ..Default::default() } } else { self.char_box(c, st) };
+            let w = g.w;
+            b.add(g, x, 0.0);
+            x += w;
+        }
+        b.w = x;
+        b
+    }
+
+    fn node(&mut self, m: &M, st: Style) -> B {
+        match m {
+            M::Row(items) => self.row(items, st),
+            M::Sym(c, _) => self.char_box(*c, st),
+            M::Text(s, _) => self.text(s, st),
+            M::Space(em) => B { w: em * self.size(st), ..Default::default() },
+            M::Error(s) => {
+                let mut b = self.text(s, st);
+                b.colorize([0xd1, 0x24, 0x2f]);
+                b
+            }
+            M::Color(c, inner) => {
+                let mut b = self.node(inner, st);
+                b.colorize(*c);
+                b
+            }
+            M::Frac { num, den, rule, delims } => {
+                let f = self.frac(num, den, *rule, st);
+                match delims {
+                    Some((l, r)) => self.delimited(Some(*l), Some(*r), f, st),
+                    None => f,
+                }
+            }
+            M::Sqrt { degree, body } => self.sqrt(degree.as_deref(), body, st),
+            M::Scripts { base, sup, sub } => self.scripts(base, sup.as_deref(), sub.as_deref(), st),
+            M::BigOp { sym, .. } => self.big_op(*sym, st),
+            M::LimitFunc(name) => self.text(name, st),
+            M::Delimited { left, right, body } => {
+                let b = self.node(body, st);
+                self.delimited(*left, *right, b, st)
+            }
+            M::BigDelim(c, factor, _) => {
+                let b = self.stretched(*c, factor * self.size(st), true, self.size(st));
+                self.center_on_axis(b, st)
+            }
+            M::Accent { accent, body, stretchy } => self.accent(*accent, body, *stretchy, st),
+            M::OverLine(body) => {
+                let mut b = self.node(body, st.cramp());
+                let gap = self.c(st, |c| c.overbar_vertical_gap());
+                let t = self.c(st, |c| c.overbar_rule_thickness());
+                let extra = self.c(st, |c| c.overbar_extra_ascender());
+                let top = b.asc + gap + t;
+                let w = b.w;
+                b.rule(0.0, -top, w, t);
+                b.asc = top + extra;
+                b
+            }
+            M::UnderLine(body) => {
+                let mut b = self.node(body, st);
+                let gap = self.c(st, |c| c.underbar_vertical_gap());
+                let t = self.c(st, |c| c.underbar_rule_thickness());
+                let extra = self.c(st, |c| c.underbar_extra_descender());
+                let y = b.desc + gap;
+                let w = b.w;
+                b.rule(0.0, y, w, t);
+                b.desc = y + t + extra;
+                b
+            }
+            M::Brace { over, body } => {
+                let body = self.node(body, st);
+                let brace = self.stretched(if *over { '⏞' } else { '⏟' }, body.w, false, self.size(st));
+                let gap = self.size(st) * 0.1;
+                let mut b = B::default();
+                let bx = (body.w - brace.w) / 2.0;
+                let (body_asc, body_desc) = (body.asc, body.desc);
+                b.add(body, bx.min(0.0).abs(), 0.0);
+                if *over {
+                    let dy = -(body_asc + gap + brace.desc);
+                    b.add(brace, bx.max(0.0), dy);
+                } else {
+                    let dy = body_desc + gap + brace.asc;
+                    b.add(brace, bx.max(0.0), dy);
+                }
+                b
+            }
+            M::Matrix { rows, left, right, align_left, cases } => {
+                let b = self.matrix(rows, *align_left, *cases, st);
+                if left.is_some() || right.is_some() { self.delimited(*left, *right, b, st) } else { b }
+            }
+        }
+    }
+
+    fn frac(&mut self, num: &M, den: &M, rule: bool, st: Style) -> B {
+        let num = self.node(num, st.frac_num());
+        let den = self.node(den, st.frac_den());
+        let d = st.display();
+        let a = self.axis(st);
+        let mut b = B::default();
+        let (mut up, mut down);
+        if rule {
+            let t = self.c(st, |c| c.fraction_rule_thickness());
+            up = if d { self.c(st, |c| c.fraction_numerator_display_style_shift_up()) } else { self.c(st, |c| c.fraction_numerator_shift_up()) };
+            down = if d { self.c(st, |c| c.fraction_denominator_display_style_shift_down()) } else { self.c(st, |c| c.fraction_denominator_shift_down()) };
+            let gap_n = if d { self.c(st, |c| c.fraction_num_display_style_gap_min()) } else { self.c(st, |c| c.fraction_numerator_gap_min()) };
+            let gap_d = if d { self.c(st, |c| c.fraction_denom_display_style_gap_min()) } else { self.c(st, |c| c.fraction_denominator_gap_min()) };
+            up = up.max(gap_n + num.desc + a + t / 2.0);
+            down = down.max(gap_d + den.asc - a + t / 2.0);
+            let pad = self.size(st) * 0.08;
+            let w = num.w.max(den.w) + 2.0 * pad;
+            b.rule(0.0, -(a + t / 2.0), w, t);
+            let (nw, dw) = (num.w, den.w);
+            b.add(num, (w - nw) / 2.0, -up);
+            b.add(den, (w - dw) / 2.0, down);
+        } else {
+            up = if d { self.c(st, |c| c.stack_top_display_style_shift_up()) } else { self.c(st, |c| c.stack_top_shift_up()) };
+            down = if d { self.c(st, |c| c.stack_bottom_display_style_shift_down()) } else { self.c(st, |c| c.stack_bottom_shift_down()) };
+            let gap = if d { self.c(st, |c| c.stack_display_style_gap_min()) } else { self.c(st, |c| c.stack_gap_min()) };
+            let actual = (up - num.desc) - (den.asc - down);
+            if actual < gap {
+                up += (gap - actual) / 2.0;
+                down += (gap - actual) / 2.0;
+            }
+            let w = num.w.max(den.w);
+            let (nw, dw) = (num.w, den.w);
+            b.add(num, (w - nw) / 2.0, -up);
+            b.add(den, (w - dw) / 2.0, down);
+        }
+        b
+    }
+
+    fn sqrt(&mut self, degree: Option<&M>, body: &M, st: Style) -> B {
+        let body = self.node(body, st.cramp());
+        let t = self.c(st, |c| c.radical_rule_thickness());
+        let mut gap = if st.display() { self.c(st, |c| c.radical_display_style_vertical_gap()) } else { self.c(st, |c| c.radical_vertical_gap()) };
+        let extra = self.c(st, |c| c.radical_extra_ascender());
+        let target = body.asc + body.desc + gap + t;
+        let mut rad = self.stretched('√', target, true, self.size(st));
+        let rad_h = rad.asc + rad.desc;
+        if rad_h > target {
+            gap += (rad_h - target) / 2.0;
+        }
+        let top = body.asc + gap + t;
+        // Move the radical so its top is at `top` above the baseline.
+        let dy = top - rad.asc;
+        rad.shift(0.0, -dy);
+        rad.asc = top;
+        rad.desc = rad_h - top;
+
+        let mut b = B::default();
+        let mut x = 0.0;
+        if let Some(deg) = degree {
+            let deg = self.node(deg, Style { level: 3, cramped: true });
+            let before = self.c(st, |c| c.radical_kern_before_degree());
+            let after = self.c(st, |c| c.radical_kern_after_degree());
+            let raise = self.consts().radical_degree_bottom_raise_percent() as f32 / 100.0 * rad_h;
+            let deg_w = deg.w;
+            let deg_desc = deg.desc;
+            b.add(deg, before, -(raise - rad.desc) - deg_desc);
+            x = (before + deg_w + after).max(0.0);
+        }
+        let rw = rad.w;
+        b.add(rad, x, 0.0);
+        let bw = body.w;
+        b.rule(x + rw, -top, bw, t);
+        b.add(body, x + rw, 0.0);
+        b.asc = b.asc.max(top + extra);
+        b
+    }
+
+    fn big_op(&mut self, sym: char, st: Style) -> B {
+        let size = self.size(st);
+        let b = if st.display() {
+            // Some fonts (Cambria Math's ∫) already meet DisplayOperatorMinHeight with the
+            // base glyph; display operators must still use a larger variant.
+            let min = self.u(self.consts().display_operator_min_height() as f32, st);
+            let base = self.char_box(sym, st);
+            self.stretched(sym, min.max((base.asc + base.desc) * 1.3), true, size)
+        } else {
+            self.char_box(sym, st)
+        };
+        self.center_on_axis(b, st)
+    }
+
+    fn scripts(&mut self, base: &M, sup: Option<&M>, sub: Option<&M>, st: Style) -> B {
+        let limits = match base {
+            M::BigOp { limits: Some(l), .. } => *l,
+            M::BigOp { integral, .. } => st.display() && !integral,
+            M::LimitFunc(_) => st.display(),
+            _ => false,
+        };
+        let is_integral = matches!(base, M::BigOp { integral: true, .. });
+        let base = self.node(base, st);
+        if limits {
+            return self.limits(base, sup, sub, st);
+        }
+        let mut b = B::default();
+        let base_w = base.w;
+        let italic = base.italic;
+        let (base_asc, base_desc) = (base.asc, base.desc);
+        let base_is_glyph = base.glyph.is_some();
+        b.add(base, 0.0, 0.0);
+        let sup_box = sup.map(|m| self.node(m, st.sup()));
+        let sub_box = sub.map(|m| self.node(m, st.sub()));
+        // Drops are measured from the base for compound bases only (TeX rule).
+        let (drop_max, drop_min) = if base_is_glyph { (0.0, 0.0) } else {
+            (self.c(st, |c| c.superscript_baseline_drop_max()), self.c(st, |c| c.subscript_baseline_drop_min()))
+        };
+        let mut up = 0.0;
+        let mut down = 0.0;
+        if let Some(s) = &sup_box {
+            let shift = if st.cramped { self.c(st, |c| c.superscript_shift_up_cramped()) } else { self.c(st, |c| c.superscript_shift_up()) };
+            up = shift.max(base_asc - drop_max).max(s.desc + self.c(st, |c| c.superscript_bottom_min()));
+        }
+        if let Some(s) = &sub_box {
+            down = self.c(st, |c| c.subscript_shift_down()).max(base_desc + drop_min).max(s.asc - self.c(st, |c| c.subscript_top_max()));
+        }
+        if let (Some(p), Some(q)) = (&sup_box, &sub_box) {
+            let gap = (up - p.desc) - (q.asc - down);
+            let min_gap = self.c(st, |c| c.sub_superscript_gap_min());
+            if gap < min_gap {
+                down += min_gap - gap;
+                let max_bottom = self.c(st, |c| c.superscript_bottom_max_with_subscript());
+                let sup_bottom = up - p.desc;
+                if sup_bottom < max_bottom {
+                    let lift = (max_bottom - sup_bottom).min(down - (q.asc - self.c(st, |c| c.subscript_top_max())).max(0.0));
+                    if lift > 0.0 {
+                        up += lift;
+                        down -= lift;
+                    }
+                }
+            }
+        }
+        let space = self.c(st, |c| c.space_after_script());
+        let mut w = base_w;
+        if let Some(s) = sup_box {
+            let x = base_w + if is_integral { 0.0 } else { italic };
+            w = w.max(x + s.w);
+            b.add(s, x, -up);
+        }
+        if let Some(s) = sub_box {
+            let x = base_w - if is_integral { italic } else { 0.0 };
+            w = w.max(x + s.w);
+            b.add(s, x, down);
+        }
+        b.w = w + space;
+        b
+    }
+
+    fn limits(&mut self, base: B, sup: Option<&M>, sub: Option<&M>, st: Style) -> B {
+        let sup_box = sup.map(|m| self.node(m, st.sup()));
+        let sub_box = sub.map(|m| self.node(m, st.sub()));
+        let italic = base.italic;
+        let w = base.w.max(sup_box.as_ref().map_or(0.0, |s| s.w)).max(sub_box.as_ref().map_or(0.0, |s| s.w));
+        let (base_asc, base_desc, base_w) = (base.asc, base.desc, base.w);
+        let mut b = B::default();
+        b.add(base, (w - base_w) / 2.0, 0.0);
+        if let Some(s) = sup_box {
+            let gap = self.c(st, |c| c.upper_limit_gap_min()).max(self.c(st, |c| c.upper_limit_baseline_rise_min()) - s.desc);
+            let sw = s.w;
+            let sd = s.desc;
+            b.add(s, (w - sw) / 2.0 + italic / 2.0, -(base_asc + gap + sd));
+        }
+        if let Some(s) = sub_box {
+            let gap = self.c(st, |c| c.lower_limit_gap_min()).max(self.c(st, |c| c.lower_limit_baseline_drop_min()) - s.asc);
+            let sw = s.w;
+            let sa = s.asc;
+            b.add(s, (w - sw) / 2.0 - italic / 2.0, base_desc + gap + sa);
+        }
+        b.w = w;
+        b
+    }
+
+    fn delimited(&mut self, left: Option<char>, right: Option<char>, body: B, st: Style) -> B {
+        let a = self.axis(st);
+        let half = (body.asc - a).max(body.desc + a);
+        let h = 2.0 * half;
+        let size = self.size(st);
+        let target = (h * 0.901).max(h - 0.1 * size);
+        let mut b = B::default();
+        let mut x = 0.0;
+        if let Some(l) = left {
+            let d = self.stretched(l, target, true, size);
+            let d = self.center_on_axis(d, st);
+            let w = d.w;
+            b.add(d, x, 0.0);
+            x += w;
+        }
+        let bw = body.w;
+        b.add(body, x, 0.0);
+        x += bw;
+        if let Some(r) = right {
+            let d = self.stretched(r, target, true, size);
+            let d = self.center_on_axis(d, st);
+            let w = d.w;
+            b.add(d, x, 0.0);
+            x += w;
+        }
+        b.w = x;
+        b
+    }
+
+    fn accent(&mut self, accent: char, body: &M, stretchy: bool, st: Style) -> B {
+        let body = self.node(body, st.cramp());
+        let size = self.size(st);
+        let acc = if stretchy || body.glyph.is_none() {
+            self.stretched(accent, body.w, false, size)
+        } else {
+            self.char_box(accent, st)
+        };
+        let k = size / self.f.upem;
+        let gi = self.f.face.tables().math.and_then(|m| m.glyph_info);
+        let attach_of = |id: u16| gi.and_then(|g| g.top_accent_attachments).and_then(|t| t.get(GlyphId(id))).map(|v| v.value as f32 * k);
+        let base_attach = body.glyph.and_then(attach_of).unwrap_or((body.w + body.italic) / 2.0);
+        // Centre the accent's ink over the attachment point.
+        let acc_center = match acc.glyph {
+            Some(id) => attach_of(id).unwrap_or_else(|| {
+                self.f.face.glyph_bounding_box(GlyphId(id)).map_or(acc.w / 2.0, |r| (r.x_min as f32 + r.x_max as f32) / 2.0 * k)
+            }),
+            None => acc.w / 2.0,
+        };
+        let accent_base = self.c(st, |c| c.accent_base_height());
+        let lift = (body.asc - accent_base).max(0.0);
+        let mut b = B::default();
+        let bw = body.w;
+        b.add(body, 0.0, 0.0);
+        b.add(acc, base_attach - acc_center, -lift);
+        b.w = bw;
+        b
+    }
+
+    fn matrix(&mut self, rows: &[Vec<M>], align_left: bool, cases: bool, st: Style) -> B {
+        let cell_st = if st.level == 0 && !cases { Style { level: 1, ..st } } else { st };
+        let cells: Vec<Vec<B>> = rows.iter().map(|r| r.iter().map(|c| self.node(c, cell_st)).collect()).collect();
+        let ncols = cells.iter().map(Vec::len).max().unwrap_or(0);
+        let mut col_w = vec![0f32; ncols];
+        for r in &cells {
+            for (i, c) in r.iter().enumerate() {
+                col_w[i] = col_w[i].max(c.w);
+            }
+        }
+        let size = self.size(st);
+        let col_gap = if align_left && !cases { 0.0 } else { size };
+        let strut_asc = size * 0.7;
+        let strut_desc = size * 0.3;
+        let row_gap = size * 0.25;
+        let mut b = B::default();
+        let mut y = 0.0;
+        let mut first = true;
+        for r in cells {
+            let asc = r.iter().map(|c| c.asc).fold(strut_asc, f32::max);
+            let desc = r.iter().map(|c| c.desc).fold(strut_desc, f32::max);
+            if !first {
+                y += row_gap;
+            }
+            first = false;
+            y += asc;
+            let mut x = if cases { size * 0.2 } else { 0.0 };
+            for (i, c) in r.into_iter().enumerate() {
+                let cw = c.w;
+                let dx = if cases || (align_left && i % 2 == 1) {
+                    0.0
+                } else if align_left {
+                    col_w[i] - cw // right-align left side of `aligned`
+                } else {
+                    (col_w[i] - cw) / 2.0
+                };
+                b.add(c, x + dx, y);
+                x += col_w[i] + col_gap;
+            }
+            y += desc;
+        }
+        // Centre on the axis: the block's middle should sit at axis height.
+        let total = y;
+        let a = self.axis(st);
+        let shift = total / 2.0 + a; // distance from block top to baseline
+        b.shift(0.0, -shift);
+        b.asc = shift;
+        b.desc = total - shift;
+        b.w = col_w.iter().sum::<f32>() + col_gap * (ncols.saturating_sub(1)) as f32 + if cases { size * 0.2 } else { 0.0 };
+        b
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    fn font() -> Option<MathFont> {
+        let data = std::fs::read(r"C:\Windows\Fonts\cambria.ttc").ok()?;
+        // Cambria Math is the second face in the collection.
+        MathFont::new(data, 1)
+    }
+
+    #[test]
+    fn lays_out_common_formulas() {
+        let Some(f) = font() else { return };
+        for src in [r"e^{i\pi} + 1 = 0", r"\frac{a}{b}", r"\sqrt[3]{x^2}", r"\sum_{k=1}^n k", r"\left(\frac{1}{2}\right)"] {
+            let b = f.layout(src, 16.0, true);
+            assert!(b.w > 0.0 && b.asc > 0.0, "{src}: {b:?}");
+            assert!(!b.items.is_empty());
+        }
+    }
+
+    #[test]
+    fn fraction_is_taller_than_text() {
+        let Some(f) = font() else { return };
+        let x = f.layout("x", 16.0, false);
+        let frac = f.layout(r"\frac{x}{y}", 16.0, true);
+        assert!(frac.asc + frac.desc > (x.asc + x.desc) * 1.5);
+    }
+
+    #[test]
+    fn display_sum_is_bigger_than_inline() {
+        let Some(f) = font() else { return };
+        let d = f.layout(r"\sum", 16.0, true);
+        let t = f.layout(r"\sum", 16.0, false);
+        assert!(d.asc + d.desc > t.asc + t.desc);
+    }
+}
+
+

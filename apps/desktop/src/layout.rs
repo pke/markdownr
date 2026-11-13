@@ -6,6 +6,7 @@
 //! and Pango later). Everything is in logical pixels (DIPs), y grows downwards.
 
 use crate::ast::{AlertKind, Align, Kind, Node};
+use crate::math::{MathBox, MathFont};
 use crate::theme::{Ink, Theme};
 use std::ops::Range;
 
@@ -53,7 +54,12 @@ pub enum Span {
     Scale(f32),
     Super,
     Sub,
+    /// An inline box (math formula) replacing a U+FFFC character.
+    Object { w: f32, asc: f32, desc: f32 },
 }
+
+/// Placeholder character for inline objects in paragraph text.
+pub const OBJECT_CHAR: char = '\u{FFFC}';
 
 /// A laid-out paragraph owned by the platform text engine. Byte offsets refer to
 /// the UTF-8 text the paragraph was built from.
@@ -68,11 +74,25 @@ pub trait Paragraph {
     fn hit(&self, x: f32, y: f32) -> usize;
     /// Rectangles covering a byte range (paragraph-local coordinates).
     fn range_rects(&self, range: Range<usize>) -> Vec<RectF>;
+    /// Top-left of the inline object at `byte` (paragraph-local coordinates).
+    fn object_origin(&self, byte: usize) -> (f32, f32);
 }
 
 pub trait Typesetter {
     type Para: Paragraph;
     fn paragraph(&mut self, text: &str, spans: &[(Range<usize>, Span)], base: &BaseStyle, max_width: f32) -> Self::Para;
+    /// The OpenType MATH font used for formulas, if the platform has one.
+    fn math_font(&self) -> Option<&MathFont> {
+        None
+    }
+}
+
+/// A formula positioned in the document: `y` is its baseline.
+pub struct MathPlacement {
+    pub x: f32,
+    pub y: f32,
+    pub mbox: MathBox,
+    pub color: Ink,
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +117,8 @@ pub struct TextBlock<P> {
     pub selectable: bool,
     pub join: Join,
     pub links: Vec<(Range<usize>, String)>,
+    /// Source text for each inline object, used when copying (`$x^2$`).
+    pub object_sources: Vec<(usize, String)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -117,6 +139,7 @@ pub struct TocEntry {
 pub struct DocLayout<P> {
     pub blocks: Vec<TextBlock<P>>,
     pub rects: Vec<Rect>,
+    pub math: Vec<MathPlacement>,
     pub toc: Vec<TocEntry>,
     pub front_matter: Option<String>,
     pub height: f32,
@@ -124,7 +147,7 @@ pub struct DocLayout<P> {
 
 impl<P> Default for DocLayout<P> {
     fn default() -> Self {
-        DocLayout { blocks: Vec::new(), rects: Vec::new(), toc: Vec::new(), front_matter: None, height: 0.0 }
+        DocLayout { blocks: Vec::new(), rects: Vec::new(), math: Vec::new(), toc: Vec::new(), front_matter: None, height: 0.0 }
     }
 }
 
@@ -143,6 +166,8 @@ struct Inline {
     spans: Vec<(Range<usize>, Span)>,
     backgrounds: Vec<(Range<usize>, Ink)>,
     links: Vec<(Range<usize>, String)>,
+    /// (byte of the U+FFFC, laid-out formula, copy text)
+    objects: Vec<(usize, MathBox, String)>,
 }
 
 impl Inline {
@@ -197,7 +222,7 @@ impl<T: Typesetter> Layouter<'_, T> {
             return;
         }
         let mut inline = Inline::default();
-        self.flatten(inlines, &mut inline);
+        self.flatten(inlines, &mut inline, ctx.style.size);
         let trimmed = inline.text.trim_end().len();
         inline.text.truncate(trimmed);
         if inline.text.is_empty() {
@@ -223,7 +248,8 @@ impl<T: Typesetter> Layouter<'_, T> {
         let base = self.base;
         match &node.kind {
             Kind::FrontMatter => out.front_matter = Some(node.text.clone()),
-            Kind::Paragraph => self.paragraph(&node.children, ctx, y, out, join),
+            // Via `blocks`, so display math (`$$…$$`, an inline event inside a paragraph) becomes its own block.
+            Kind::Paragraph => self.blocks(&node.children, ctx, y, out, join),
             Kind::Heading { level, id } => {
                 let scale = match level { 1 => 2.0, 2 => 1.5, 3 => 1.25, 4 => 1.0, 5 => 0.875, _ => 0.85 };
                 if !out.blocks.is_empty() {
@@ -231,7 +257,7 @@ impl<T: Typesetter> Layouter<'_, T> {
                 }
                 let style = BaseStyle { size: base * scale, bold: true, color: theme.heading, line_height: 1.25, ..ctx.style };
                 let mut inline = Inline::default();
-                self.flatten(&node.children, &mut inline);
+                self.flatten(&node.children, &mut inline, style.size);
                 out.toc.push(TocEntry { level: *level, title: inline.text.clone(), id: id.clone(), y: *y });
                 *y += self.push(inline, &style, ctx.x, *y, ctx.width, None, true, join, out);
                 if *level <= 2 {
@@ -239,6 +265,15 @@ impl<T: Typesetter> Layouter<'_, T> {
                     out.rects.push(Rect { r: RectF { x: ctx.x, y: *y, w: ctx.width, h: 1.0 }, color: theme.border, radius: 0.0 });
                 }
                 *y += base * 0.75;
+            }
+            Kind::DisplayMath if self.ts.math_font().is_some() => {
+                let mbox = self.ts.math_font().unwrap().layout(&node.text, ctx.style.size * 1.1, true);
+                let mut inline = Inline::plain(OBJECT_CHAR.to_string());
+                inline.spans.push((0..inline.text.len(), Span::Object { w: mbox.w, asc: mbox.asc, desc: mbox.desc }));
+                inline.objects.push((0, mbox, format!("$$\n{}\n$$", node.text.trim())));
+                *y += base * 0.25;
+                let h = self.push(inline, &ctx.style, ctx.x, *y, ctx.width, Some(TextAlign::Center), true, join, out);
+                *y += h + ctx.gap + base * 0.25;
             }
             Kind::CodeBlock { .. } | Kind::HtmlBlock | Kind::DisplayMath => {
                 let pad = base;
@@ -363,7 +398,7 @@ impl<T: Typesetter> Layouter<'_, T> {
             let mut built = Vec::new();
             for (ci, cell) in row.iter().enumerate().take(ncols) {
                 let mut inline = Inline::default();
-                self.flatten(&cell.children, &mut inline);
+                self.flatten(&cell.children, &mut inline, ctx.style.size);
                 let style = BaseStyle { bold: *header, ..ctx.style };
                 let para = self.ts.paragraph(&inline.text, &inline.spans, &style, 1.0e6);
                 let (min, max) = para.content_widths();
@@ -401,7 +436,7 @@ impl<T: Typesetter> Layouter<'_, T> {
                     (0, _) => Join::Line,
                     _ => Join::Tab,
                 };
-                let h = self.place(para, inline, x + pad, row_y + pad, true, cell_join, out);
+                let h = self.place(para, inline, ctx.style.color, x + pad, row_y + pad, true, cell_join, out);
                 row_h = row_h.max(h + 2.0 * pad);
                 x += widths[ci];
             }
@@ -420,7 +455,7 @@ impl<T: Typesetter> Layouter<'_, T> {
         *y += ctx.gap;
     }
 
-    fn flatten(&self, nodes: &[Node], out: &mut Inline) {
+    fn flatten(&self, nodes: &[Node], out: &mut Inline, size: f32) {
         let theme = self.theme;
         for node in nodes {
             let start = out.text.len();
@@ -437,6 +472,12 @@ impl<T: Typesetter> Layouter<'_, T> {
                     out.spans.push((r.clone(), Span::Scale(0.9)));
                     out.spans.push((r.clone(), Span::Color(theme.code_text)));
                     out.backgrounds.push((r, theme.code_bg));
+                }
+                Kind::InlineMath if self.ts.math_font().is_some() => {
+                    let mbox = self.ts.math_font().unwrap().layout(&node.text, size, false);
+                    out.text.push(OBJECT_CHAR);
+                    out.spans.push((start..out.text.len(), Span::Object { w: mbox.w, asc: mbox.asc, desc: mbox.desc }));
+                    out.objects.push((start, mbox, format!("${}$", node.text)));
                 }
                 Kind::InlineMath => {
                     out.text.push_str(&node.text);
@@ -461,7 +502,7 @@ impl<T: Typesetter> Layouter<'_, T> {
                     out.spans.push((start..out.text.len(), Span::Color(theme.muted)));
                 }
                 kind => {
-                    self.flatten(&node.children, out);
+                    self.flatten(&node.children, out, size);
                     let r = start..out.text.len();
                     match kind {
                         Kind::Emph => out.spans.push((r, Span::Italic)),
@@ -492,17 +533,24 @@ impl<T: Typesetter> Layouter<'_, T> {
         if let Some(a) = align {
             para.set_align(a);
         }
-        self.place(para, inline, x, y, selectable, join, out)
+        self.place(para, inline, style.color, x, y, selectable, join, out)
     }
 
-    fn place(&mut self, para: T::Para, inline: Inline, x: f32, y: f32, selectable: bool, join: Join, out: &mut DocLayout<T::Para>) -> f32 {
-        for (range, color) in &inline.backgrounds {
+    #[allow(clippy::too_many_arguments)]
+    fn place(&mut self, para: T::Para, inline: Inline, color: Ink, x: f32, y: f32, selectable: bool, join: Join, out: &mut DocLayout<T::Para>) -> f32 {
+        for (range, bg) in &inline.backgrounds {
             for r in para.range_rects(range.clone()) {
-                out.rects.push(Rect { r: RectF { x: x + r.x, y: y + r.y + 1.0, w: r.w, h: r.h - 2.0 }, color: *color, radius: 4.0 });
+                out.rects.push(Rect { r: RectF { x: x + r.x, y: y + r.y + 1.0, w: r.w, h: r.h - 2.0 }, color: *bg, radius: 4.0 });
             }
         }
+        let mut object_sources = Vec::with_capacity(inline.objects.len());
+        for (byte, mbox, source) in inline.objects {
+            let (ox, oy) = para.object_origin(byte);
+            out.math.push(MathPlacement { x: x + ox, y: y + oy + mbox.asc, mbox, color });
+            object_sources.push((byte, source));
+        }
         let (w, h) = para.size();
-        out.blocks.push(TextBlock { para, text: inline.text, x, y, w, h, selectable, join, links: inline.links });
+        out.blocks.push(TextBlock { para, text: inline.text, x, y, w, h, selectable, join, links: inline.links, object_sources });
         h
     }
 }
@@ -613,7 +661,19 @@ impl<P: Paragraph> DocLayout<P> {
                 });
             }
             first = false;
-            out.push_str(&self.blocks[i].text[r]);
+            let block = &self.blocks[i];
+            let slice = &block.text[r.clone()];
+            if block.object_sources.is_empty() {
+                out.push_str(slice);
+            } else {
+                // Inline objects copy as their source (`$x^2$`).
+                for (off, c) in slice.char_indices() {
+                    match block.object_sources.iter().find(|(b, _)| *b == r.start + off) {
+                        Some((_, src)) if c == OBJECT_CHAR => out.push_str(src),
+                        _ => out.push(c),
+                    }
+                }
+            }
         }
         out
     }
@@ -650,6 +710,9 @@ mod tests {
         }
         fn range_rects(&self, r: Range<usize>) -> Vec<RectF> {
             vec![RectF { x: r.start as f32 * 10.0, y: 0.0, w: (r.end - r.start) as f32 * 10.0, h: 20.0 }]
+        }
+        fn object_origin(&self, byte: usize) -> (f32, f32) {
+            (byte as f32 * 10.0, 0.0)
         }
     }
     impl Typesetter for Fake {

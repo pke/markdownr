@@ -62,10 +62,25 @@ GPU
 
 ## Footnotes and math
 
-Here is a footnote reference[^1] and inline math $e^{i\pi} + 1 = 0$.
+Here is a footnote reference[^1] and inline math $e^{i\pi} + 1 = 0$, with $\alpha^2 + \beta_i$ and $\frac{a}{b}$ in running text,
+typeset with the OpenType MATH table of Cambria Math: $\sqrt{x^2 + y^2} \le \|v\|$.
 
 $$
 \int_0^1 x^2 \, dx = \frac{1}{3}
+$$
+
+$$
+\sum_{k=1}^{n} k = \frac{n(n+1)}{2} \qquad \lim_{x \to 0} \frac{\sin x}{x} = 1
+$$
+
+$$
+f(x) = \begin{cases} x^2 & x \ge 0 \\ -x & \text{otherwise} \end{cases}
+\qquad
+A = \begin{pmatrix} a_{11} & a_{12} \\ a_{21} & a_{22} \end{pmatrix}
+$$
+
+$$
+\left( \frac{\partial \mathcal{L}}{\partial \hat{\theta}} \right)^2 + \sqrt[3]{\mathbb{R}^n} \cdot \vec{v}
 $$
 
 ---

@@ -1,7 +1,7 @@
 //! DirectWrite text layout + Direct2D drawing with ClearType.
 
-use crate::layout::{BaseStyle, DocLayout, Paragraph, RectF, Span, TextAlign, Typesetter};
-use crate::layout::DocSelection;
+use crate::layout::{BaseStyle, DocLayout, DocSelection, Paragraph, RectF, Span, TextAlign, Typesetter};
+use crate::math::{Item, MathFont};
 use crate::theme::{Ink, Theme};
 use std::collections::HashMap;
 use std::ops::Range;
@@ -14,7 +14,7 @@ use windows::Win32::Graphics::Direct2D::Common::*;
 use windows::Win32::Graphics::Direct2D::*;
 use windows::Win32::Graphics::DirectWrite::*;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
-use windows::core::{BOOL, HSTRING, Interface, PCWSTR, Result};
+use windows::core::{BOOL, HSTRING, Interface, PCWSTR, Ref, Result, implement};
 
 const BODY_FAMILIES: &[&str] = &["Segoe UI Variable Text", "Segoe UI"];
 const MONO_FAMILIES: &[&str] = &["Cascadia Mono", "Consolas", "Courier New"];
@@ -93,6 +93,63 @@ impl Paragraph for DwPara {
         metrics.truncate(count as usize);
         metrics.iter().map(|m| RectF { x: m.left, y: m.top, w: m.width, h: m.height }).collect()
     }
+    fn object_origin(&self, byte: usize) -> (f32, f32) {
+        let (mut x, mut y) = (0.0f32, 0.0f32);
+        let mut m = DWRITE_HIT_TEST_METRICS::default();
+        if unsafe { self.layout.HitTestTextPosition(self.to_u16(byte), false, &mut x, &mut y, &mut m) }.is_err() {
+            return (0.0, 0.0);
+        }
+        (m.left, m.top)
+    }
+}
+
+/// Reserves space for a formula inside a DirectWrite paragraph. Drawing happens
+/// separately (glyph runs from the math layout), so `Draw` is a no-op.
+#[implement(IDWriteInlineObject)]
+struct InlineBox {
+    w: f32,
+    asc: f32,
+    desc: f32,
+}
+
+impl IDWriteInlineObject_Impl for InlineBox_Impl {
+    fn Draw(&self, _: *const core::ffi::c_void, _: Ref<IDWriteTextRenderer>, _: f32, _: f32, _: BOOL, _: BOOL, _: Ref<windows::core::IUnknown>) -> Result<()> {
+        Ok(())
+    }
+    fn GetMetrics(&self) -> Result<DWRITE_INLINE_OBJECT_METRICS> {
+        Ok(DWRITE_INLINE_OBJECT_METRICS { width: self.w, height: self.asc + self.desc, baseline: self.asc, supportsSideways: BOOL(0) })
+    }
+    fn GetOverhangMetrics(&self) -> Result<DWRITE_OVERHANG_METRICS> {
+        Ok(DWRITE_OVERHANG_METRICS::default())
+    }
+    fn GetBreakConditions(&self, before: *mut DWRITE_BREAK_CONDITION, after: *mut DWRITE_BREAK_CONDITION) -> Result<()> {
+        unsafe {
+            *before = DWRITE_BREAK_CONDITION_NEUTRAL;
+            *after = DWRITE_BREAK_CONDITION_NEUTRAL;
+        }
+        Ok(())
+    }
+}
+
+/// Cambria Math: parsed for layout (ttf-parser) and as a DirectWrite face for drawing.
+struct MathFace {
+    font: MathFont,
+    face: IDWriteFontFace,
+}
+
+fn load_math_face(dw: &IDWriteFactory) -> Option<MathFace> {
+    let windir = std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into());
+    let path = std::path::Path::new(&windir).join("Fonts").join("cambria.ttc");
+    let data = std::fs::read(&path).ok()?;
+    // Cambria Math is face 1 of the collection; fall back to scanning.
+    let index = (0..ttf_parser::fonts_in_collection(&data).unwrap_or(1))
+        .find(|&i| ttf_parser::Face::parse(&data, i).ok().and_then(|f| f.tables().math).is_some())?;
+    let font = MathFont::new(data, index)?;
+    unsafe {
+        let file = dw.CreateFontFileReference(&HSTRING::from(path.as_os_str()), None).ok()?;
+        let face = dw.CreateFontFace(DWRITE_FONT_FACE_TYPE_TRUETYPE_COLLECTION, &[Some(file)], index, DWRITE_FONT_SIMULATIONS_NONE).ok()?;
+        Some(MathFace { font, face })
+    }
 }
 
 /// Owns the DirectWrite factory, the window's render target and the brush cache.
@@ -107,6 +164,7 @@ pub struct Gfx {
     typo_sup: IDWriteTypography,
     typo_sub: IDWriteTypography,
     formats: HashMap<(u32, bool, bool, bool, u32), IDWriteTextFormat>,
+    math: Option<MathFace>,
 }
 
 fn color(ink: Ink) -> D2D1_COLOR_F {
@@ -152,6 +210,7 @@ impl Gfx {
                 hwnd,
                 typo_sup: typo(DWRITE_FONT_FEATURE_TAG_SUPERSCRIPT)?,
                 typo_sub: typo(DWRITE_FONT_FEATURE_TAG_SUBSCRIPT)?,
+                math: load_math_face(&dw),
                 d2d,
                 dw,
                 rt: None,
@@ -268,6 +327,38 @@ impl Gfx {
                     D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
                 );
             }
+            if let Some(math) = &self.math {
+                let face = math.face.clone();
+                for p in &doc.math {
+                    if !visible(p.y - p.mbox.asc, p.mbox.asc + p.mbox.desc) {
+                        continue;
+                    }
+                    for item in &p.mbox.items {
+                        match *item {
+                            Item::Glyph { id, x, y, size, color } => {
+                                let brush = self.brush(color.map_or(p.color, |[r, g, b]| Ink([r, g, b, 255])));
+                                let advance = 0.0f32;
+                                let run = DWRITE_GLYPH_RUN {
+                                    fontFace: std::mem::ManuallyDrop::new(Some(face.clone())),
+                                    fontEmSize: size,
+                                    glyphCount: 1,
+                                    glyphIndices: &id,
+                                    glyphAdvances: &advance,
+                                    glyphOffsets: std::ptr::null(),
+                                    isSideways: BOOL(0),
+                                    bidiLevel: 0,
+                                };
+                                rt.DrawGlyphRun(windows_numerics::Vector2 { X: p.x + x, Y: p.y + y }, &run, &brush, DWRITE_MEASURING_MODE_NATURAL);
+                                drop(std::mem::ManuallyDrop::into_inner(run.fontFace));
+                            }
+                            Item::Rule { r, color } => {
+                                let brush = self.brush(color.map_or(p.color, |[r, g, b]| Ink([r, g, b, 255])));
+                                rt.FillRectangle(&rect(RectF { x: p.x + r.x, y: p.y + r.y, ..r }), &brush);
+                            }
+                        }
+                    }
+                }
+            }
             let r = rt.EndDraw(None, None);
             if let Err(e) = &r {
                 if e.code() == D2DERR_RECREATE_TARGET {
@@ -282,6 +373,10 @@ impl Gfx {
 
 impl Typesetter for Gfx {
     type Para = DwPara;
+
+    fn math_font(&self) -> Option<&MathFont> {
+        self.math.as_ref().map(|m| &m.font)
+    }
 
     fn paragraph(&mut self, text: &str, spans: &[(Range<usize>, Span)], base: &BaseStyle, max_width: f32) -> DwPara {
         let wide: Vec<u16> = text.encode_utf16().collect();
@@ -319,7 +414,26 @@ impl Typesetter for Gfx {
                     Span::Scale(s) => l.SetFontSize(base.size * s, rr).ok(),
                     Span::Super => l.SetTypography(&self.typo_sup, rr).ok(),
                     Span::Sub => l.SetTypography(&self.typo_sub, rr).ok(),
+                    Span::Object { w, asc, desc } => {
+                        let obj: IDWriteInlineObject = InlineBox { w, asc, desc }.into();
+                        l.SetInlineObject(&obj, rr).ok()
+                    }
                 };
+            }
+            // Lines with formulas must grow to fit them: switch from uniform to
+            // proportional spacing (line height × factor) for those paragraphs.
+            if spans.iter().any(|(_, s)| matches!(s, Span::Object { .. })) {
+                if let Ok(l3) = para.layout.cast::<IDWriteTextLayout3>() {
+                    let factor = base.line_height / 1.33;
+                    let spacing = DWRITE_LINE_SPACING {
+                        method: DWRITE_LINE_SPACING_METHOD_PROPORTIONAL,
+                        height: factor,
+                        baseline: factor,
+                        leadingBefore: 0.0,
+                        fontLineGapUsage: DWRITE_FONT_LINE_GAP_USAGE_DEFAULT,
+                    };
+                    l3.SetLineSpacing(&spacing).ok();
+                }
             }
         }
         para

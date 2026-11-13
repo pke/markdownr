@@ -9,6 +9,7 @@
 
 mod ast;
 mod layout;
+mod math;
 mod theme;
 mod transforms;
 mod view;
