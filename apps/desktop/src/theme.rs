@@ -44,6 +44,9 @@ pub struct Theme {
     pub chrome_bg: Ink,
     pub chrome_text: Ink,
     pub chrome_hover: Ink,
+    pub overlay: Option<&'static Overlay>,
+    pub hr_emojis: Option<&'static [&'static str]>,
+    pub santa_hat: Option<f32>,
 }
 
 impl Theme {
@@ -80,6 +83,9 @@ impl Theme {
             chrome_bg: Ink::rgb(0xf6f8fa),
             chrome_text: Ink::rgb(0x1f2328),
             chrome_hover: Ink::rgb(0xdde4ec),
+            overlay: None,
+            hr_emojis: None,
+            santa_hat: None,
         }
     }
     pub fn dark() -> Self {
@@ -115,40 +121,26 @@ impl Theme {
             chrome_bg: Ink::rgb(0x161b22),
             chrome_text: Ink::rgb(0xe6edf3),
             chrome_hover: Ink::rgb(0x2a313c),
+            overlay: None,
+            hr_emojis: None,
+            santa_hat: None,
         }
     }
 }
 
 impl Theme {
-    /// Warm paper-like reading theme.
-    pub fn sepia() -> Self {
-        Theme {
-            background: Ink::rgb(0xf4ecd8),
-            text: Ink::rgb(0x433422),
-            muted: Ink::rgb(0x7a6a55),
-            heading: Ink::rgb(0x3b2c1a),
-            link: Ink::rgb(0x9c4a1a),
-            code_text: Ink::rgb(0x433422),
-            code_bg: Ink::rgb(0xeadfc6),
-            border: Ink::rgb(0xd8c9a8),
-            quote_bar: Ink::rgb(0xd0bf98),
-            table_stripe: Ink::rgb(0xefe5cd),
-            chrome_bg: Ink::rgb(0xece2c9),
-            chrome_text: Ink::rgb(0x433422),
-            chrome_hover: Ink::rgb(0xddd0b0),
-            ..Theme::light()
-        }
-    }
-
-    /// Theme by name (front matter `theme:` or the user's choice). `dark` is the
-    /// system preference used for `auto`/unknown names.
+    /// Theme by name (front matter `theme:` or the user's choice): one of the
+    /// ported iOS themes, or `light`/`dark`; anything else is the GitHub-like
+    /// default following the system's dark mode.
     pub fn named(name: &str, dark: bool) -> Self {
         match name.trim().to_ascii_lowercase().as_str() {
-            "light" | "default-light" | "github" => Theme::light(),
+            "light" | "github" => Theme::light(),
             "dark" | "night" | "github-dark" => Theme::dark(),
-            "sepia" | "paper" => Theme::sepia(),
-            _ if dark => Theme::dark(),
-            _ => Theme::light(),
+            n => match theme_def(n) {
+                Some(def) => def.theme(dark),
+                None if dark => Theme::dark(),
+                None => Theme::light(),
+            },
         }
     }
 
@@ -192,4 +184,209 @@ pub fn front_matter_pairs(text: &str) -> Vec<(String, String)> {
             Some((k.trim().to_ascii_lowercase(), v.trim().trim_matches(['"', '\'']).to_string()))
         })
         .collect()
+}
+
+// ---------------------------------------------------------------------------
+// Named themes (ported from the iOS app's themes.ts)
+// ---------------------------------------------------------------------------
+
+#[path = "themes_data.rs"]
+mod data;
+pub use data::THEMES;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Palette {
+    pub text: u32,
+    pub muted: u32,
+    pub heading: u32,
+    pub link: u32,
+    pub code: u32,
+    pub code_bg: u32,
+    pub quote: u32,
+    pub border: u32,
+    pub stripe: Option<u32>,
+}
+
+/// Falling particles (snow, petals, leaves) drawn over and behind the text.
+#[derive(Debug, Clone, Copy)]
+pub struct Overlay {
+    pub particles: &'static [&'static str],
+    pub count: usize,
+    /// Font size range in DIPs.
+    pub size: (f32, f32),
+    /// Fall duration range in ms.
+    pub duration: (f32, f32),
+    pub sway: (f32, f32),
+    pub sway_divisor: f32,
+    /// Rotation amplitude range in degrees.
+    pub rotation: (f32, f32),
+    pub rotation_divisor: f32,
+    pub opacity: (f32, f32),
+    /// Tint for monochrome particles (light, dark).
+    pub color: Option<(u32, u32)>,
+    pub behind_fraction: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ThemeDef {
+    pub name: &'static str,
+    pub icon: &'static str,
+    /// Not part of the theme cycle (only reachable via front matter).
+    pub hidden: bool,
+    pub background: (u32, u32),
+    pub light: Palette,
+    pub dark: Palette,
+    pub overlay: Option<Overlay>,
+    pub hr_emojis: Option<&'static [&'static str]>,
+    /// Santa hat on headings, size in DIPs.
+    pub santa_hat: Option<f32>,
+}
+
+pub fn theme_def(name: &str) -> Option<&'static ThemeDef> {
+    let name = name.trim().to_ascii_lowercase();
+    THEMES.iter().find(|t| t.name == name)
+}
+
+impl ThemeDef {
+    pub fn label(&self) -> String {
+        let mut c = self.name.chars();
+        let cap: String = c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default();
+        format!("{} {}", self.icon, cap)
+    }
+
+    pub fn theme(&'static self, dark: bool) -> Theme {
+        let base = if dark { Theme::dark() } else { Theme::light() };
+        let p = if dark { &self.dark } else { &self.light };
+        let bg = Ink::rgb(if dark { self.background.1 } else { self.background.0 });
+        Theme {
+            background: bg,
+            text: Ink::rgb(p.text),
+            muted: Ink::rgb(p.muted),
+            heading: Ink::rgb(p.heading),
+            link: Ink::rgb(p.link),
+            code_text: Ink::rgb(p.code),
+            code_bg: Ink::rgb(p.code_bg),
+            border: Ink::rgb(p.border),
+            quote_bar: Ink::rgb(p.quote),
+            table_stripe: p.stripe.map_or(bg, Ink::rgb),
+            chrome_bg: Ink::rgb(p.code_bg),
+            chrome_text: Ink::rgb(p.text),
+            chrome_hover: Ink::rgb(p.border),
+            overlay: self.overlay.as_ref(),
+            hr_emojis: self.hr_emojis,
+            santa_hat: self.santa_hat,
+            ..base
+        }
+    }
+}
+
+/// The user's theme choice: `None` follows the document (front matter) or the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ThemeChoice(pub Option<usize>);
+
+impl ThemeChoice {
+    pub fn name(self) -> &'static str {
+        self.0.map_or("auto", |i| THEMES[i].name)
+    }
+    pub fn from_name(s: &str) -> Self {
+        ThemeChoice(THEMES.iter().position(|t| t.name == s))
+    }
+    pub fn label(self) -> String {
+        self.0.map_or_else(|| "◐ Auto".to_string(), |i| THEMES[i].label())
+    }
+    pub fn next(self) -> Self {
+        let start = self.0.map_or(0, |i| i + 1);
+        ThemeChoice((start..THEMES.len()).find(|&i| !THEMES[i].hidden))
+    }
+}
+
+/// Seasonal theme suggestion like the iOS app: Christmas in December, Easter
+/// ±7 days, otherwise the season (southern hemisphere flipped).
+pub fn seasonal_theme(year: i32, month: u32, day: u32, southern: bool) -> &'static str {
+    if month == 12 {
+        return "christmas";
+    }
+    let (em, ed) = easter(year);
+    let doy = |m: u32, d: u32| days_from_civil(year, m, d);
+    if (doy(month, day) - doy(em, ed)).abs() <= 7 {
+        return "easter";
+    }
+    let season = match month {
+        12 | 1 | 2 => 0,
+        3..=5 => 1,
+        6..=8 => 2,
+        _ => 3,
+    };
+    let season = if southern { (season + 2) % 4 } else { season };
+    ["winter", "spring", "summer", "autumn"][season]
+}
+
+fn easter(year: i32) -> (u32, u32) {
+    let a = year % 19;
+    let b = year / 100;
+    let c = year % 100;
+    let d = b / 4;
+    let e = b % 4;
+    let f = (b + 8) / 25;
+    let g = (b - f + 1) / 3;
+    let h = (19 * a + b - d - g + 15) % 30;
+    let i = c / 4;
+    let k = c % 4;
+    let l = (32 + 2 * e + 2 * i - h - k) % 7;
+    let m = (a + 11 * h + 22 * l) / 451;
+    let month = (h + l - 7 * m + 114) / 31;
+    let day = (h + l - 7 * m + 114) % 31 + 1;
+    (month as u32, day as u32)
+}
+
+/// Days since 1970-01-01 (proleptic Gregorian).
+pub fn days_from_civil(y: i32, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y } as i64;
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let m = m as i64;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d as i64 - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146097 + doe - 719468
+}
+
+/// (year, month, day) from days since 1970-01-01.
+pub fn civil_from_days(z: i64) -> (i32, u32, u32) {
+    let z = z + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let y = (yoe + era * 400 + if m <= 2 { 1 } else { 0 }) as i32;
+    (y, m, d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seasons() {
+        assert_eq!(easter(2026), (4, 5));
+        assert_eq!(seasonal_theme(2026, 12, 3, false), "christmas");
+        assert_eq!(seasonal_theme(2026, 4, 9, false), "easter");
+        assert_eq!(seasonal_theme(2026, 11, 13, false), "autumn");
+        assert_eq!(seasonal_theme(2026, 11, 13, true), "spring");
+        assert_eq!(civil_from_days(days_from_civil(2026, 11, 13)), (2026, 11, 13));
+    }
+
+    #[test]
+    fn cycle_skips_hidden() {
+        let mut c = ThemeChoice::default();
+        let mut seen = Vec::new();
+        for _ in 0..THEMES.len() + 1 {
+            c = c.next();
+            seen.push(c.name());
+        }
+        assert!(!seen.contains(&"dude"));
+        assert_eq!(seen.last(), Some(&"default")); // wrapped through auto
+    }
 }

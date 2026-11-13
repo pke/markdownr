@@ -5,7 +5,8 @@ mod images;
 
 use crate::ast::Node;
 use crate::settings::Settings;
-use crate::view::{Effect, Key, Mods, ThemeChoice, Viewer};
+use crate::theme::ThemeChoice;
+use crate::view::{Effect, Key, Mods, Viewer};
 use dwrite::{DwPara, Gfx};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -187,7 +188,9 @@ impl App {
         let v = &self.viewer;
         let finds = v.find_highlights();
         let chrome = v.chrome_visible().then_some((&v.chrome, v.chrome_alpha));
-        if let Err(e) = self.gfx.draw(&v.layout, v.selection.as_ref(), &finds, &v.theme, v.scroll, v.view_h, chrome) {
+        let sprites = v.sprites(Instant::now());
+        let particles = v.particles.as_ref().map(|p| (p, sprites.as_slice()));
+        if let Err(e) = self.gfx.draw(&v.layout, v.selection.as_ref(), &finds, &v.theme, v.scroll, v.view_h, chrome, particles) {
             eprintln!("draw: {e}");
             self.viewer.invalidate();
             self.invalidate();
@@ -197,6 +200,7 @@ impl App {
     /// Drive the chrome fade: (re)arm or stop the animation timer.
     fn schedule(&mut self) {
         let (repaint, next) = self.viewer.tick(Instant::now());
+        let next = if unsafe { IsIconic(self.hwnd) }.as_bool() { None } else { next };
         if repaint {
             self.invalidate();
         }
@@ -827,10 +831,21 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             app.viewer.chrome_alpha = 1.0;
             app.viewer.show_chrome(Instant::now() + Duration::from_secs(3600));
         }
+        {
+            let st = windows::Win32::System::SystemInformation::GetLocalTime();
+            app.viewer.today = (st.wYear as i32, st.wMonth as u32, st.wDay as u32);
+            let mut anim = BOOL(1);
+            let _ = SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, Some(&mut anim as *mut _ as *mut _), SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0));
+            app.viewer.reduce_motion = !anim.as_bool();
+            if let Some(ms) = std::env::var("MARKDOWNR_TIME_MS").ok().and_then(|s| s.parse::<u64>().ok()) {
+                app.viewer.anim_start = Instant::now() - Duration::from_millis(ms);
+            }
+        }
         app.apply_dark();
         app.set_title();
         app.update_size();
         APP.with(|c| *c.borrow_mut() = Some(app));
+        with_app(|a| a.schedule());
         if let Some(px) = std::env::var("MARKDOWNR_SCROLL").ok().and_then(|s| s.parse::<f32>().ok()) {
             // Layout must exist before scrolling can be clamped: lay out once now.
             with_app(|a| {

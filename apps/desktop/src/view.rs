@@ -8,7 +8,8 @@
 
 use crate::ast::{Kind, Node};
 use crate::layout::{BaseStyle, DocLayout, DocSelection, Join, Layouter, Paragraph, Rect, RectF, TextBlock, Typesetter};
-use crate::theme::{Theme, front_matter_pairs};
+use crate::particles::{Particles, Sprite};
+use crate::theme::{Theme, ThemeChoice, front_matter_pairs, seasonal_theme};
 use std::ops::Range;
 use std::time::{Duration, Instant};
 
@@ -60,49 +61,6 @@ pub enum Effect {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ThemeChoice {
-    Auto,
-    Light,
-    Dark,
-    Sepia,
-}
-
-impl ThemeChoice {
-    pub fn name(self) -> &'static str {
-        match self {
-            ThemeChoice::Auto => "auto",
-            ThemeChoice::Light => "light",
-            ThemeChoice::Dark => "dark",
-            ThemeChoice::Sepia => "sepia",
-        }
-    }
-    pub fn from_name(s: &str) -> Self {
-        match s {
-            "light" => ThemeChoice::Light,
-            "dark" => ThemeChoice::Dark,
-            "sepia" => ThemeChoice::Sepia,
-            _ => ThemeChoice::Auto,
-        }
-    }
-    fn label(self) -> &'static str {
-        match self {
-            ThemeChoice::Auto => "◐ Auto",
-            ThemeChoice::Light => "☀ Hell",
-            ThemeChoice::Dark => "☾ Dunkel",
-            ThemeChoice::Sepia => "❦ Sepia",
-        }
-    }
-    fn next(self) -> Self {
-        match self {
-            ThemeChoice::Auto => ThemeChoice::Light,
-            ThemeChoice::Light => ThemeChoice::Dark,
-            ThemeChoice::Dark => ThemeChoice::Sepia,
-            ThemeChoice::Sepia => ThemeChoice::Auto,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Action {
     Toc,
     Open,
@@ -114,6 +72,7 @@ enum Action {
     Fullscreen,
     RememberFullscreen,
     TocEntry(usize),
+    Seasonal,
     FindPrev,
     FindNext,
     FindClose,
@@ -144,6 +103,13 @@ pub struct Viewer<P> {
     /// Toolbar, drawer and find bar in window coordinates.
     pub chrome: DocLayout<P>,
     pub chrome_alpha: f32,
+    pub particles: Option<Particles>,
+    pub anim_start: Instant,
+    /// System "show animations" off: no particles.
+    pub reduce_motion: bool,
+    /// Local date (y, m, d) and hemisphere for the seasonal theme suggestion.
+    pub today: (i32, u32, u32),
+    pub southern: bool,
     front_matter: Vec<(String, String)>,
     source_doc: Option<Node>,
     buttons: Vec<(RectF, Action)>,
@@ -179,7 +145,7 @@ impl<P: Paragraph> Viewer<P> {
             title: String::new(),
             theme: Theme::light(),
             dark: false,
-            theme_choice: ThemeChoice::Auto,
+            theme_choice: ThemeChoice::default(),
             font_size: DEFAULT_FONT_SIZE,
             layout: DocLayout::default(),
             scroll: 0.0,
@@ -191,6 +157,11 @@ impl<P: Paragraph> Viewer<P> {
             show_source: false,
             chrome: DocLayout::default(),
             chrome_alpha: 0.0,
+            particles: None,
+            anim_start: Instant::now(),
+            reduce_motion: false,
+            today: (2026, 1, 1),
+            southern: false,
             source_doc: None,
             buttons: Vec::new(),
             hover: None,
@@ -263,12 +234,12 @@ impl<P: Paragraph> Viewer<P> {
 
     fn resolve_theme(&self) -> Theme {
         let fm = self.front_matter.iter().find(|(k, _)| k == "theme").map(|(_, v)| v.as_str());
-        let base = match (self.theme_choice, fm) {
-            (ThemeChoice::Auto, Some(name)) => Theme::named(name, self.dark),
-            (ThemeChoice::Auto, None) => Theme::named("auto", self.dark),
-            (c, _) => Theme::named(c.name(), self.dark),
+        let auto = self.theme_choice.0.is_none();
+        let base = match fm {
+            Some(name) if auto => Theme::named(name, self.dark),
+            _ => Theme::named(self.theme_choice.name(), self.dark),
         };
-        if self.theme_choice == ThemeChoice::Auto { base.with_overrides(&self.front_matter) } else { base }
+        if auto { base.with_overrides(&self.front_matter) } else { base }
     }
 
     pub fn ensure_layout<T: Typesetter<Para = P>>(&mut self, ts: &mut T) {
@@ -276,6 +247,7 @@ impl<P: Paragraph> Viewer<P> {
             self.dirty = false;
             let ratio = if self.layout.height > 0.0 { self.scroll / self.layout.height } else { 0.0 };
             self.theme = self.resolve_theme();
+            self.particles = self.theme.overlay.map(|o| Particles::new(o, self.view_w, 0x9e37_79b9 ^ self.view_w as u32));
             let w = self.view_w;
             let margin = (self.font_size * 2.0).min(w * 0.06).max(12.0);
             let column = (w - 2.0 * margin).min(self.font_size * MAX_COLUMN).max(100.0);
@@ -365,7 +337,13 @@ impl<P: Paragraph> Viewer<P> {
         } else {
             None
         };
-        (before != self.chrome_alpha, next)
+        let mut repaint = before != self.chrome_alpha;
+        if self.particles.is_some() && !self.reduce_motion {
+            repaint = true;
+            let frame = Some(Duration::from_millis(33));
+            return (repaint, next.map_or(frame, |n| Some(n.min(Duration::from_millis(33)))));
+        }
+        (repaint, next)
     }
 
     fn build_chrome<T: Typesetter<Para = P>>(&mut self, ts: &mut T) {
@@ -415,7 +393,7 @@ impl<P: Paragraph> Viewer<P> {
             let pin = if self.remember_fullscreen { "☑ Beim Start" } else { "☐ Beim Start" };
             rx -= button(ts, &mut out, &mut buttons, pin, Action::RememberFullscreen, rx, true, false) + 2.0;
         }
-        rx -= button(ts, &mut out, &mut buttons, self.theme_choice.label(), Action::Theme, rx, true, false) + 2.0;
+        rx -= button(ts, &mut out, &mut buttons, &self.theme_choice.label(), Action::Theme, rx, true, false) + 2.0;
         rx -= button(ts, &mut out, &mut buttons, "</>", Action::Source, rx, true, self.show_source) + 2.0;
         rx -= button(ts, &mut out, &mut buttons, "A+", Action::FontUp, rx, true, false) + 2.0;
         rx -= button(ts, &mut out, &mut buttons, "A−", Action::FontDown, rx, true, false) + 2.0;
@@ -470,6 +448,20 @@ impl<P: Paragraph> Viewer<P> {
             out.rects.push(Rect { r: RectF { x: dw - 1.0, y: top, w: 1.0, h: self.view_h - top }, color: th.border, radius: 0.0 });
             let current = self.current_section();
             let mut y = top + 8.0 - self.toc_scroll;
+            if let Some(name) = self.seasonal_suggestion() {
+                let text = format!("Saison-Theme: {}", crate::theme::theme_def(name).map(|d| d.label()).unwrap_or_default());
+                let s = BaseStyle { color: th.link, ..style };
+                let (para, pw, ph) = label(ts, &text, &s, dw - 32.0);
+                let row = RectF { x: 6.0, y, w: dw - 12.0, h: ph + 12.0 };
+                if self.hover == Some(Action::Seasonal) {
+                    out.rects.push(Rect { r: row, color: th.chrome_hover, radius: 6.0 });
+                }
+                place(&mut out, para, &text, 16.0, y + 6.0, pw, ph);
+                buttons.push((row, Action::Seasonal));
+                y += ph + 12.0;
+                out.rects.push(Rect { r: RectF { x: 16.0, y: y + 3.0, w: dw - 32.0, h: 1.0 }, color: th.border, radius: 0.0 });
+                y += 8.0;
+            }
             if self.layout.toc.is_empty() {
                 let muted = BaseStyle { color: th.muted, ..style };
                 let (para, pw, ph) = label(ts, "Keine Überschriften", &muted, dw - 32.0);
@@ -537,6 +529,12 @@ impl<P: Paragraph> Viewer<P> {
             }
             Action::Fullscreen => return Some(Effect::ToggleFullscreen),
             Action::RememberFullscreen => self.remember_fullscreen = !self.remember_fullscreen,
+            Action::Seasonal => {
+                if let Some(name) = self.seasonal_suggestion() {
+                    self.theme_choice = ThemeChoice::from_name(name);
+                    self.dirty = true;
+                }
+            }
             Action::TocEntry(i) => {
                 if let Some(e) = self.layout.toc.get(i) {
                     self.scroll = e.y - self.font_size;
@@ -869,5 +867,26 @@ impl<P: Paragraph> Viewer<P> {
 
     pub fn zoom_by(&mut self, factor: f32) {
         self.set_font_size((self.font_size * factor).round());
+    }
+}
+
+impl<P: Paragraph> Viewer<P> {
+    /// Particle sprites to draw now (empty without an animated theme).
+    pub fn sprites(&self, now: Instant) -> Vec<Sprite> {
+        match &self.particles {
+            Some(p) if !self.reduce_motion => p.sprites((now - self.anim_start).as_secs_f32() * 1000.0, self.view_h),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Seasonal theme to suggest in the drawer, unless the document picks a
+    /// theme or the user already uses it.
+    fn seasonal_suggestion(&self) -> Option<&'static str> {
+        if self.front_matter.iter().any(|(k, _)| k == "theme") {
+            return None;
+        }
+        let (y, m, d) = self.today;
+        let name = seasonal_theme(y, m, d, self.southern);
+        (self.theme_choice.name() != name).then_some(name)
     }
 }

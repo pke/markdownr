@@ -158,6 +158,8 @@ pub struct DocLayout<P> {
     pub rects: Vec<Rect>,
     pub math: Vec<MathPlacement>,
     pub images: Vec<ImagePlacement>,
+    /// Santa hats on headings (Christmas theme): (x, y, size), top-left corner.
+    pub hats: Vec<(f32, f32, f32)>,
     pub toc: Vec<TocEntry>,
     pub front_matter: Option<String>,
     pub height: f32,
@@ -165,7 +167,7 @@ pub struct DocLayout<P> {
 
 impl<P> Default for DocLayout<P> {
     fn default() -> Self {
-        DocLayout { blocks: Vec::new(), rects: Vec::new(), math: Vec::new(), images: Vec::new(), toc: Vec::new(), front_matter: None, height: 0.0 }
+        DocLayout { blocks: Vec::new(), rects: Vec::new(), math: Vec::new(), images: Vec::new(), hats: Vec::new(), toc: Vec::new(), front_matter: None, height: 0.0 }
     }
 }
 
@@ -285,6 +287,11 @@ impl<T: Typesetter> Layouter<'_, T> {
                 let mut inline = Inline::default();
                 self.flatten(&node.children, &mut inline, style.size);
                 out.toc.push(TocEntry { level: *level, title: inline.text.clone(), id: id.clone(), y: *y });
+                if let Some(hat) = theme.santa_hat.filter(|_| *level <= 2) {
+                    // Perched on the first letter, scaled with the heading.
+                    let s = hat * scale / 2.0;
+                    out.hats.push((ctx.x - s * 0.3, *y - s * 0.55, s));
+                }
                 *y += self.push(inline, &style, ctx.x, *y, ctx.width, None, true, join, out);
                 if *level <= 2 {
                     *y += base * 0.3;
@@ -417,6 +424,11 @@ impl<T: Typesetter> Layouter<'_, T> {
                 *y += ctx.gap * 0.5;
             }
             Kind::Table { aligns } => self.table(node, aligns, ctx, y, out, join),
+            Kind::Rule if theme.hr_emojis.is_some() => {
+                let text = theme.hr_emojis.unwrap().join("   ");
+                let style = BaseStyle { size: base * 1.25, line_height: 1.4, ..ctx.style };
+                *y += self.push(Inline::plain(text), &style, ctx.x, *y, ctx.width, Some(TextAlign::Center), false, Join::Paragraph, out) + ctx.gap;
+            }
             Kind::Rule => {
                 out.rects.push(Rect { r: RectF { x: ctx.x, y: *y + base * 0.5, w: ctx.width, h: 2.0 }, color: theme.border, radius: 1.0 });
                 *y += base + ctx.gap;
@@ -538,9 +550,14 @@ impl<T: Typesetter> Layouter<'_, T> {
                     }
                 }
                 Kind::FootnoteRef { label } => {
-                    out.text.push_str(label);
+                    match unicode_script(label, true) {
+                        Some(s) => out.text.push_str(&s),
+                        None => out.text.push_str(label),
+                    }
                     let r = start..out.text.len();
-                    out.spans.push((r.clone(), Span::Super));
+                    if unicode_script(label, true).is_none() {
+                        out.spans.push((r.clone(), Span::Super));
+                    }
                     out.spans.push((r, Span::Color(theme.link)));
                 }
                 Kind::Image { url } if self.ts.image_size(url).is_some() => {
@@ -565,8 +582,20 @@ impl<T: Typesetter> Layouter<'_, T> {
                         Kind::Emph => out.spans.push((r, Span::Italic)),
                         Kind::Strong => out.spans.push((r, Span::Bold)),
                         Kind::Strike => out.spans.push((r, Span::Strike)),
-                        Kind::Sup => out.spans.push((r, Span::Super)),
-                        Kind::Sub => out.spans.push((r, Span::Sub)),
+                        Kind::Sup | Kind::Sub => {
+                            let sup = matches!(kind, Kind::Sup);
+                            // Only plain text inside: swap for Unicode script characters.
+                            let plain = !out.spans.iter().any(|(s, _)| s.start >= r.start && s.start < r.end.max(r.start + 1))
+                                && !out.links.iter().any(|(s, _)| s.start >= r.start)
+                                && !out.objects.iter().any(|(b, _, _)| *b >= r.start);
+                            match unicode_script(&out.text[r.clone()], sup).filter(|_| plain) {
+                                Some(s) => out.text.replace_range(r, &s),
+                                None => {
+                                    out.spans.push((r.clone(), Span::Scale(0.75)));
+                                    out.spans.push((r, if sup { Span::Super } else { Span::Sub }));
+                                }
+                            }
+                        }
                         Kind::Mark => out.backgrounds.push((r, theme.mark_bg)),
                         Kind::Ins => {
                             out.spans.push((r.clone(), Span::Underline));
@@ -815,5 +844,32 @@ mod tests {
         let l = lay("- one\n- two");
         let all = l.select_all().unwrap();
         assert_eq!(l.selected_text(&all), "one\ntwo");
+    }
+}
+
+/// Unicode super-/subscript form of `s`, if every character has one. Used for
+/// `x^2^`, `H~2~O` and footnote marks, because common UI fonts (Segoe UI) do
+/// not implement the OpenType `sups`/`subs` features.
+fn unicode_script(s: &str, sup: bool) -> Option<String> {
+    const SUP: [(char, char); 22] = [
+        ('0', '⁰'), ('1', '¹'), ('2', '²'), ('3', '³'), ('4', '⁴'), ('5', '⁵'), ('6', '⁶'), ('7', '⁷'), ('8', '⁸'), ('9', '⁹'), ('+', '⁺'),
+        ('-', '⁻'), ('=', '⁼'), ('(', '⁽'), (')', '⁾'), ('n', 'ⁿ'), ('i', 'ⁱ'), ('a', 'ᵃ'), ('b', 'ᵇ'), ('c', 'ᶜ'), ('d', 'ᵈ'), ('e', 'ᵉ'),
+    ];
+    const SUB: [(char, char); 25] = [
+        ('0', '₀'), ('1', '₁'), ('2', '₂'), ('3', '₃'), ('4', '₄'), ('5', '₅'), ('6', '₆'), ('7', '₇'), ('8', '₈'), ('9', '₉'), ('+', '₊'),
+        ('-', '₋'), ('=', '₌'), ('(', '₍'), (')', '₎'), ('a', 'ₐ'), ('e', 'ₑ'), ('o', 'ₒ'), ('x', 'ₓ'), ('h', 'ₕ'), ('k', 'ₖ'), ('l', 'ₗ'),
+        ('m', 'ₘ'), ('n', 'ₙ'), ('i', 'ᵢ'),
+    ];
+    let table: &[(char, char)] = if sup { &SUP } else { &SUB };
+    s.chars().map(|c| table.iter().find(|(a, _)| *a == c).map(|(_, b)| *b)).collect()
+}
+
+#[cfg(test)]
+mod script_tests {
+    #[test]
+    fn scripts() {
+        assert_eq!(super::unicode_script("2", false).as_deref(), Some("₂"));
+        assert_eq!(super::unicode_script("10", true).as_deref(), Some("¹⁰"));
+        assert_eq!(super::unicode_script("xyz", true), None);
     }
 }

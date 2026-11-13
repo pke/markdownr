@@ -168,6 +168,7 @@ pub struct Gfx {
     typo_sup: IDWriteTypography,
     typo_sub: IDWriteTypography,
     formats: HashMap<(u32, bool, bool, bool, u32), IDWriteTextFormat>,
+    sprite_layouts: HashMap<(&'static str, u32), IDWriteTextLayout>,
     math: Option<MathFace>,
     pub images: super::images::Images,
 }
@@ -227,6 +228,7 @@ impl Gfx {
                 body,
                 mono,
                 formats: HashMap::new(),
+                sprite_layouts: HashMap::new(),
             })
         }
     }
@@ -358,13 +360,18 @@ impl Gfx {
         scroll: f32,
         view_h: f32,
         chrome: Option<(&DocLayout<DwPara>, f32)>,
+        particles: Option<(&crate::particles::Particles, &[crate::particles::Sprite])>,
     ) -> Result<()> {
         let Some(rt) = self.rt.clone() else { return Ok(()) };
         unsafe {
             rt.BeginDraw();
             rt.SetTransform(&windows_numerics::Matrix3x2::translation(0.0, -scroll.round()));
             rt.Clear(Some(&color(theme.background)));
+            self.draw_sprites(&rt, particles, true, theme);
+            rt.SetTransform(&windows_numerics::Matrix3x2::translation(0.0, -scroll.round()));
             self.draw_layout(&rt, doc, selection, finds, theme, scroll, view_h);
+            rt.SetTransform(&windows_numerics::Matrix3x2::identity());
+            self.draw_sprites(&rt, particles, false, theme);
             if let Some((c, alpha)) = chrome {
                 rt.SetTransform(&windows_numerics::Matrix3x2::identity());
                 let params = D2D1_LAYER_PARAMETERS {
@@ -390,6 +397,101 @@ impl Gfx {
                 }
             }
             r
+        }
+    }
+
+    /// Falling particles, in window coordinates. `behind` selects the layer
+    /// drawn under the text; the rest goes on top.
+    unsafe fn draw_sprites(&mut self, rt: &ID2D1RenderTarget, particles: Option<(&crate::particles::Particles, &[crate::particles::Sprite])>, behind: bool, theme: &Theme) {
+        let Some((ps, sprites)) = particles else { return };
+        let [r, g, b, _] = theme.background.0;
+        let dark = (r as u32 + g as u32 + b as u32) < 384;
+        let tint = ps.color.map_or(theme.text, |(l, d)| Ink::rgb(if dark { d } else { l }));
+        unsafe {
+            for s in sprites {
+                let p = &ps.items[s.index];
+                if p.behind != behind {
+                    continue;
+                }
+                let key = (p.text, p.size.to_bits());
+                let layout = match self.sprite_layouts.get(&key) {
+                    Some(l) => l.clone(),
+                    None => {
+                        let base = BaseStyle { size: p.size, color: tint, mono: false, bold: false, italic: false, line_height: 1.0 };
+                        let format = self.format(&base);
+                        let wide: Vec<u16> = p.text.encode_utf16().collect();
+                        let Ok(l) = self.dw.CreateTextLayout(&wide, &format, 400.0, 400.0) else { continue };
+                        self.sprite_layouts.insert(key, l.clone());
+                        l
+                    }
+                };
+                let c = windows_numerics::Vector2 { X: s.x + p.size / 2.0, Y: s.y + p.size / 2.0 };
+                rt.SetTransform(&windows_numerics::Matrix3x2::rotation_around(s.rotation, c));
+                let mut brush_color = tint;
+                brush_color.0[3] = (p.opacity * 255.0) as u8;
+                let brush = self.brush(brush_color);
+                let fade = p.opacity < 0.99 && !p.text.is_ascii();
+                if fade {
+                    // Colour emoji ignore brush alpha: fade them with a layer.
+                    let params = D2D1_LAYER_PARAMETERS {
+                        contentBounds: D2D_RECT_F { left: s.x - 4.0, top: s.y - 4.0, right: s.x + p.size * 2.0, bottom: s.y + p.size * 2.0 },
+                        geometricMask: std::mem::ManuallyDrop::new(None),
+                        maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                        maskTransform: windows_numerics::Matrix3x2::identity(),
+                        opacity: p.opacity,
+                        opacityBrush: std::mem::ManuallyDrop::new(None),
+                        layerOptions: D2D1_LAYER_OPTIONS_NONE,
+                    };
+                    rt.PushLayer(&params, None);
+                }
+                rt.DrawTextLayout(windows_numerics::Vector2 { X: s.x, Y: s.y }, &layout, &brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
+                if fade {
+                    rt.PopLayer();
+                }
+            }
+            rt.SetTransform(&windows_numerics::Matrix3x2::identity());
+        }
+    }
+
+    /// Santa hat (port of the iOS SantaHat SVG, 64×64 viewBox).
+    unsafe fn draw_hat(&mut self, rt: &ID2D1RenderTarget, x: f32, y: f32, size: f32, scroll: f32) {
+        unsafe {
+            let make = |d2d: &ID2D1Factory, pts: &[(f32, f32)]| -> Option<ID2D1PathGeometry> {
+                let geo = d2d.CreatePathGeometry().ok()?;
+                let sink = geo.Open().ok()?;
+                let v = |p: (f32, f32)| windows_numerics::Vector2 { X: p.0, Y: p.1 };
+                sink.BeginFigure(v(pts[0]), D2D1_FIGURE_BEGIN_FILLED);
+                let mut i = 1;
+                while i + 2 < pts.len() {
+                    sink.AddBezier(&D2D1_BEZIER_SEGMENT { point1: v(pts[i]), point2: v(pts[i + 1]), point3: v(pts[i + 2]) });
+                    i += 3;
+                }
+                for p in &pts[i..] {
+                    sink.AddLine(v(*p));
+                }
+                sink.EndFigure(D2D1_FIGURE_END_CLOSED);
+                sink.Close().ok()?;
+                Some(geo)
+            };
+            let body = make(&self.d2d, &[(0.0, 56.0), (4.0, 30.0), (16.0, 14.0), (32.0, 4.0), (48.0, 14.0), (60.0, 30.0), (64.0, 56.0)]);
+            let shade = make(&self.d2d, &[(32.0, 4.0), (48.0, 14.0), (60.0, 30.0), (64.0, 56.0), (32.0, 56.0)]);
+            let k = size / 64.0;
+            let m = windows_numerics::Matrix3x2::scale(k, k)
+                * windows_numerics::Matrix3x2::rotation_around(-18.0, windows_numerics::Vector2 { X: 32.0 * k, Y: 56.0 * k })
+                * windows_numerics::Matrix3x2::translation(x, y - scroll.round());
+            rt.SetTransform(&m);
+            let white = self.brush(Ink::rgb(0xffffff));
+            let red = self.brush(Ink::rgb(0xcc0000));
+            let dark = self.brush(Ink::rgba(0xaa0000, 102));
+            if let Some(g) = &body {
+                rt.FillGeometry(g, &red, None);
+            }
+            if let Some(g) = &shade {
+                rt.FillGeometry(g, &dark, None);
+            }
+            rt.FillEllipse(&D2D1_ELLIPSE { point: windows_numerics::Vector2 { X: 32.0, Y: 56.0 }, radiusX: 32.0, radiusY: 8.0 }, &white);
+            rt.FillEllipse(&D2D1_ELLIPSE { point: windows_numerics::Vector2 { X: 32.0, Y: 4.0 }, radiusX: 4.0, radiusY: 4.0 }, &white);
+            rt.SetTransform(&windows_numerics::Matrix3x2::translation(0.0, -scroll.round()));
         }
     }
 
@@ -452,6 +554,11 @@ impl Gfx {
                     &text_brush,
                     D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
                 );
+            }
+            for &(hx, hy, hs) in &doc.hats {
+                if visible(hy, hs) {
+                    self.draw_hat(rt, hx, hy, hs, scroll);
+                }
             }
             if let Some(math) = &self.math {
                 let face = math.face.clone();
