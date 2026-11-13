@@ -111,7 +111,14 @@ pub fn ins_transform(node: &mut Node) {
 mod emoji_data;
 
 pub fn emoji(name: &str) -> Option<&'static str> {
-    emoji_data::EMOJI.binary_search_by(|(k, _)| (*k).cmp(name)).ok().map(|i| emoji_data::EMOJI[i].1)
+    if name.is_empty() || name.contains(['\t', '\n']) {
+        return None;
+    }
+    let data = emoji_data::EMOJI;
+    let key = format!("\n{name}\t");
+    let start = data.find(&key)? + key.len();
+    let end = data[start..].find('\n')? + start;
+    Some(&data[start..end])
 }
 
 /// Emoticon shortcuts (markdown-it-emoji `shortcuts.mjs`), longest first.
