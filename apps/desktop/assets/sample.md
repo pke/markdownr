@@ -92,6 +92,13 @@ $$
 \left( \frac{\partial \mathcal{L}}{\partial \hat{\theta}} \right)^2 + \sqrt[3]{\mathbb{R}^n} \cdot \vec{v}
 $$
 
+$$
+\begin{aligned}
+f(x) &= (x+1)^2 & g(x) &= x - 1 \\
+     &= x^2 + 2x + 1 & &= -(1 - x)
+\end{aligned}
+$$
+
 ---
 
 [^1]: The footnote text lives at the bottom.

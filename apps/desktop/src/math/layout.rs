@@ -654,8 +654,41 @@ impl Ctx<'_> {
     }
 
     fn matrix(&mut self, rows: &[Vec<M>], align_left: bool, cases: bool, st: Style) -> B {
-        let cell_st = if st.level == 0 && !cases { Style { level: 1, ..st } } else { st };
-        let cells: Vec<Vec<B>> = rows.iter().map(|r| r.iter().map(|c| self.node(c, cell_st)).collect()).collect();
+        // `aligned` & co. keep display style; matrices use text style.
+        let cell_st = if st.level == 0 && !cases && !align_left { Style { level: 1, ..st } } else { st };
+        let lead_space = |m: &M| -> Option<Class> {
+            let first = match m {
+                M::Row(items) => items.iter().find(|i| class_of(i).is_some())?,
+                other => other,
+            };
+            class_of(first)
+        };
+        let cells: Vec<Vec<B>> = rows
+            .iter()
+            .map(|r| {
+                r.iter()
+                    .enumerate()
+                    .map(|(i, c)| {
+                        let mut b = self.node(c, cell_st);
+                        // Like TeX's `{}` before `&=`: a cell on the right of an
+                        // alignment point that starts with a relation keeps its spacing.
+                        if align_left && !cases && i % 2 == 1 {
+                            let em = self.size(cell_st);
+                            let pad = match lead_space(c) {
+                                Some(Class::Rel) => em * 5.0 / 18.0,
+                                Some(Class::Bin) => em * 4.0 / 18.0,
+                                _ => 0.0,
+                            };
+                            if pad > 0.0 {
+                                b.shift(pad, 0.0);
+                                b.w += pad;
+                            }
+                        }
+                        b
+                    })
+                    .collect()
+            })
+            .collect();
         let ncols = cells.iter().map(Vec::len).max().unwrap_or(0);
         let mut col_w = vec![0f32; ncols];
         for r in &cells {
@@ -664,10 +697,14 @@ impl Ctx<'_> {
             }
         }
         let size = self.size(st);
-        let col_gap = if align_left && !cases { 0.0 } else { size };
+        let aligned = align_left && !cases;
+        // Gap after column i: none inside an `aligned` pair, 2em between pairs.
+        let gap_after = |i: usize| if aligned { if i % 2 == 1 { size * 2.0 } else { 0.0 } } else { size };
+        let col_gap_total: f32 = (0..ncols.saturating_sub(1)).map(gap_after).sum();
         let strut_asc = size * 0.7;
         let strut_desc = size * 0.3;
-        let row_gap = size * 0.25;
+        // Baselines 1.2em apart, plus \jot (3pt ≈ 0.3em) for aligned equations.
+        let row_gap = if aligned { size * 0.5 } else { size * 0.2 };
         let mut b = B::default();
         let mut y = 0.0;
         let mut first = true;
@@ -690,7 +727,7 @@ impl Ctx<'_> {
                     (col_w[i] - cw) / 2.0
                 };
                 b.add(c, x + dx, y);
-                x += col_w[i] + col_gap;
+                x += col_w[i] + gap_after(i);
             }
             y += desc;
         }
@@ -701,7 +738,7 @@ impl Ctx<'_> {
         b.shift(0.0, -shift);
         b.asc = shift;
         b.desc = total - shift;
-        b.w = col_w.iter().sum::<f32>() + col_gap * (ncols.saturating_sub(1)) as f32 + if cases { size * 0.2 } else { 0.0 };
+        b.w = col_w.iter().sum::<f32>() + col_gap_total + if cases { size * 0.2 } else { 0.0 };
         b
     }
 }

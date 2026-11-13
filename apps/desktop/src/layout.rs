@@ -596,7 +596,9 @@ impl<T: Typesetter> Layouter<'_, T> {
     #[allow(clippy::too_many_arguments)]
     fn place(&mut self, para: T::Para, inline: Inline, color: Ink, x: f32, y: f32, selectable: bool, join: Join, out: &mut DocLayout<T::Para>) -> f32 {
         for (range, bg) in &inline.backgrounds {
-            for r in para.range_rects(range.clone()) {
+            // Skip slivers: a code span's leading thin space can stay at the end of
+            // the previous line and would draw as a stray vertical mark.
+            for r in para.range_rects(range.clone()).into_iter().filter(|r| r.w > 3.0) {
                 out.rects.push(Rect { r: RectF { x: x + r.x, y: y + r.y + 1.0, w: r.w, h: r.h - 2.0 }, color: *bg, radius: 4.0 });
             }
         }
