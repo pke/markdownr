@@ -155,7 +155,7 @@ pub fn options() -> Options {
 
 /// Parse Markdown into a `Kind::Document` tree.
 pub fn parse(src: &str) -> Node {
-    pulldown_cmark::set_entity_table(crate::tables::entities());
+    pulldown_cmark::set_entity_table(crate::tables::entities);
     let mut stack: Vec<Node> = vec![Node::new(Kind::Document)];
 
     fn push_child(stack: &mut [Node], node: Node) {

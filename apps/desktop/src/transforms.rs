@@ -33,19 +33,28 @@ fn rewrite_text_nodes(node: &mut Node, f: &dyn Fn(&str) -> Option<Vec<Node>>) {
     if matches!(node.kind, Kind::CodeBlock { .. } | Kind::Code | Kind::InlineMath | Kind::DisplayMath) {
         return;
     }
-    let mut out = Vec::with_capacity(node.children.len());
-    for mut child in std::mem::take(&mut node.children) {
+    // In place: untouched containers keep their children vector (no reallocation).
+    let mut i = 0;
+    while i < node.children.len() {
+        let child = &mut node.children[i];
         if child.kind == Kind::Text {
-            if let Some(replacement) = f(&child.text) {
-                out.extend(replacement);
+            if let Some(mut replacement) = f(&child.text) {
+                let n = replacement.len();
+                match replacement.pop() {
+                    Some(only) if n == 1 => *child = only,
+                    last => {
+                        replacement.extend(last);
+                        node.children.splice(i..=i, replacement);
+                    }
+                }
+                i += n; // replacements are not visited again
                 continue;
             }
         } else {
-            rewrite_text_nodes(&mut child, f);
+            rewrite_text_nodes(child, f);
         }
-        out.push(child);
+        i += 1;
     }
-    node.children = out;
 }
 
 /// Split `text` at `delim ... delim` pairs into Text / `kind` nodes.
@@ -112,11 +121,8 @@ pub fn emoji(name: &str) -> Option<&'static str> {
     if name.is_empty() || name.contains(['\t', '\n']) {
         return None;
     }
-    let data = crate::tables::emoji();
-    let key = ["\n", name, "\t"].concat();
-    let start = data.find(&key)? + key.len();
-    let end = data[start..].find('\n')? + start;
-    Some(&data[start..end])
+    let e = crate::tables::find(crate::tables::emoji(), name);
+    (!e.is_empty()).then_some(e)
 }
 
 /// Emoticon shortcuts (markdown-it-emoji `shortcuts.mjs`), longest first.
@@ -135,46 +141,72 @@ const EMOTICONS: &[(&str, &str)] = &[
 ];
 
 pub fn emoji_transform(node: &mut Node) {
-    rewrite_text_nodes(node, &|t| {
-        let replaced = replace_emoji(t);
-        (replaced != t).then(|| vec![Node::text(replaced)])
-    });
+    rewrite_text_nodes(node, &|t| replace_emoji(t).map(|r| vec![Node::text(r)]));
 }
 
-fn replace_emoji(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    'outer: while !rest.is_empty() {
-        if let Some(stripped) = rest.strip_prefix(':') {
-            let end = stripped.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '+' || c == '-'));
-            if let Some(end) = end.filter(|&e| e > 0 && stripped[e..].starts_with(':')) {
-                if let Some(e) = emoji(&stripped[..end]) {
-                    out.push_str(e);
-                    rest = &stripped[end + 1..];
-                    continue;
-                }
+/// Bit set of the first bytes of all emoticons (all ASCII).
+const EMOTICON_STARTS: u128 = {
+    let mut m = 0u128;
+    let mut i = 0;
+    while i < EMOTICONS.len() {
+        m |= 1 << EMOTICONS[i].0.as_bytes()[0];
+        i += 1;
+    }
+    m
+};
+
+/// Replace `:name:` codes and stand-alone emoticons; None if nothing changed.
+/// Allocates only once a replacement is found.
+fn replace_emoji(text: &str) -> Option<String> {
+    let b = text.as_bytes();
+    let mut out: Option<String> = None;
+    let mut copied = 0; // text[..copied] is already in `out`
+    let mut i = 0;
+    // Emoticons only as separate words (keeps `http://` and `a:b` intact): the
+    // previous output char is none, whitespace, `(` or `"`.
+    let mut word_start = true;
+    while i < b.len() {
+        let mut hit: Option<(&str, usize)> = None; // (emoji, bytes consumed)
+        if b[i] == b':' {
+            let name_len = b[i + 1..].iter().position(|&c| !(c.is_ascii_alphanumeric() || c == b'_' || c == b'+' || c == b'-'));
+            if let Some(n) = name_len.filter(|&n| n > 0 && b[i + 1 + n] == b':') {
+                hit = emoji(&text[i + 1..i + 1 + n]).map(|e| (e, n + 2));
             }
         }
-        // Emoticons only as separate words (keeps `http://` and `a:b` intact).
-        let at_start = out.is_empty() || out.ends_with(char::is_whitespace) || out.ends_with(['(', '"']);
-        if at_start {
+        if hit.is_none() && word_start && b[i] < 128 && EMOTICON_STARTS & (1 << b[i]) != 0 {
+            let rest = &text[i..];
             for (face, name) in EMOTICONS {
                 if let Some(after) = rest.strip_prefix(face) {
-                    if after.is_empty() || after.starts_with(|c: char| c.is_whitespace() || ".,!?)\"".contains(c)) {
+                    if after.chars().next().is_none_or(|c| c.is_whitespace() || ".,!?)\"".contains(c)) {
                         if let Some(e) = emoji(name) {
-                            out.push_str(e);
-                            rest = after;
-                            continue 'outer;
+                            hit = Some((e, face.len()));
+                            break;
                         }
                     }
                 }
             }
         }
-        let c = rest.chars().next().unwrap();
-        out.push(c);
-        rest = &rest[c.len_utf8()..];
+        let last = match hit {
+            Some((e, n)) => {
+                let o = out.get_or_insert_with(|| String::with_capacity(text.len()));
+                o.push_str(&text[copied..i]);
+                o.push_str(e);
+                i += n;
+                copied = i;
+                e.chars().next_back()
+            }
+            None => {
+                let c = text[i..].chars().next();
+                i += c.map_or(1, char::len_utf8);
+                c
+            }
+        };
+        word_start = last.is_some_and(|c| c.is_whitespace() || c == '(' || c == '"');
     }
-    out
+    out.map(|mut o| {
+        o.push_str(&text[copied..]);
+        o
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +316,10 @@ pub fn typographic(text: &str, locale: &str) -> String {
 pub fn typographic_transform(node: &mut Node) {
     let locale = LOCALE.get().map(String::as_str).unwrap_or("en");
     rewrite_text_nodes(node, &|t| {
+        // Only these characters can change; most text nodes have none of them.
+        if !t.bytes().any(|b| matches!(b, b'-' | b'.' | b'+' | b'(' | b'?' | b'!' | b',' | b'"' | b'\'')) {
+            return None;
+        }
         let r = typographic(t, locale);
         (r != t).then(|| vec![Node::text(r)])
     });
@@ -324,34 +360,50 @@ pub fn abbreviation_transform(doc: &mut Node) {
         return;
     }
     defs.sort_by_key(|(t, _)| std::cmp::Reverse(t.len()));
-    let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
-    rewrite_text_nodes(doc, &|text| {
-        let mut parts = Vec::new();
-        let mut last = 0;
-        let mut i = 0;
-        while i < text.len() {
-            let hit = defs.iter().find(|(t, _)| {
-                text[i..].starts_with(t.as_str()) && !word(text[..i].chars().next_back()) && !word(text[i + t.len()..].chars().next())
-            });
-            if let Some((term, full)) = hit {
-                if last < i {
-                    parts.push(Node::text(&text[last..i]));
-                }
-                parts.push(Node::with_children(Kind::Abbr { title: full.clone() }, vec![Node::text(term.as_str())]));
-                i += term.len();
-                last = i;
-            } else {
-                i += text[i..].chars().next().map_or(1, char::len_utf8);
+    // Terms are only tried where they can match: at a word start, on their first byte.
+    let mut first = [false; 256];
+    for (t, _) in &defs {
+        first[t.as_bytes()[0] as usize] = true;
+    }
+    rewrite_text_nodes(doc, &|text| abbreviate(text, &defs, &first));
+}
+
+fn is_word(c: Option<char>) -> bool {
+    c.is_some_and(|c| c.is_alphanumeric() || c == '_')
+}
+
+/// Wrap whole-word occurrences of the `defs` terms (longest first) in `Kind::Abbr`.
+fn abbreviate(text: &str, defs: &[(String, String)], first: &[bool; 256]) -> Option<Vec<Node>> {
+    let b = text.as_bytes();
+    let mut parts = Vec::new();
+    let mut last = 0;
+    let mut i = 0;
+    let mut after_word = false; // is_word(text[..i].chars().next_back())
+    while i < text.len() {
+        let hit = (!after_word && first[b[i] as usize])
+            .then(|| defs.iter().find(|(t, _)| text[i..].starts_with(t.as_str()) && !is_word(text[i + t.len()..].chars().next())))
+            .flatten();
+        if let Some((term, full)) = hit {
+            if last < i {
+                parts.push(Node::text(&text[last..i]));
             }
+            parts.push(Node::with_children(Kind::Abbr { title: full.clone() }, vec![Node::text(term.as_str())]));
+            i += term.len();
+            last = i;
+            after_word = is_word(term.chars().next_back());
+        } else {
+            let c = text[i..].chars().next();
+            i += c.map_or(1, char::len_utf8);
+            after_word = is_word(c);
         }
-        if parts.is_empty() {
-            return None;
-        }
-        if last < text.len() {
-            parts.push(Node::text(&text[last..]));
-        }
-        Some(parts)
-    });
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    if last < text.len() {
+        parts.push(Node::text(&text[last..]));
+    }
+    Some(parts)
 }
 
 // ---------------------------------------------------------------------------
@@ -569,7 +621,8 @@ mod ios_parity_tests {
     #[test]
     fn full_emoji_set() {
         assert_eq!(emoji("smiley"), Some("😃"));
-        assert_eq!(replace_emoji("hi :) and :heart_eyes: http://x"), "hi 😃 and 😍 http://x");
+        assert_eq!(replace_emoji("hi :) and :heart_eyes: http://x").as_deref(), Some("hi 😃 and 😍 http://x"));
+        assert_eq!(replace_emoji("no codes here"), None);
     }
 
     #[test]
@@ -667,5 +720,210 @@ mod tests {
             _ => unreachable!(),
         }).collect();
         assert_eq!(ids, vec!["hello-world", "hello-world-1"]);
+    }
+
+    /// The whole pipeline over the sample and test documents must produce exactly
+    /// the recorded trees (hash per top-level block; `UPDATE_GOLDEN=1` rewrites).
+    #[test]
+    fn golden_documents() {
+        let docs: [(&str, &str); 9] = [
+            ("sample", include_str!("../assets/sample.md")),
+            ("extensions", include_str!("../assets/extensions.md")),
+            ("transforms", include_str!("../assets/transform-tests/transforms.md")),
+            ("math1", include_str!("../assets/math-tests/1-basics.md")),
+            ("math2", include_str!("../assets/math-tests/2-delims.md")),
+            ("math3", include_str!("../assets/math-tests/3-envs.md")),
+            ("math4", include_str!("../assets/math-tests/4-text-fonts.md")),
+            ("math5", include_str!("../assets/math-tests/5-greek-symbols.md")),
+            ("math6", include_str!("../assets/math-tests/6-errors.md")),
+        ];
+        let mut out = String::new();
+        for (name, text) in docs {
+            let mut d = parse(&preprocess_html(text));
+            compose(&mut d, &default_pipeline());
+            // quote_cycle shuffles its quotes by time: compare them as a sorted set.
+            fn normalize(n: &mut Node) {
+                n.children.iter_mut().for_each(normalize);
+                if n.kind == Kind::QuoteCycle {
+                    n.children.sort_by_cached_key(|c| format!("{c:?}"));
+                }
+            }
+            normalize(&mut d);
+            for (i, block) in d.children.iter().enumerate() {
+                let dump = format!("{block:?}");
+                let hash = dump.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3));
+                let kind = format!("{:?}", block.kind);
+                out.push_str(&format!("{name} {i} {hash:016x} {}
+", kind.split([' ', '(', '{']).next().unwrap_or("")));
+            }
+        }
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/transform-tests/golden.txt");
+        if std::env::var_os("UPDATE_GOLDEN").is_some() {
+            std::fs::write(path, &out).unwrap();
+        }
+        let want = std::fs::read_to_string(path).unwrap().replace("
+", "
+");
+        for (i, (a, b)) in want.lines().zip(out.lines()).enumerate() {
+            assert_eq!(a, b, "transforms golden line {}", i + 1);
+        }
+        assert_eq!(want.lines().count(), out.lines().count());
+    }
+}
+
+#[cfg(test)]
+mod perf_rewrite_tests {
+    use super::*;
+
+    /// The former emoji replacement, as the reference for the allocation-free one.
+    fn old_replace_emoji(text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        'outer: while !rest.is_empty() {
+            if let Some(stripped) = rest.strip_prefix(':') {
+                let end = stripped.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '+' || c == '-'));
+                if let Some(end) = end.filter(|&e| e > 0 && stripped[e..].starts_with(':')) {
+                    if let Some(e) = emoji(&stripped[..end]) {
+                        out.push_str(e);
+                        rest = &stripped[end + 1..];
+                        continue;
+                    }
+                }
+            }
+            let at_start = out.is_empty() || out.ends_with(char::is_whitespace) || out.ends_with(['(', '"']);
+            if at_start {
+                for (face, name) in EMOTICONS {
+                    if let Some(after) = rest.strip_prefix(face) {
+                        if after.is_empty() || after.starts_with(|c: char| c.is_whitespace() || ".,!?)\"".contains(c)) {
+                            if let Some(e) = emoji(name) {
+                                out.push_str(e);
+                                rest = after;
+                                continue 'outer;
+                            }
+                        }
+                    }
+                }
+            }
+            let c = rest.chars().next().unwrap();
+            out.push(c);
+            rest = &rest[c.len_utf8()..];
+        }
+        out
+    }
+
+    /// Pseudo-random texts from emoji/emoticon/typography fragments.
+    fn texts() -> impl Iterator<Item = String> {
+        const PARTS: [&str; 32] = [
+            ":", ")", "(", "rocket", " ", "\u{a0}", "x", "-", "'", ",", "D", "<", "3", ";", "\"", "a", "é", "\t", "8", "B", "O", "0",
+            ":heart_eyes:", ":+1:", "]", ">", "/", "\\", ".", "!", "?", "_",
+        ];
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        (0..300_000).map(move |_| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let mut s = String::new();
+            let mut r = seed;
+            for _ in 0..(r % 9) {
+                r = r.rotate_right(5);
+                s.push_str(PARTS[(r % 32) as usize]);
+            }
+            s
+        })
+    }
+
+    #[test]
+    fn emoji_matches_old_implementation() {
+        for t in texts() {
+            let old = old_replace_emoji(&t);
+            let new = replace_emoji(&t);
+            assert_eq!(new.as_deref().unwrap_or(&t), old, "{t:?}");
+            assert_eq!(new.is_some(), old != t, "{t:?}");
+        }
+    }
+
+    #[test]
+    fn typographic_skip_is_exact() {
+        // Text without trigger bytes is returned unchanged by `typographic`.
+        for t in texts() {
+            if !t.bytes().any(|b| matches!(b, b'-' | b'.' | b'+' | b'(' | b'?' | b'!' | b',' | b'"' | b'\'')) {
+                assert_eq!(typographic(&t, "de"), t);
+                assert_eq!(typographic(&t, "fr"), t);
+            }
+        }
+    }
+
+    #[test]
+    fn every_emoji_name_is_found() {
+        let t = crate::tables::emoji();
+        let mut n = 0;
+        for line in t.lines().filter(|l| !l.is_empty()) {
+            let (name, value) = line.split_once('\t').unwrap();
+            assert_eq!(emoji(name), Some(value), "{name}");
+            n += 1;
+        }
+        assert!(n > 1800);
+        let names: Vec<&str> = t.lines().filter(|l| !l.is_empty()).map(|l| l.split('\t').next().unwrap()).collect();
+        assert!(names.windows(2).all(|w| w[0].as_bytes() < w[1].as_bytes()), "emoji.txt must be sorted");
+        assert_eq!(emoji("rocketx"), None);
+        assert_eq!(emoji("rocke"), None);
+    }
+}
+
+#[cfg(test)]
+mod abbr_rewrite_tests {
+    use super::*;
+
+    /// The former matcher, as the reference.
+    fn old_abbreviate(text: &str, defs: &[(String, String)]) -> Option<Vec<Node>> {
+        let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
+        let mut parts = Vec::new();
+        let mut last = 0;
+        let mut i = 0;
+        while i < text.len() {
+            let hit = defs.iter().find(|(t, _)| text[i..].starts_with(t.as_str()) && !word(text[..i].chars().next_back()) && !word(text[i + t.len()..].chars().next()));
+            if let Some((term, full)) = hit {
+                if last < i {
+                    parts.push(Node::text(&text[last..i]));
+                }
+                parts.push(Node::with_children(Kind::Abbr { title: full.clone() }, vec![Node::text(term.as_str())]));
+                i += term.len();
+                last = i;
+            } else {
+                i += text[i..].chars().next().map_or(1, char::len_utf8);
+            }
+        }
+        if parts.is_empty() {
+            return None;
+        }
+        if last < text.len() {
+            parts.push(Node::text(&text[last..]));
+        }
+        Some(parts)
+    }
+
+    #[test]
+    fn abbreviate_matches_old_implementation() {
+        let mut defs: Vec<(String, String)> =
+            ["HTML", "W3C", "HTML5", "é", "_x", "a b", "CSS"].iter().map(|t| (t.to_string(), [*t, "!"].concat())).collect();
+        defs.sort_by_key(|(t, _)| std::cmp::Reverse(t.len()));
+        let mut first = [false; 256];
+        for (t, _) in &defs {
+            first[t.as_bytes()[0] as usize] = true;
+        }
+        const PARTS: [&str; 16] = ["HTML", "W3C", "5", "x", " ", "-", "_", "é", "CSS", "a", "b", "\u{a0}", "1", ".", "ü", "_x"];
+        let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+        for _ in 0..200_000 {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let mut s = String::new();
+            let mut r = seed;
+            for _ in 0..(r % 8) {
+                r = r.rotate_right(4);
+                s.push_str(PARTS[(r % 16) as usize]);
+            }
+            assert_eq!(abbreviate(&s, &defs, &first), old_abbreviate(&s, &defs), "{s:?}");
+        }
     }
 }

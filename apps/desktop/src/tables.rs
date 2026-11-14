@@ -7,7 +7,36 @@ use std::sync::OnceLock;
 
 static TABLES: OnceLock<[&'static str; 3]> = OnceLock::new();
 
-/// `\n name \t emoji \n` lines.
+/// Value of `name` in a table of `\n name \t value \n` lines sorted bytewise by
+/// name (emoji, math), or "" if absent. Binary search; `lo` and `hi` stay line starts.
+pub fn find(table: &'static str, name: &str) -> &'static str {
+    let b = table.as_bytes();
+    let key = name.as_bytes();
+    if key.is_empty() || key.contains(&b'\n') || key.contains(&b'\t') {
+        return "";
+    }
+    let (mut lo, mut hi) = (0, b.len());
+    while lo < hi {
+        let mut start = lo + (hi - lo) / 2;
+        while start > lo && b[start - 1] != b'\n' {
+            start -= 1;
+        }
+        let mut end = start;
+        while end < b.len() && b[end] != b'\n' {
+            end += 1;
+        }
+        let line = &b[start..end];
+        let tab = line.iter().position(|&c| c == b'\t').unwrap_or(line.len());
+        match line[..tab].cmp(key) {
+            core::cmp::Ordering::Less => lo = end + 1,
+            core::cmp::Ordering::Greater => hi = start,
+            core::cmp::Ordering::Equal => return table.get(start + tab + 1..end).unwrap_or(""),
+        }
+    }
+    ""
+}
+
+/// Sorted `\n name \t emoji \n` lines.
 pub fn emoji() -> &'static str {
     tables()[1]
 }

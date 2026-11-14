@@ -2151,20 +2151,21 @@ zopf	\u{1D56B}
 zscr	\u{1D4CF}
 zwj	\u{200D}
 zwnj	\u{200C}\n";
-static TABLE: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+static TABLE: std::sync::OnceLock<fn() -> &'static str> = std::sync::OnceLock::new();
 
 /// Markdownr: supplies the newline/tab separated entity table at runtime (the app
-/// ships it compressed). Without the `builtin-entities` feature, entity
-/// references stay literal text until this is called.
-pub fn set_entity_table(table: &'static str) {
+/// ships it compressed). The getter is only called when an entity reference is
+/// met, so documents without one never unpack it. Without the `builtin-entities`
+/// feature, entity references stay literal text until this is called.
+pub fn set_entity_table(table: fn() -> &'static str) {
     let _ = TABLE.set(table);
 }
 
 fn table() -> &'static str {
     #[cfg(feature = "builtin-entities")]
-    return TABLE.get().copied().unwrap_or(ENTITIES);
+    return TABLE.get().map_or(ENTITIES, |f| f());
     #[cfg(not(feature = "builtin-entities"))]
-    TABLE.get().copied().unwrap_or("")
+    TABLE.get().map_or("", |f| f())
 }
 
 pub(crate) fn get_entity(bytes: &[u8]) -> Option<&'static str> {

@@ -26,32 +26,7 @@ use super::parse::{Class, Font};
 
 /// Payload (kind byte and following chars) of `name`, or "" if it is not in the table.
 fn find(name: &str) -> &'static str {
-    let t = crate::tables::math();
-    let b = t.as_bytes();
-    let key = name.as_bytes();
-    if key.is_empty() || key.contains(&b'\n') || key.contains(&b'\t') {
-        return "";
-    }
-    // Binary search over the lines; `lo` and `hi` are always line starts.
-    let (mut lo, mut hi) = (0, b.len());
-    while lo < hi {
-        let mut start = lo + (hi - lo) / 2;
-        while start > lo && b[start - 1] != b'\n' {
-            start -= 1;
-        }
-        let mut end = start;
-        while end < b.len() && b[end] != b'\n' {
-            end += 1;
-        }
-        let line = &b[start..end];
-        let tab = line.iter().position(|&c| c == b'\t').unwrap_or(line.len());
-        match line[..tab].cmp(key) {
-            core::cmp::Ordering::Less => lo = end + 1,
-            core::cmp::Ordering::Greater => hi = start,
-            core::cmp::Ordering::Equal => return t.get(start + tab + 1..end).unwrap_or(""),
-        }
-    }
-    ""
+    crate::tables::find(crate::tables::math(), name)
 }
 
 /// Kind byte (0 if unknown) and the first three payload chars ('\0' if missing).
