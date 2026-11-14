@@ -1,5 +1,5 @@
-# Builds the app icon from the iOS app's assets/icon.svg (pke/markdownr, copied to assets/icon.svg):
-# renders it with WPF at the sizes Windows asks for, with the corners iOS rounds it to, writes
+# Builds the app icon after the Markdownr Windows (Store) app's logo (see below):
+# renders it with WPF at the sizes Windows asks for, writes
 # assets/markdownr.ico (PNG-compressed entries: a few KB instead of ~100 KB of bitmaps) and
 # compiles data/app.res with rc.exe. build.rs links data/app.res, so building needs no rc.exe.
 # Run with Windows PowerShell 5.1 (WPF):  powershell -ExecutionPolicy Bypass -File scripts\make-icon.ps1
@@ -47,23 +47,26 @@ public static class IndexedPng {
 }
 '@
 $brush = { param($hex) $b = [Windows.Media.SolidColorBrush]::new([Windows.Media.ColorConverter]::ConvertFromString($hex)); $b.Freeze(); $b }
-# The shapes of assets/icon.svg, in its 48x48 units.
-$background = & $brush "#410065"
-$frame = & $brush "#2d0047"
+# The Markdownr Windows (Store) app's logo: a white rounded rectangle with "M" and the down arrow
+# cut out, in 48x48 units. The Store app draws it white on transparent with #9a00f5 as its
+# colour; a desktop icon needs to show on light backgrounds too, so it sits on a #9a00f5 plate.
+$plate = & $brush "#9a00f5"
 $white = & $brush "#ffffff"
-$m = [Windows.Media.Geometry]::Parse("M5.99699 34.4977V13.4979h5.99991l4.5 7.4999 4.4999-7.4999h5.9999v20.9998h-5.9999V23.9978l-4.4999 5.9999-4.5-5.9999v10.4999H5.99699Z")
-$arrow = [Windows.Media.Geometry]::Parse("M35.9966 34.4977l-7.4999-10.4999h4.5046l-.0047-10.4999h5.9999v10.4999h4.5l-7.4999 10.4999Z")
+$logo = [Windows.Media.GeometryGroup]::new()
+$logo.FillRule = [Windows.Media.FillRule]::EvenOdd
+$logo.Children.Add([Windows.Media.RectangleGeometry]::new([Windows.Rect]::new(-0.003, 5.998, 48, 36), 3.5, 3.5))
+$logo.Children.Add([Windows.Media.Geometry]::Parse("M5.99699 34.4977V13.4979h5.99991l4.5 7.4999 4.4999-7.4999h5.9999v20.9998h-5.9999V23.9978l-4.4999 5.9999-4.5-5.9999v10.4999H5.99699Z"))
+$logo.Children.Add([Windows.Media.Geometry]::Parse("M35.9966 34.4977l-7.4999-10.4999h4.5046l-.0047-10.4999h5.9999v10.4999h4.5l-7.4999 10.4999Z"))
+$logo.Freeze()
 $sizes = 16, 24, 32, 48, 256   # Windows scales 20, 40, 64, ... down from the next larger one
 $pngs = foreach ($size in $sizes) {
     $visual = [Windows.Media.DrawingVisual]::new()
     $dc = $visual.RenderOpen()
     $dc.PushTransform([Windows.Media.ScaleTransform]::new($size / 48, $size / 48))
-    $corner = 48 * 0.2237   # the iOS app icon mask
-    $dc.DrawRoundedRectangle($background, $null, [Windows.Rect]::new(0, 0, 48, 48), $corner, $corner)
-    $dc.PushTransform([Windows.Media.MatrixTransform]::new(0.75, 0, 0, 0.75, 6, 6))
-    $dc.DrawRoundedRectangle($frame, $null, [Windows.Rect]::new(-0.003, 5.998, 48, 36), 3.5, 3.5)
-    $dc.DrawGeometry($white, $null, $m)
-    $dc.DrawGeometry($white, $null, $arrow)
+    $corner = 48 * 0.2
+    $dc.DrawRoundedRectangle($plate, $null, [Windows.Rect]::new(0, 0, 48, 48), $corner, $corner)
+    $dc.PushTransform([Windows.Media.MatrixTransform]::new(0.8, 0, 0, 0.8, 4.8, 4.8))   # logo at 80 %, centred
+    $dc.DrawGeometry($white, $null, $logo)
     $dc.Pop(); $dc.Pop(); $dc.Close()
     $bmp = [Windows.Media.Imaging.RenderTargetBitmap]::new($size, $size, 96, 96, [Windows.Media.PixelFormats]::Pbgra32)
     $bmp.Render($visual)
