@@ -17,7 +17,29 @@ pub fn compose(node: &mut Node, transforms: &[Transform]) {
 
 /// The default pipeline used by the viewer.
 pub fn default_pipeline() -> Vec<Transform> {
-    vec![quote_cycle_transform, footnote_transform, mark_transform, ins_transform, typographic_transform, emoji_transform, abbreviation_transform, sup_sub_transform, heading_ids]
+    vec![quote_cycle_transform, footnote_transform, mark_transform, ins_transform, typographic_transform, emoji_transform, abbreviation_transform, sup_sub_transform, unescape_transform, heading_ids]
+}
+
+/// Backslash-escaped characters back from the parser's marks ([`crate::ast::ESCAPE_MARK`]
+/// + ASCII code), after the text transforms, which leave the marks alone: `\--`, `\...`,
+/// `\:)` and `\==` stay as typed.
+pub fn unescape_transform(node: &mut Node) {
+    // Every mark is a 4-byte UTF-8 sequence starting with 0xF4.
+    if node.text.as_bytes().contains(&0xF4) {
+        let unmark = |c: char| match (c as u32).checked_sub(crate::ast::ESCAPE_MARK) {
+            Some(b @ 0..=0x7F) => b as u8 as char,
+            _ => c,
+        };
+        node.text = node.text.chars().map(unmark).collect();
+    }
+    if let Kind::Abbr { title } = &mut node.kind
+        && title.as_bytes().contains(&0xF4)
+    {
+        let mut t = Node::leaf(Kind::Text, std::mem::take(title));
+        unescape_transform(&mut t);
+        *title = t.text;
+    }
+    node.children.iter_mut().for_each(unescape_transform);
 }
 
 /// Intra-word `x^2^` → `Kind::Sup`, `H~2~O` → `Kind::Sub` (pulldown-cmark only
@@ -243,6 +265,13 @@ pub fn typographic(text: &str) -> String {
         let c = chars[i];
         let run = |ch: char| chars[i..].iter().take_while(|&&x| x == ch).count();
         let before = out.chars().next_back();
+        if before.is_some_and(|b| b as u32 == crate::ast::ESCAPE_MARK + c as u32) {
+            // The rest of a run whose first character was escaped (`\...`, `\--`) stays.
+            let n = run(c);
+            out.extend(std::iter::repeat_n(c, n));
+            i += n;
+            continue;
+        }
         match c {
             '-' => {
                 let n = run('-');
@@ -611,8 +640,16 @@ mod ios_parity_tests {
     #[test]
     fn quotes_from_the_parser() {
         let mut doc = crate::ast::parse("\"**Fett** am Anfang\" und 'nein', geht's \\\"wörtlich\\\"");
-        typographic_transform(&mut doc);
+        compose(&mut doc, &default_pipeline());
         assert_eq!(doc.plain_text(), "\u{201C}Fett am Anfang\u{201D} und \u{2018}nein\u{2019}, geht\u{2019}s \"wörtlich\"");
+    }
+
+    /// Escaped characters are not transformed, and come out as typed.
+    #[test]
+    fn escapes_stay() {
+        let mut doc = crate::ast::parse("a \\-- b \\... c \\:) d \\==x== e \\(c) f -- g...");
+        compose(&mut doc, &default_pipeline());
+        assert_eq!(doc.plain_text(), "a -- b ... c :) d ==x== e (c) f \u{2013} g\u{2026}");
     }
 
     #[test]

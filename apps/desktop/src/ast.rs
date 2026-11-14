@@ -153,6 +153,11 @@ pub fn options() -> Options {
         | Options::ENABLE_SUBSCRIPT
 }
 
+/// A backslash-escaped ASCII character `c` is `ESCAPE_MARK + c` (supplementary private use
+/// area) in the parsed text, so the text transforms leave it alone;
+/// `transforms::unescape_transform` turns it back.
+pub const ESCAPE_MARK: u32 = 0x10_FF00;
+
 /// Parse Markdown into a `Kind::Document` tree.
 pub fn parse(src: &str) -> Node {
     pulldown_cmark::set_entity_table(crate::tables::entities);
@@ -173,7 +178,17 @@ pub fn parse(src: &str) -> Node {
         parent.children.push(node);
     }
 
-    for event in Parser::new_ext(src, options()) {
+    for (event, range) in Parser::new_ext(src, options()).into_offset_iter() {
+        // pulldown starts the text after a backslash escape at the escaped character.
+        let event = match event {
+            Event::Text(t) if range.start > 0 && src.as_bytes()[range.start - 1] == b'\\' && t.starts_with(|c: char| c.is_ascii_punctuation()) => {
+                let mut s = String::with_capacity(t.len() + 3);
+                s.push(char::from_u32(ESCAPE_MARK + t.as_bytes()[0] as u32).unwrap_or('\\'));
+                s.push_str(&t[1..]);
+                Event::Text(s.into())
+            }
+            e => e,
+        };
         match event {
             Event::Start(tag) => {
                 let kind = match tag {
