@@ -76,7 +76,7 @@ impl Settings {
 
     /// Start page shown without a file: open button, recent files, sample.
     pub fn start_page(&self) -> String {
-        let mut s = String::from("---\ntitle: Markdownr\n---\n# Markdownr\n\nEin schneller, schlanker Markdown-Reader.\n\n[Datei öffnen …](markdownr:open) · [Beispieldokument](markdownr:sample)\n\nAuch per Drag & Drop oder `Strg+O`. `F11` Vollbild, `Strg+F` Suchen, `Strg+T` Inhalt.\n\n");
+        let mut s = String::from("---\ntitle: Markdownr\n---\n# Markdownr\n\nEin schneller, schlanker Markdown-Reader.\n\n[Datei öffnen …](markdownr:open) · [Beispieldokument](markdownr:sample)\n\nAuch per Drag & Drop oder `Strg+O`. `F11` Vollbild, `Strg+F` Suchen, `Strg+T` Inhalt, `F1` alle Tastenkürzel.\n\n");
         let recent: Vec<_> = self.recent.iter().filter(|p| p.is_file()).collect();
         if !recent.is_empty() {
             s.push_str("## Zuletzt geöffnet\n\n");

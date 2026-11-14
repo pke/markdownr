@@ -10,7 +10,7 @@ use crate::ast::{Kind, Node};
 use crate::layout::{BaseStyle, DocLayout, DocSelection, Join, Layouter, Paragraph, Rect, RectF, TextBlock, Typesetter};
 use crate::particles::{Particles, Sprite};
 use crate::util::num;
-use crate::theme::{Theme, ThemeChoice, front_matter_pairs, seasonal_theme};
+use crate::theme::{Ink, Theme, ThemeChoice, front_matter_pairs, seasonal_theme};
 use std::ops::Range;
 use std::time::{Duration, Instant};
 
@@ -21,6 +21,48 @@ const UI_SIZE: f32 = 14.0;
 const SHOW_FOR: Duration = Duration::from_millis(2500);
 const FADE_IN: f32 = 0.12; // seconds
 const FADE_OUT: f32 = 0.35;
+
+/// F1 overlay: (column, heading, [(keys, what they do)]).
+const HELP: &[(usize, &str, &[(&str, &str)])] = &[
+    (0, "Lesen", &[
+        ("Bild ↓   →   Leertaste", "Seite weiter"),
+        ("Bild ↑   ←   ⇧ Leertaste", "Seite zurück"),
+        ("↓   ↑   Mausrad", "Scrollen"),
+        ("Pos1   Ende", "Anfang / Ende"),
+        ("Strg+A   Strg+C", "Alles markieren / kopieren"),
+    ]),
+    (0, "Suchen", &[
+        ("Strg+F   F3", "Suchleiste öffnen"),
+        ("Enter   ⇧ Enter", "Nächster / vorheriger Treffer"),
+        ("Esc", "Suche schließen"),
+    ]),
+    (0, "Datei", &[
+        ("Strg+O", "Öffnen (auch per Drag & Drop)"),
+        ("F5   Strg+R", "Neu laden (Änderungen lädt es auch von selbst)"),
+        ("Strg+Q   Strg+W", "Beenden"),
+    ]),
+    (0, "Kommandozeile", &[
+        ("markdownr Datei.md", "Öffnet die Datei"),
+        ("markdownr", "Startseite mit den zuletzt geöffneten Dateien"),
+    ]),
+    (1, "Ansicht", &[
+        ("Strg+T", "Inhaltsverzeichnis"),
+        ("Strg+U", "Quelltext"),
+        ("Strg+D", "Theme wechseln"),
+        ("Strg++   Strg+−", "Schrift größer / kleiner"),
+        ("Strg+Mausrad", "Schriftgröße"),
+        ("Strg+0", "Schriftgröße zurücksetzen"),
+        ("F11   Esc", "Vollbild an / aus"),
+        ("F12", "Bildschirmfoto nach %TEMP%"),
+        ("F1", "Diese Hilfe"),
+    ]),
+    (1, "Umgebungsvariablen", &[
+        ("MARKDOWNR_SETTINGS=Datei", "Einstellungen aus dieser Datei statt %APPDATA%\\Markdownr\\settings.ini"),
+        ("MARKDOWNR_SAMPLE=1", "Ohne Datei das Beispieldokument zeigen"),
+        ("MARKDOWNR_SNAPSHOT=Bild.png", "Die Seite als PNG speichern"),
+        ("MARKDOWNR_SNAPSHOT_EXIT=1", "… und danach beenden"),
+    ]),
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -33,6 +75,7 @@ pub enum Key {
     Right,
     Home,
     End,
+    F1,
     F3,
     F5,
     F11,
@@ -123,6 +166,8 @@ pub struct Viewer<P> {
     last_tick: Option<Instant>,
     toc_open: bool,
     toc_scroll: f32,
+    /// F1 overlay with the keyboard shortcuts.
+    pub help: bool,
     find: Option<Find>,
     dirty: bool,
     dragging: bool,
@@ -176,6 +221,7 @@ impl<P: Paragraph> Viewer<P> {
             last_tick: None,
             toc_open: false,
             toc_scroll: 0.0,
+            help: false,
             find: None,
             dirty: true,
             dragging: false,
@@ -529,8 +575,70 @@ impl<P: Paragraph> Viewer<P> {
             tip_out.rects.push(Rect { r: RectF { x: bx, y: by, w: bw, h: bh }, color: th.chrome_bg, radius: 6.0 });
             place(&mut tip_out, para, text, bx + 10.0, by + 6.0, pw, ph);
         }
+        if self.help {
+            tip_out = self.build_help(ts);
+        }
         self.tip_layout = tip_out;
         self.buttons = buttons;
+    }
+
+    /// F1 overlay: the page dimmed, on it a panel with the keyboard shortcuts and the
+    /// command line, in two columns when the window is wide enough.
+    fn build_help<T: Typesetter<Para = P>>(&self, ts: &mut T) -> DocLayout<P> {
+        let th = &self.theme;
+        let (w, h) = (self.view_w, self.view_h);
+        let text = BaseStyle { size: UI_SIZE, color: th.chrome_text, mono: false, bold: false, italic: false, line_height: 1.3 };
+        let keys = BaseStyle { bold: true, ..text };
+        let head = BaseStyle { color: th.link, ..keys };
+        let two = w >= 860.0;
+        let col_w = if two { 380.0 } else { (w - 64.0).clamp(220.0, 460.0) };
+        let (gap, key_w) = (36.0, 158.0);
+        // (paragraph, text, x, y, w, h) relative to the panel's content origin.
+        let mut items: Vec<(P, &str, f32, f32, f32, f32)> = Vec::new();
+        let mut put = |ts: &mut T, s: &'static str, style: &BaseStyle, x: f32, y: f32, max_w: f32| {
+            let para = ts.paragraph(s, &[], style, max_w);
+            let (pw, ph) = para.size();
+            items.push((para, s, x, y, pw, ph));
+            (pw, ph)
+        };
+        let mut col_h = [0.0f32; 2];
+        for &(col, title, rows) in HELP {
+            let c = if two { col } else { 0 };
+            let x0 = c as f32 * (col_w + gap);
+            let mut y = if col_h[c] > 0.0 { col_h[c] + 14.0 } else { 0.0 };
+            y += put(ts, title, &head, x0, y, col_w).1 + 6.0;
+            for &(k, d) in rows {
+                let (kw, kh) = put(ts, k, &keys, x0, y, col_w);
+                // Long keys (commands, variables) get the description on the next line.
+                let (dx, dy) = if kw + 12.0 <= key_w { (x0 + key_w, y) } else { (x0 + 16.0, y + kh) };
+                let dh = put(ts, d, &text, dx, dy, col_w - (dx - x0)).1;
+                y = (y + kh).max(dy + dh) + 5.0;
+            }
+            col_h[c] = y;
+        }
+        let pad = 24.0;
+        let content_w = if two { 2.0 * col_w + gap } else { col_w };
+        let (title_s, hint_s) = ("Tastenkürzel", "Esc oder Klick schließt");
+        let title_p = ts.paragraph(title_s, &[], &BaseStyle { size: 18.0, ..keys }, content_w);
+        let (tw, tht) = title_p.size();
+        let hint_p = ts.paragraph(hint_s, &[], &BaseStyle { color: th.muted, ..text }, content_w);
+        let (hw, hh) = hint_p.size();
+        let (pw, ph) = (content_w + 2.0 * pad, pad + tht + 14.0 + col_h[0].max(col_h[1]) - 5.0 + pad);
+        let (px, py) = (((w - pw) / 2.0).max(8.0).round(), ((h - ph) / 2.0).max(8.0).round());
+        let mut out: DocLayout<P> = DocLayout::default();
+        out.rects.push(Rect { r: RectF { x: 0.0, y: 0.0, w, h }, color: Ink::rgba(0x000000, 120), radius: 0.0 });
+        out.rects.push(Rect { r: RectF { x: px - 1.0, y: py - 1.0, w: pw + 2.0, h: ph + 2.0 }, color: th.border, radius: 11.0 });
+        out.rects.push(Rect { r: RectF { x: px, y: py, w: pw, h: ph }, color: th.chrome_bg, radius: 10.0 });
+        let mut place = |para: P, s: &str, x: f32, y: f32, bw: f32, bh: f32| {
+            out.blocks.push(TextBlock { para, text: s.to_string(), x, y, w: bw, h: bh, selectable: false, join: Join::Line, links: Vec::new(), object_sources: Vec::new() });
+        };
+        place(title_p, title_s, px + pad, py + pad, tw, tht);
+        place(hint_p, hint_s, px + pw - pad - hw, py + pad + tht - hh, hw, hh);
+        let top = py + pad + tht + 14.0;
+        for (para, s, x, y, bw, bh) in items {
+            place(para, s, px + pad + x, top + y, bw, bh);
+        }
+        out
     }
 
     fn drawer_width(&self) -> f32 {
@@ -685,7 +793,7 @@ impl<P: Paragraph> Viewer<P> {
     /// Text input (WM_CHAR etc.). Only used by the find field.
     pub fn text_input(&mut self, c: char) -> bool {
         let Some(f) = &mut self.find else { return false };
-        if c.is_control() {
+        if c.is_control() || self.help {
             return false;
         }
         f.query.push(c);
@@ -697,6 +805,15 @@ impl<P: Paragraph> Viewer<P> {
 
     pub fn key(&mut self, key: Key, mods: Mods, now: Instant) -> Option<Effect> {
         let line = self.font_size * 3.0;
+        if key == Key::F1 || self.help && matches!(key, Key::Escape | Key::Enter | Key::Space) {
+            self.help = !self.help;
+            self.tip = None;
+            self.chrome_dirty = true;
+            return None;
+        }
+        if self.help {
+            return None;
+        }
         if let Some(f) = &mut self.find {
             match key {
                 Key::Escape => {
@@ -738,7 +855,7 @@ impl<P: Paragraph> Viewer<P> {
             }
             Key::Escape if self.fullscreen => return Some(Effect::ExitFullscreen),
             Key::Escape => self.selection = None,
-            Key::Enter | Key::Backspace => {}
+            Key::Enter | Key::Backspace | Key::F1 => {}
             Key::Char(c) if mods.ctrl => match c.to_ascii_lowercase() {
                 'c' => {
                     let text = self.selection.map(|s| self.layout.selected_text(&s)).unwrap_or_default();
@@ -766,6 +883,9 @@ impl<P: Paragraph> Viewer<P> {
     }
 
     pub fn wheel(&mut self, dy: f32, mods: Mods, x: f32, y: f32) {
+        if self.help {
+            return;
+        }
         if mods.ctrl {
             self.set_font_size(self.font_size + if dy < 0.0 { 1.0 } else { -1.0 });
         } else if self.toc_open && self.chrome_visible() && x < self.drawer_width() && y > BAR_H {
@@ -783,6 +903,10 @@ impl<P: Paragraph> Viewer<P> {
 
     pub fn press(&mut self, x: f32, y: f32, mods: Mods, double_click_time: Duration) {
         self.press = (x, y);
+        if self.help {
+            self.pressed_chrome = false;
+            return;
+        }
         self.pressed_chrome = self.over_chrome(x, y);
         if self.pressed_chrome {
             return;
@@ -809,6 +933,9 @@ impl<P: Paragraph> Viewer<P> {
     /// Returns true if the view needs a repaint.
     pub fn mouse_move(&mut self, x: f32, y: f32, now: Instant) -> bool {
         let mut repaint = false;
+        if self.help {
+            return false;
+        }
         if !self.dragging {
             if y < BAR_H + 12.0 && y >= 0.0 {
                 let was = self.chrome_visible();
@@ -851,6 +978,12 @@ impl<P: Paragraph> Viewer<P> {
     /// `tap` is true for touch input: a tap on the page toggles the chrome.
     pub fn release(&mut self, x: f32, y: f32, tap: bool, now: Instant) -> Option<Effect> {
         self.dragging = false;
+        if self.help {
+            // A click anywhere closes the help.
+            self.help = false;
+            self.chrome_dirty = true;
+            return None;
+        }
         let moved = (x - self.press.0).abs() > 3.0 || (y - self.press.1).abs() > 3.0;
         if self.pressed_chrome {
             self.pressed_chrome = false;
@@ -897,7 +1030,7 @@ impl<P: Paragraph> Viewer<P> {
     }
 
     pub fn over_link(&self, x: f32, y: f32) -> bool {
-        if self.over_chrome(x, y) {
+        if self.help || self.over_chrome(x, y) {
             return false;
         }
         let (dx, dy) = self.doc_point(x, y);
@@ -906,7 +1039,7 @@ impl<P: Paragraph> Viewer<P> {
 
     /// Cursor hint: true over chrome buttons.
     pub fn over_button(&self, x: f32, y: f32) -> bool {
-        self.chrome_hit(x, y).is_some()
+        !self.help && self.chrome_hit(x, y).is_some()
     }
 
     pub fn over_chrome_area(&self, x: f32, y: f32) -> bool {

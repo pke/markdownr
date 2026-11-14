@@ -484,6 +484,7 @@ fn key_from_vk(vk: u16) -> Option<Key> {
         VK_RIGHT => Key::Right,
         VK_HOME => Key::Home,
         VK_END => Key::End,
+        VK_F1 => Key::F1,
         VK_F3 => Key::F3,
         VK_F5 => Key::F5,
         VK_F11 => Key::F11,
@@ -853,6 +854,9 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             q.chars().for_each(|c| {
                 app.viewer.text_input(c);
             });
+        }
+        if std::env::var_os("MARKDOWNR_HELP").is_some() {
+            app.viewer.key(Key::F1, Mods::default(), Instant::now());
         }
         if std::env::var_os("MARKDOWNR_CHROME").is_some() {
             app.viewer.chrome_alpha = 1.0;
