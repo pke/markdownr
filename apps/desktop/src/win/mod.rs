@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 use windows::Win32::Foundation::*;
-use windows::Win32::Graphics::Dwm::{DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR, DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
+use windows::Win32::Graphics::Dwm::{DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_CLOAK, DWMWA_TEXT_COLOR, DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -54,6 +54,8 @@ struct App {
     painted: bool,
     /// Title bar colours set last (caption, text; COLORREF).
     caption: Option<(u32, u32)>,
+    /// Still hidden from the screen until the first frame (see `uncloak`).
+    cloaked: bool,
     snapshot: Option<PathBuf>,
     exit_after_snapshot: bool,
     snapshot_ready: bool,
@@ -143,6 +145,12 @@ impl BackgroundDoc {
             job.result.take().unwrap_or_else(|| read_doc(&job.path))
         }
     }
+}
+
+/// DWMWA_CLOAK: the window stays out of the picture while it is still being drawn.
+fn cloak(hwnd: HWND, on: bool) {
+    let v = BOOL::from(on);
+    unsafe { DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &v as *const _ as _, 4).ok() };
 }
 
 fn mtime(path: &Path) -> Option<SystemTime> {
@@ -280,6 +288,15 @@ impl App {
             set(DWMWA_CAPTION_COLOR, &colours.0 as *const _ as _);
             set(DWMWA_BORDER_COLOR, &colours.0 as *const _ as _);
             set(DWMWA_TEXT_COLOR, &colours.1 as *const _ as _);
+        }
+    }
+
+    /// Show the window once its first frame is drawn (it starts cloaked: shown, laid
+    /// out and painted by DWM, but not on screen, so no empty white client area).
+    fn uncloak(&mut self) {
+        if self.cloaked {
+            self.cloaked = false;
+            cloak(self.hwnd, false);
         }
     }
 
@@ -698,6 +715,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 BeginPaint(hwnd, &mut ps);
                 let snap = with_app(|a| {
                     a.paint();
+                    a.uncloak();
                     if a.snapshot_ready { a.snapshot.take().map(|p| (p, a.exit_after_snapshot)) } else { None }
                 })
                 .flatten();
@@ -747,7 +765,10 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             WM_TIMER => {
                 with_app(|a| match wp.0 {
                     TIMER_CHROME => a.schedule(),
-                    TIMER_WATCH => a.watch(),
+                    TIMER_WATCH => {
+                        a.uncloak(); // in case no frame could be drawn
+                        a.watch()
+                    }
                     TIMER_LAYOUT => a.continue_layout(),
                     3 => {
                         KillTimer(Some(hwnd), 3).ok();
@@ -1007,6 +1028,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             overlay_failed: false,
             painted: false,
             caption: None,
+            cloaked: true,
             snapshot: std::env::var_os("MARKDOWNR_SNAPSHOT").map(PathBuf::from),
             exit_after_snapshot: std::env::var_os("MARKDOWNR_SNAPSHOT_EXIT").is_some(),
             snapshot_ready: false,
@@ -1061,6 +1083,8 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         if std::env::var_os("MARKDOWNR_SNAPSHOT").is_some() {
             SetTimer(Some(hwnd), 3, 1500, None); // snapshot after 1.5 s (images, fades)
         }
+        // Cloaked until the first frame is drawn (App::uncloak): no white client area.
+        cloak(hwnd, true);
         let _ = ShowWindow(hwnd, SW_SHOW);
         if start_fullscreen {
             toggle_fullscreen(hwnd, Some(true));
