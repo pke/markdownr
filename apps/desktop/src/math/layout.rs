@@ -4,7 +4,8 @@
 //!
 //! Coordinates: x to the right, y DOWN, relative to the formula's baseline.
 
-use super::parse::{Class, M};
+use super::parse::{self, Class, M};
+use super::symbols::styled;
 use crate::layout::RectF;
 use super::otf::Font;
 
@@ -293,7 +294,7 @@ fn spacing(left: Class, right: Class, script: bool) -> Sp {
 
 fn class_of(m: &M) -> Option<Class> {
     Some(match m {
-        M::Sym(_, c) | M::Text(_, c) | M::BigDelim(_, _, c) => *c,
+        M::Sym(_, c) | M::Text(_, c, _) | M::BigDelim(_, _, c) => *c,
         M::BigOp { .. } | M::LimitFunc(_) => Class::Op,
         M::Frac { .. } | M::Delimited { .. } | M::Matrix { .. } => Class::Inner,
         M::Scripts { base, .. } => class_of(base).unwrap_or(Class::Ord),
@@ -449,11 +450,12 @@ impl Ctx<'_> {
         out
     }
 
-    fn text(&mut self, s: &str, st: Style) -> B {
+    /// Text run; letters and digits mapped to `font` (Upright leaves them as they are).
+    fn text(&mut self, s: &str, font: parse::Font, st: Style) -> B {
         let mut b = B::default();
         let mut x = 0.0;
         for c in s.chars() {
-            let g = if c == ' ' { B { w: self.size(st) * 0.25, ..Default::default() } } else { self.char_box(c, st) };
+            let g = if c == ' ' { B { w: self.size(st) * 0.25, ..Default::default() } } else { self.char_box(styled(c, font), st) };
             let w = g.w;
             b.add(g, x, 0.0);
             x += w;
@@ -466,10 +468,10 @@ impl Ctx<'_> {
         match m {
             M::Row(items) => self.row(items, st),
             M::Sym(c, _) => self.char_box(*c, st),
-            M::Text(s, _) => self.text(s, st),
+            M::Text(s, _, font) => self.text(s, *font, st),
             M::Space(em) => B { w: em * self.size(st), ..Default::default() },
             M::Error(s) => {
-                let mut b = self.text(s, st);
+                let mut b = self.text(s, parse::Font::Upright, st);
                 b.colorize([0xd1, 0x24, 0x2f]);
                 b
             }
@@ -488,7 +490,7 @@ impl Ctx<'_> {
             M::Sqrt { degree, body } => self.sqrt(degree.as_deref(), body, st),
             M::Scripts { base, sup, sub } => self.scripts(base, sup.as_deref(), sub.as_deref(), st),
             M::BigOp { sym, .. } => self.big_op(*sym, st),
-            M::LimitFunc(name) => self.text(name, st),
+            M::LimitFunc(name) => self.text(name, parse::Font::Upright, st),
             M::Delimited { left, right, body } => {
                 let b = self.node(body, st);
                 self.delimited(*left, *right, b, st)

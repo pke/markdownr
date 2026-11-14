@@ -1,16 +1,84 @@
-//! LaTeX command → Unicode tables and Unicode math alphanumerics.
+//! LaTeX name tables and Unicode math alphanumerics.
+//!
+//! All names (commands, environments, colors) live in one table, data/math.txt,
+//! as lines `name \t kind payload`, sorted bytewise by name (checked by a test).
+//! The kind byte says what the name is; the payload chars depend on it:
+//!
+//! | kind              | meaning                     | payload                                    |
+//! |-------------------|-----------------------------|--------------------------------------------|
+//! | `o b r ( ) p i`   | symbol of class Ord, Bin, Rel, Open, Close, Punct, Inner | char, then `d` if it is also a `\left`/`\right` delimiter |
+//! | `B`               | big operator (`\sum`)       | char, `1` if integral                      |
+//! | `A`               | accent (`\hat`)             | combining char, `1` if stretchy (`\widehat`) |
+//! | `S`               | space (`\,`, `\quad`)       | index into `parse::SPACES`                 |
+//! | `F`               | fraction                    | `0` `\frac`, `1` `\binom`                  |
+//! | `R`               | `\sqrt`                     |                                            |
+//! | `T`               | text (`\text`, `\textbf`)   | font digit, class (`o`; none = Op)         |
+//! | `M`               | math font (`\mathbb`)       | font digit (order of `parse::Font`)        |
+//! | `L`               | `\left`                     |                                            |
+//! | `G`               | `\big(` etc.                | size index, class (`o ( )`)                |
+//! | `H`               | over/underline, -brace      | `0` overline `1` underline `2` overbrace `3` underbrace |
+//! | `E` `C` `X` `N`   | `\begin`, `\color`, `\not`, ignored (`\limits`, `\displaystyle`) | |
+//! | `Z` `Y`           | function name with limits (`\lim`) / without (`\sin`) |          |
+//! | `V`               | environment                 | left, right (`.` none), `1` cases / `2` array spec |
+//! | `K`               | color name                  | six hex digits                             |
 
 use super::parse::{Class, Font};
 
-pub const FUNCS: &[&str] = &[
-    "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "coth",
-    "log", "ln", "lg", "exp", "deg", "dim", "ker", "hom", "arg", "gcd", "Pr", "det", "mod", "bmod",
-];
-pub const LIMIT_FUNCS: &[&str] = &["lim", "liminf", "limsup", "max", "min", "sup", "inf", "argmax", "argmin"];
+/// Payload (kind byte and following chars) of `name`, or "" if it is not in the table.
+fn find(name: &str) -> &'static str {
+    let t = crate::tables::math();
+    let b = t.as_bytes();
+    let key = name.as_bytes();
+    if key.is_empty() || key.contains(&b'\n') || key.contains(&b'\t') {
+        return "";
+    }
+    // Binary search over the lines; `lo` and `hi` are always line starts.
+    let (mut lo, mut hi) = (0, b.len());
+    while lo < hi {
+        let mut start = lo + (hi - lo) / 2;
+        while start > lo && b[start - 1] != b'\n' {
+            start -= 1;
+        }
+        let mut end = start;
+        while end < b.len() && b[end] != b'\n' {
+            end += 1;
+        }
+        let line = &b[start..end];
+        let tab = line.iter().position(|&c| c == b'\t').unwrap_or(line.len());
+        match line[..tab].cmp(key) {
+            core::cmp::Ordering::Less => lo = end + 1,
+            core::cmp::Ordering::Greater => hi = start,
+            core::cmp::Ordering::Equal => return t.get(start + tab + 1..end).unwrap_or(""),
+        }
+    }
+    ""
+}
+
+/// Kind byte (0 if unknown) and the first three payload chars ('\0' if missing).
+pub fn lookup(name: &str) -> (u8, [char; 3]) {
+    let mut it = find(name).chars();
+    let kind = it.next().unwrap_or('\0') as u8;
+    (kind, [(); 3].map(|_| it.next().unwrap_or('\0')))
+}
+
+/// Class of a symbol kind byte (`o b r ( ) p i`).
+pub fn class(kind: u8) -> Option<Class> {
+    use Class::*;
+    Some(match kind {
+        b'o' => Ord,
+        b'b' => Bin,
+        b'r' => Rel,
+        b'(' => Open,
+        b')' => Close,
+        b'p' => Punct,
+        b'i' => Inner,
+        _ => return None,
+    })
+}
 
 pub fn class_of(c: char) -> Class {
     match c {
-        '+' | '-' | '*' | '/' if c != '/' => Class::Bin,
+        '+' | '-' | '*' => Class::Bin,
         '=' | '<' | '>' | ':' => Class::Rel,
         '(' | '[' => Class::Open,
         ')' | ']' => Class::Close,
@@ -76,62 +144,6 @@ pub fn styled(c: char, font: Font) -> char {
     char::from_u32(code).unwrap_or(c)
 }
 
-fn italic_greek(c: char) -> char {
-    // Lowercase Greek is italic in TeX; uppercase stays upright.
-    let code = c as u32;
-    if (0x03B1..=0x03C9).contains(&code) {
-        return char::from_u32(0x1D6FC + code - 0x03B1).unwrap_or(c);
-    }
-    match c {
-        'ϵ' => '𝜖',
-        'ϑ' => '𝜗',
-        'ϕ' => '𝜙',
-        'ϱ' => '𝜚',
-        'ϖ' => '𝜛',
-        _ => c,
-    }
-}
-
-/// Looks up `\n{tag}{name}\t{char}{flag}` in the packed table (data/math.txt).
-fn lookup(tag: char, name: &str) -> Option<(char, char)> {
-    if name.is_empty() || name.contains(['\n', '\t']) {
-        return None;
-    }
-    let table = crate::tables::math();
-    let key = ["\n", tag.encode_utf8(&mut [0; 4]), name, "\t"].concat();
-    let mut it = table[table.find(&key)? + key.len()..].chars();
-    Some((it.next()?, it.next().unwrap_or('\n')))
-}
-
-pub fn command(name: &str) -> Option<(char, Class)> {
-    use Class::*;
-    let (c, flag) = lookup('c', name)?;
-    let class = match flag {
-        'b' => Bin,
-        'r' => Rel,
-        '(' => Open,
-        ')' => Close,
-        'p' => Punct,
-        'i' => Inner,
-        _ => Ord,
-    };
-    Some((italic_greek(c), class))
-}
-
-/// `\sum` → (∑, is_integral)
-pub fn big_operator(name: &str) -> Option<(char, bool)> {
-    lookup('b', name).map(|(c, f)| (c, f == '1'))
-}
-
-/// `\hat` → (combining-free accent char, stretchy)
-pub fn accent(name: &str) -> Option<(char, bool)> {
-    lookup('a', name).map(|(c, f)| (c, f == '1'))
-}
-
-pub fn delimiter(name: &str) -> Option<char> {
-    lookup('d', name).map(|(c, _)| c)
-}
-
 pub fn negate(c: char) -> char {
     match c {
         '=' => '≠',
@@ -148,23 +160,39 @@ pub fn negate(c: char) -> char {
     }
 }
 
+/// `\color` argument: `#rrggbb` or a name from the table (`K` entries); gray if unknown.
 pub fn color(name: &str) -> [u8; 3] {
     let name = name.trim();
-    if let Some(hex) = name.strip_prefix('#') {
-        if let Ok(v) = u32::from_str_radix(hex, 16) {
-            return [(v >> 16) as u8, (v >> 8) as u8, v as u8];
-        }
+    let hex = match name.strip_prefix('#') {
+        Some(hex) => hex,
+        None => find(name).strip_prefix('K').unwrap_or(""),
+    };
+    match u32::from_str_radix(hex, 16) {
+        Ok(v) => [(v >> 16) as u8, (v >> 8) as u8, v as u8],
+        Err(_) => [0x80; 3],
     }
-    match name {
-        "red" => [0xd1, 0x24, 0x2f],
-        "green" => [0x1a, 0x7f, 0x37],
-        "blue" => [0x09, 0x69, 0xda],
-        "orange" => [0xd9, 0x7b, 0x00],
-        "purple" | "violet" => [0x82, 0x50, 0xdf],
-        "magenta" => [0xbf, 0x39, 0x89],
-        "cyan" => [0x1b, 0x9a, 0xaa],
-        "gray" | "grey" => [0x6e, 0x77, 0x81],
-        "brown" => [0x8b, 0x4b, 0x1f],
-        _ => [0x80, 0x80, 0x80],
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn table_sorted_and_found() {
+        let t = crate::tables::math();
+        let names: Vec<&str> = t.lines().filter(|l| !l.is_empty()).map(|l| l.split('\t').next().unwrap()).collect();
+        assert!(names.len() > 300);
+        for w in names.windows(2) {
+            assert!(w[0].as_bytes() < w[1].as_bytes(), "math.txt not sorted/unique at {:?}", w);
+        }
+        for n in &names {
+            assert_ne!(super::lookup(n).0, 0, "{n}");
+        }
+        assert_eq!(super::lookup("alphaa").0, 0);
+        assert_eq!(super::lookup("").0, 0);
+        assert_eq!(super::lookup("\t").0, 0);
+        assert_eq!(super::lookup("pmatrix"), (b'V', ['(', ')', '0']));
+        assert_eq!(super::color("violet"), [0x82, 0x50, 0xdf]);
+        assert_eq!(super::color(" orange "), [0xd9, 0x7b, 0x00]);
+        assert_eq!(super::color("#123456"), [0x12, 0x34, 0x56]);
+        assert_eq!(super::color("pmatrix"), [0x80; 3]);
     }
 }

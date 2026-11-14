@@ -1,4 +1,8 @@
 //! LaTeX math (the common subset used in Markdown documents) → math tree.
+//!
+//! Works on bytes; all names and texts are slices of the source. Every
+//! command is resolved by one lookup in the sorted table `data/math.txt`
+//! (see [`symbols::lookup`]), whose kind byte selects what to parse next.
 
 use super::symbols;
 
@@ -27,35 +31,57 @@ pub enum Font {
     Mono,
 }
 
+/// Fonts by table digit (`M` and `T` entries).
+const FONTS: [Font; 9] = [
+    Font::Italic,
+    Font::Upright,
+    Font::Bold,
+    Font::BoldItalic,
+    Font::DoubleStruck,
+    Font::Script,
+    Font::Fraktur,
+    Font::SansSerif,
+    Font::Mono,
+];
+/// `S` entries: `\,` `\:` `\;` `\!` `\ ` `\quad` `\qquad` `\\` (em).
+const SPACES: [f32; 8] = [3.0 / 18.0, 4.0 / 18.0, 5.0 / 18.0, -3.0 / 18.0, 0.25, 1.0, 2.0, 0.0];
+/// `G` entries: `\big` `\Big` `\bigg` `\Bigg` (× font size).
+const BIG: [f32; 4] = [1.2, 1.8, 2.4, 3.0];
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum M {
-    Row(Vec<M>),
+pub enum M<'a> {
+    Row(Vec<M<'a>>),
     /// A single symbol (already mapped to its final code point).
     Sym(char, Class),
-    /// Upright text run (`\text{}`, function names like `sin`).
-    Text(String, Class),
-    Frac { num: Box<M>, den: Box<M>, rule: bool, delims: Option<(char, char)> },
-    Sqrt { degree: Option<Box<M>>, body: Box<M> },
-    Scripts { base: Box<M>, sup: Option<Box<M>>, sub: Option<Box<M>> },
+    /// Upright text run (`\text{}`, numbers, function names like `sin`); letters
+    /// and digits are drawn in the given font (`\textbf`, `\textit`).
+    Text(&'a str, Class, Font),
+    Frac { num: Box<M<'a>>, den: Box<M<'a>>, rule: bool, delims: Option<(char, char)> },
+    Sqrt { degree: Option<Box<M<'a>>>, body: Box<M<'a>> },
+    Scripts { base: Box<M<'a>>, sup: Option<Box<M<'a>>>, sub: Option<Box<M<'a>>> },
     /// Large operator; `limits`: Some(true) = \limits, Some(false) = \nolimits, None = default.
     BigOp { sym: char, limits: Option<bool>, integral: bool },
     /// Function name with display-style limits (`\lim`, `\max`).
-    LimitFunc(String),
-    Delimited { left: Option<char>, right: Option<char>, body: Box<M> },
+    LimitFunc(&'a str),
+    Delimited { left: Option<char>, right: Option<char>, body: Box<M<'a>> },
     /// `\big(` etc.: a delimiter at a fixed size (multiple of the font size).
     BigDelim(char, f32, Class),
-    Accent { accent: char, body: Box<M>, stretchy: bool },
-    OverLine(Box<M>),
-    UnderLine(Box<M>),
+    Accent { accent: char, body: Box<M<'a>>, stretchy: bool },
+    OverLine(Box<M<'a>>),
+    UnderLine(Box<M<'a>>),
     /// `\overbrace`, `\underbrace` (stretched horizontal glyph).
-    Brace { over: bool, body: Box<M> },
-    Matrix { rows: Vec<Vec<M>>, left: Option<char>, right: Option<char>, align_left: bool, cases: bool },
+    Brace { over: bool, body: Box<M<'a>> },
+    Matrix { rows: Vec<Vec<M<'a>>>, left: Option<char>, right: Option<char>, align_left: bool, cases: bool },
     /// Horizontal space in em.
     Space(f32),
     /// Text color (`\color{red}{...}`)
-    Color([u8; 3], Box<M>),
-    Error(String),
+    Color([u8; 3], Box<M<'a>>),
+    /// Unknown command, including its backslash.
+    Error(&'a str),
 }
+
+/// `row` end marker for "no closing token" (never a byte of UTF-8 text).
+const NONE: u8 = 0xFF;
 
 struct Parser<'a> {
     s: &'a str,
@@ -63,155 +89,170 @@ struct Parser<'a> {
     font: Font,
 }
 
-pub fn parse(src: &str) -> M {
+pub fn parse(src: &str) -> M<'_> {
     let mut p = Parser { s: src, pos: 0, font: Font::Italic };
-    let row = p.row(None);
-    M::Row(row)
+    M::Row(p.row(NONE))
+}
+
+/// One shared, out-of-line boxing site instead of an inlined allocation per use.
+#[inline(never)]
+fn bx(m: M<'_>) -> Box<M<'_>> {
+    Box::new(m)
+}
+
+fn empty<'a>() -> M<'a> {
+    M::Row(Vec::new())
+}
+
+/// Split a script base into (base, sup, sub), so `x_i^2` and `x^2_i` attach to one base.
+fn split_scripts(base: Option<M<'_>>) -> (Box<M<'_>>, Option<Box<M<'_>>>, Option<Box<M<'_>>>) {
+    match base {
+        Some(M::Scripts { base, sup, sub }) => (base, sup, sub),
+        other => (bx(other.unwrap_or_else(empty)), None, None),
+    }
 }
 
 impl<'a> Parser<'a> {
-    fn peek(&self) -> Option<char> {
+    fn rest(&self) -> &'a [u8] {
+        &self.s.as_bytes()[self.pos..]
+    }
+    fn peek(&self) -> Option<u8> {
+        self.s.as_bytes().get(self.pos).copied()
+    }
+    fn peek_char(&self) -> Option<char> {
         self.s[self.pos..].chars().next()
     }
-    fn bump(&mut self) -> Option<char> {
-        let c = self.peek()?;
+    fn bump_char(&mut self) -> Option<char> {
+        let c = self.peek_char()?;
         self.pos += c.len_utf8();
         Some(c)
     }
     fn skip_ws(&mut self) {
-        while self.peek().is_some_and(char::is_whitespace) {
-            self.bump();
+        while let Some(c) = self.peek_char()
+            && c.is_whitespace()
+        {
+            self.pos += c.len_utf8();
         }
     }
-    fn command_name(&mut self) -> String {
+    /// Command name after a backslash: a run of ASCII letters or one character.
+    fn name(&mut self) -> &'a str {
         let start = self.pos;
         if self.peek().is_some_and(|c| c.is_ascii_alphabetic()) {
             while self.peek().is_some_and(|c| c.is_ascii_alphabetic()) {
-                self.bump();
+                self.pos += 1;
             }
         } else {
-            self.bump();
+            self.bump_char();
         }
-        self.s[start..self.pos].to_string()
+        &self.s[start..self.pos]
     }
     /// Raw `{...}` contents (balanced), for \text and environment names.
-    fn raw_group(&mut self) -> String {
+    fn raw_group(&mut self) -> &'a str {
         self.skip_ws();
-        if self.peek() != Some('{') {
-            return self.bump().map(String::from).unwrap_or_default();
-        }
-        self.bump();
         let start = self.pos;
-        let mut depth = 1;
-        while let Some(c) = self.bump() {
+        if self.peek() != Some(b'{') {
+            self.bump_char();
+            return &self.s[start..self.pos];
+        }
+        self.pos += 1;
+        let mut depth = 1u32;
+        while let Some(c) = self.peek() {
+            self.pos += 1;
             match c {
-                '{' => depth += 1,
-                '}' => {
+                b'{' => depth += 1,
+                b'}' => {
                     depth -= 1;
                     if depth == 0 {
-                        return self.s[start..self.pos - 1].to_string();
+                        return &self.s[start + 1..self.pos - 1];
                     }
                 }
-                '\\' => {
-                    self.bump();
+                b'\\' => {
+                    self.bump_char();
                 }
                 _ => {}
             }
         }
-        self.s[start..].to_string()
+        &self.s[start + 1..]
     }
-    fn optional_arg(&mut self) -> Option<M> {
+    fn optional_arg(&mut self) -> Option<M<'a>> {
         self.skip_ws();
-        if self.peek() != Some('[') {
+        if self.peek() != Some(b'[') {
             return None;
         }
-        self.bump();
-        let row = self.row(Some(']'));
-        Some(M::Row(row))
+        self.pos += 1;
+        Some(M::Row(self.row(b']')))
     }
 
     /// One argument: a `{group}` or a single token.
-    fn arg(&mut self) -> M {
+    fn arg(&mut self) -> M<'a> {
         self.skip_ws();
-        match self.peek() {
-            Some('{') => {
-                self.bump();
-                M::Row(self.row(Some('}')))
-            }
-            // A bare argument is a single token: `\frac12` is ½.
-            Some(c) if c.is_ascii_digit() => {
-                self.bump();
-                M::Text(c.to_string(), Class::Ord)
-            }
-            Some(_) => self.atom().unwrap_or(M::Row(vec![])),
-            None => M::Row(vec![]),
+        // A bare argument is a single token: `\frac12` is ½.
+        if let Some(b'0'..=b'9') = self.peek() {
+            self.pos += 1;
+            return M::Text(&self.s[self.pos - 1..self.pos], Class::Ord, Font::Upright);
         }
+        self.atom().unwrap_or_else(empty)
     }
 
-    fn with_font(&mut self, font: Font) -> M {
-        let saved = self.font;
-        self.font = font;
+    fn with_font(&mut self, font: Font) -> M<'a> {
+        let saved = std::mem::replace(&mut self.font, font);
         let m = self.arg();
         self.font = saved;
         m
     }
 
-    /// Parse until `end` (consumed) or end of input. Handles `\over`, `&`/`\\` are left to matrices.
-    fn row(&mut self, end: Option<char>) -> Vec<M> {
-        let mut items: Vec<M> = Vec::new();
+    /// Parse until `end` (consumed) or end of input. Handles `\over`; `&`/`\\` are left to matrices.
+    fn row(&mut self, end: u8) -> Vec<M<'a>> {
+        let mut items: Vec<M<'a>> = Vec::new();
         loop {
             self.skip_ws();
             let Some(c) = self.peek() else { break };
-            if Some(c) == end {
-                self.bump();
+            if c == end {
+                self.pos += 1;
                 break;
             }
-            if c == '}' && end.is_none() {
-                self.bump();
-                continue;
-            }
-            if c == '^' || c == '_' {
-                self.bump();
-                let script = self.arg();
-                let base = items.pop().unwrap_or(M::Row(vec![]));
-                let (base, mut sup, mut sub) = match base {
-                    M::Scripts { base, sup, sub } => (base, sup, sub),
-                    other => (Box::new(other), None, None),
-                };
-                if c == '^' {
-                    sup = Some(Box::new(script));
-                } else {
-                    sub = Some(Box::new(script));
+            match c {
+                b'}' if end == NONE => {
+                    self.pos += 1;
+                    continue;
                 }
-                items.push(M::Scripts { base, sup, sub });
-                continue;
-            }
-            if c == '\'' {
-                self.bump();
-                let base = items.pop().unwrap_or(M::Row(vec![]));
-                let prime = M::Sym('′', Class::Ord);
-                let (base, sup, sub) = match base {
-                    M::Scripts { base, sup, sub } => (base, sup, sub),
-                    other => (Box::new(other), None, None),
-                };
-                let sup = Some(Box::new(match sup {
-                    Some(s) => M::Row(vec![*s, prime]),
-                    None => prime,
-                }));
-                items.push(M::Scripts { base, sup, sub });
-                continue;
-            }
-            if self.s[self.pos..].starts_with("\\over") && !self.s[self.pos + 5..].starts_with(|ch: char| ch.is_ascii_alphabetic()) {
-                self.pos += 5;
-                let num = M::Row(std::mem::take(&mut items));
-                let den = M::Row(self.row(end));
-                return vec![M::Frac { num: Box::new(num), den: Box::new(den), rule: true, delims: None }];
-            }
-            if self.s[self.pos..].starts_with("\\right") || (end.is_none() && self.s[self.pos..].starts_with("\\end")) {
-                break;
-            }
-            if c == '&' || self.s[self.pos..].starts_with("\\\\") {
-                break; // handled by matrix
+                b'^' | b'_' => {
+                    self.pos += 1;
+                    let script = bx(self.arg());
+                    let (base, mut sup, mut sub) = split_scripts(items.pop());
+                    if c == b'^' {
+                        sup = Some(script);
+                    } else {
+                        sub = Some(script);
+                    }
+                    items.push(M::Scripts { base, sup, sub });
+                    continue;
+                }
+                b'\'' => {
+                    self.pos += 1;
+                    let (base, sup, sub) = split_scripts(items.pop());
+                    let prime = M::Sym('′', Class::Ord);
+                    let sup = Some(bx(match sup {
+                        Some(s) => M::Row(vec![*s, prime]),
+                        None => prime,
+                    }));
+                    items.push(M::Scripts { base, sup, sub });
+                    continue;
+                }
+                b'&' => break, // handled by matrix
+                b'\\' => {
+                    let r = &self.rest()[1..];
+                    if r.starts_with(b"over") && !r.get(4).is_some_and(u8::is_ascii_alphabetic) {
+                        self.pos += 5;
+                        let num = M::Row(std::mem::take(&mut items));
+                        let den = M::Row(self.row(end));
+                        return vec![M::Frac { num: bx(num), den: bx(den), rule: true, delims: None }];
+                    }
+                    if r.starts_with(b"right") || (end == NONE && r.starts_with(b"end")) || r.first() == Some(&b'\\') {
+                        break;
+                    }
+                }
+                _ => {}
             }
             match self.atom() {
                 Some(m) => items.push(m),
@@ -221,210 +262,159 @@ impl<'a> Parser<'a> {
         items
     }
 
-    fn atom(&mut self) -> Option<M> {
+    fn atom(&mut self) -> Option<M<'a>> {
         self.skip_ws();
-        let c = self.bump()?;
+        let start = self.pos;
+        let c = self.bump_char()?;
         Some(match c {
-            '{' => M::Row(self.row(Some('}'))),
+            '{' => M::Row(self.row(b'}')),
             '\\' => self.command(),
             '0'..='9' | '.' if self.font == Font::Italic => {
                 // Numbers stay together and upright.
-                let start = self.pos - 1;
-                while self.peek().is_some_and(|d| d.is_ascii_digit() || d == '.') {
-                    self.bump();
+                while let Some(b'0'..=b'9' | b'.') = self.peek() {
+                    self.pos += 1;
                 }
                 let text = &self.s[start..self.pos];
-                if text == "." { M::Sym('.', Class::Punct) } else { M::Text(text.to_string(), Class::Ord) }
+                if text == "." { M::Sym('.', Class::Punct) } else { M::Text(text, Class::Ord, Font::Upright) }
             }
-            c => self.symbol(c),
+            '-' => M::Sym('−', Class::Bin),
+            '*' => M::Sym('∗', Class::Bin),
+            c => {
+                let mapped = if c.is_ascii_alphanumeric() { symbols::styled(c, self.font) } else { c };
+                M::Sym(mapped, symbols::class_of(c))
+            }
         })
     }
 
-    fn symbol(&self, c: char) -> M {
-        let class = symbols::class_of(c);
-        let mapped = if c.is_ascii_alphanumeric() { symbols::styled(c, self.font) } else { c };
-        let mapped = match c {
-            '-' => '−',
-            '*' => '∗',
-            _ => mapped,
-        };
-        M::Sym(mapped, class)
-    }
-
-    fn command(&mut self) -> M {
-        let name = self.command_name();
-        let n = name.as_str();
-        // Spacing
-        match n {
-            "," => return M::Space(3.0 / 18.0),
-            ":" | ">" => return M::Space(4.0 / 18.0),
-            ";" => return M::Space(5.0 / 18.0),
-            "!" => return M::Space(-3.0 / 18.0),
-            " " => return M::Space(0.25),
-            "quad" => return M::Space(1.0),
-            "qquad" => return M::Space(2.0),
-            "{" => return M::Sym('{', Class::Open),
-            "}" => return M::Sym('}', Class::Close),
-            "|" => return M::Sym('‖', Class::Ord),
-            "\\" => return M::Space(0.0),
-            "%" | "$" | "#" | "&" | "_" => return M::Sym(n.chars().next().unwrap(), Class::Ord),
-            _ => {}
+    fn command(&mut self) -> M<'a> {
+        let start = self.pos;
+        let n = self.name();
+        let (kind, [a, b, _]) = symbols::lookup(n);
+        let digit = (a as usize).wrapping_sub('0' as usize);
+        if let Some(class) = symbols::class(kind) {
+            return M::Sym(a, class);
         }
-        match n {
-            "frac" | "dfrac" | "tfrac" | "cfrac" => {
-                let num = self.arg();
-                let den = self.arg();
-                M::Frac { num: Box::new(num), den: Box::new(den), rule: true, delims: None }
+        match kind {
+            b'S' => M::Space(SPACES[digit & 7]),
+            b'F' => {
+                let num = bx(self.arg());
+                let den = bx(self.arg());
+                let binom = a == '1';
+                M::Frac { num, den, rule: !binom, delims: binom.then_some(('(', ')')) }
             }
-            "binom" | "dbinom" | "tbinom" => {
-                let num = self.arg();
-                let den = self.arg();
-                M::Frac { num: Box::new(num), den: Box::new(den), rule: false, delims: Some(('(', ')')) }
+            b'R' => {
+                let degree = self.optional_arg().map(bx);
+                M::Sqrt { degree, body: bx(self.arg()) }
             }
-            "sqrt" => {
-                let degree = self.optional_arg().map(Box::new);
-                let body = Box::new(self.arg());
-                M::Sqrt { degree, body }
+            b'T' => M::Text(self.raw_group(), symbols::class(b as u8).unwrap_or(Class::Op), FONTS[digit]),
+            b'M' => self.with_font(FONTS[digit]),
+            b'L' => {
+                let left = self.delimiter();
+                let body = bx(M::Row(self.row(NONE)));
+                let mut right = None;
+                if self.rest().starts_with(b"\\right") {
+                    self.pos += 6;
+                    right = self.delimiter();
+                }
+                M::Delimited { left, right, body }
             }
-            "text" | "textrm" | "mbox" | "textnormal" | "textup" => M::Text(self.raw_group(), Class::Ord),
-            "textbf" => M::Text(self.raw_group().chars().map(|c| symbols::styled(c, Font::Bold)).collect(), Class::Ord),
-            "textit" => M::Text(self.raw_group().chars().map(|c| symbols::styled(c, Font::Italic)).collect(), Class::Ord),
-            "operatorname" => M::Text(self.raw_group(), Class::Op),
-            "mathrm" | "rm" => self.with_font(Font::Upright),
-            "mathbf" | "bf" | "boldsymbol" | "bm" => self.with_font(if n == "mathbf" || n == "bf" { Font::Bold } else { Font::BoldItalic }),
-            "mathit" | "it" => self.with_font(Font::Italic),
-            "mathbb" => self.with_font(Font::DoubleStruck),
-            "mathcal" | "mathscr" => self.with_font(Font::Script),
-            "mathfrak" => self.with_font(Font::Fraktur),
-            "mathsf" => self.with_font(Font::SansSerif),
-            "mathtt" => self.with_font(Font::Mono),
-            "left" => self.delimited(),
-            "big" | "Big" | "bigg" | "Bigg" | "bigl" | "bigr" | "Bigl" | "Bigr" | "biggl" | "biggr" | "Biggl" | "Biggr" => {
-                let size = match n.trim_end_matches(['l', 'r']) {
-                    "big" => 1.2,
-                    "Big" => 1.8,
-                    "bigg" => 2.4,
-                    _ => 3.0,
-                };
-                let class = if n.ends_with('l') { Class::Open } else if n.ends_with('r') { Class::Close } else { Class::Ord };
+            b'G' => {
                 let d = self.delimiter().unwrap_or('.');
-                M::BigDelim(d, size, class)
+                M::BigDelim(d, BIG[digit & 3], symbols::class(b as u8).unwrap_or(Class::Ord))
             }
-            "overline" => M::OverLine(Box::new(self.arg())),
-            "underline" => M::UnderLine(Box::new(self.arg())),
-            "overbrace" => M::Brace { over: true, body: Box::new(self.arg()) },
-            "underbrace" => M::Brace { over: false, body: Box::new(self.arg()) },
-            "begin" => self.environment(),
-            "limits" | "nolimits" | "displaystyle" | "textstyle" | "scriptstyle" | "nonumber" | "notag" => M::Row(vec![]),
-            "color" | "textcolor" => {
-                let name = self.raw_group();
-                let body = self.arg();
-                M::Color(symbols::color(&name), Box::new(body))
-            }
-            "not" => {
-                let next = self.arg();
-                match next {
-                    M::Sym(c, class) => M::Sym(symbols::negate(c), class),
-                    other => other,
+            b'H' => {
+                let body = bx(self.arg());
+                match a {
+                    '0' => M::OverLine(body),
+                    '1' => M::UnderLine(body),
+                    _ => M::Brace { over: a == '2', body },
                 }
             }
-            _ => {
-                if let Some((sym, integral)) = symbols::big_operator(n) {
-                    self.skip_ws();
-                    let limits = if self.s[self.pos..].starts_with("\\limits") {
-                        self.pos += 7;
-                        Some(true)
-                    } else if self.s[self.pos..].starts_with("\\nolimits") {
-                        self.pos += 9;
-                        Some(false)
-                    } else {
-                        None
-                    };
-                    return M::BigOp { sym, limits, integral };
-                }
-                if symbols::LIMIT_FUNCS.contains(&n) {
-                    return M::LimitFunc(n.to_string());
-                }
-                if symbols::FUNCS.contains(&n) {
-                    return M::Text(n.to_string(), Class::Op);
-                }
-                if let Some((accent, stretchy)) = symbols::accent(n) {
-                    let body = self.arg();
-                    return M::Accent { accent, body: Box::new(body), stretchy };
-                }
-                if let Some((c, class)) = symbols::command(n) {
-                    let c = if self.font == Font::Bold && c.is_alphabetic() { symbols::styled(c, Font::Bold) } else { c };
-                    return M::Sym(c, class);
-                }
-                M::Error(["\\", n].concat())
+            b'E' => self.environment(),
+            b'N' => empty(),
+            b'C' => {
+                let rgb = symbols::color(self.raw_group());
+                M::Color(rgb, bx(self.arg()))
             }
+            b'X' => match self.arg() {
+                M::Sym(c, class) => M::Sym(symbols::negate(c), class),
+                other => other,
+            },
+            b'B' => {
+                self.skip_ws();
+                let r = self.rest();
+                let limits = if r.starts_with(b"\\limits") {
+                    self.pos += 7;
+                    Some(true)
+                } else if r.starts_with(b"\\nolimits") {
+                    self.pos += 9;
+                    Some(false)
+                } else {
+                    None
+                };
+                M::BigOp { sym: a, limits, integral: b == '1' }
+            }
+            b'Z' => M::LimitFunc(n),
+            b'Y' => M::Text(n, Class::Op, Font::Upright),
+            b'A' => M::Accent { accent: a, body: bx(self.arg()), stretchy: b == '1' },
+            _ => M::Error(&self.s[start - 1..self.pos]),
         }
     }
 
+    /// A delimiter after `\left`, `\right`, `\big`: a character or a delimiter command; `.` is none.
     fn delimiter(&mut self) -> Option<char> {
         self.skip_ws();
-        let c = self.bump()?;
-        if c != '\\' {
-            return Some(c);
-        }
-        let name = self.command_name();
-        symbols::delimiter(&name)
-    }
-
-    fn delimited(&mut self) -> M {
-        let left = self.delimiter().filter(|&c| c != '.');
-        let body = self.row(None);
-        let mut right = None;
-        if self.s[self.pos..].starts_with("\\right") {
-            self.pos += 6;
-            right = self.delimiter().filter(|&c| c != '.');
-        }
-        M::Delimited { left, right, body: Box::new(M::Row(body)) }
-    }
-
-    fn environment(&mut self) -> M {
-        let env = self.raw_group();
-        let (left, right, align_left, cases) = match env.trim_end_matches('*') {
-            "pmatrix" => (Some('('), Some(')'), false, false),
-            "bmatrix" => (Some('['), Some(']'), false, false),
-            "Bmatrix" => (Some('{'), Some('}'), false, false),
-            "vmatrix" => (Some('|'), Some('|'), false, false),
-            "Vmatrix" => (Some('‖'), Some('‖'), false, false),
-            "cases" => (Some('{'), None, true, true),
-            "aligned" | "align" | "split" | "gathered" | "alignat" => (None, None, false, false),
-            "array" => {
-                self.raw_group(); // column spec
-                (None, None, false, false)
+        let c = match self.bump_char()? {
+            '\\' => {
+                let (kind, [c, flag, _]) = symbols::lookup(self.name());
+                (symbols::class(kind).is_some() && flag == 'd').then_some(c)?
             }
-            _ => (None, None, false, false),
+            c => c,
         };
-        let mut rows: Vec<Vec<M>> = vec![vec![]];
+        (c != '.').then_some(c)
+    }
+
+    fn environment(&mut self) -> M<'a> {
+        let env = self.raw_group();
+        let (kind, [l, r, flag]) = symbols::lookup(env.trim_end_matches('*'));
+        let (mut left, mut right, mut cases) = (None, None, false);
+        if kind == b'V' {
+            left = (l != '.').then_some(l);
+            right = (r != '.').then_some(r);
+            cases = flag == '1';
+            if flag == '2' {
+                self.raw_group(); // array column spec
+            }
+        }
+        let mut rows: Vec<Vec<M<'a>>> = Vec::new();
+        let mut cells: Vec<M<'a>> = Vec::new();
         loop {
-            let cell = self.row(None);
-            rows.last_mut().unwrap().push(M::Row(cell));
+            cells.push(M::Row(self.row(NONE)));
             self.skip_ws();
-            if self.peek() == Some('&') {
-                self.bump();
-            } else if self.s[self.pos..].starts_with("\\\\") {
+            let rest = self.rest();
+            if rest.first() == Some(&b'&') {
+                self.pos += 1;
+            } else if rest.starts_with(b"\\\\") {
                 self.pos += 2;
                 self.optional_arg(); // \\[2pt]
-                rows.push(vec![]);
-            } else if self.s[self.pos..].starts_with("\\end") {
+                rows.push(std::mem::take(&mut cells));
+            } else if rest.starts_with(b"\\end") {
                 self.pos += 4;
                 self.raw_group();
                 break;
-            } else if self.peek().is_none() {
+            } else if rest.is_empty() {
                 break;
             } else {
                 // Stray closing token; skip it to make progress.
-                self.bump();
+                self.bump_char();
             }
         }
-        if rows.last().is_some_and(|r| r.iter().all(|c| matches!(c, M::Row(v) if v.is_empty()))) && rows.len() > 1 {
-            rows.pop();
+        // A trailing `\\` leaves an empty last row: drop it.
+        if rows.is_empty() || !cells.iter().all(|c| matches!(c, M::Row(v) if v.is_empty())) {
+            rows.push(cells);
         }
         // `aligned`: right-align odd columns, left-align even ones (approximated as "relation centred").
-        let align_left = align_left || env.starts_with("align") || env == "split";
+        let align_left = cases || env.starts_with("align") || env == "split";
         M::Matrix { rows, left, right, align_left, cases }
     }
 }
@@ -490,7 +480,10 @@ mod tests {
                 o.push(']');
             }
             M::Sym(c, k) => write!(o, "{c:?}:{k:?}").unwrap(),
-            M::Text(s, k) => write!(o, "{s:?}:{k:?}").unwrap(),
+            M::Text(s, k, f) => {
+                let s: String = s.chars().map(|c| symbols::styled(c, *f)).collect();
+                write!(o, "{s:?}:{k:?}").unwrap()
+            }
             M::Frac { num, den, rule, delims } => {
                 write!(o, "Frac({rule},{delims:?} ").unwrap();
                 dump(num, o);
