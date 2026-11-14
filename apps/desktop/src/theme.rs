@@ -217,7 +217,7 @@ pub struct Palette {
     pub stripe: Option<u32>,
 }
 
-/// Falling particles (snow, petals, leaves) drawn over and behind the text.
+/// Falling particles (snow, petals, leaves) drawn over the text.
 #[derive(Debug, Clone, Copy)]
 pub struct Overlay {
     pub particles: &'static [&'static str],
@@ -234,7 +234,6 @@ pub struct Overlay {
     pub opacity: (f32, f32),
     /// Tint for monochrome particles (light, dark).
     pub color: Option<(u32, u32)>,
-    pub behind_fraction: f32,
 }
 
 #[derive(Debug, Clone, Copy)]

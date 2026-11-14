@@ -17,7 +17,6 @@ pub struct Particle {
     rotation: f32,
     rotation_period: f32,
     pub opacity: f32,
-    pub behind: bool,
 }
 
 /// A particle's state at one instant, in window coordinates (DIPs).
@@ -68,7 +67,7 @@ impl Particles {
             .map(|_| {
                 let fall = rng.range(cfg.duration);
                 let pick = ((rng.next() * cfg.particles.len() as f32) as usize).min(cfg.particles.len() - 1);
-                Particle {
+                let p = Particle {
                     text: cfg.particles[pick],
                     size: rng.range(cfg.size),
                     x: rng.next() * width,
@@ -79,8 +78,9 @@ impl Particles {
                     rotation: rng.range(cfg.rotation),
                     rotation_period: fall / cfg.rotation_divisor,
                     opacity: rng.range(cfg.opacity),
-                    behind: rng.next() < cfg.behind_fraction,
-                }
+                };
+                rng.next(); // was "behind the text?": keeps the following particles as they were
+                p
             })
             .collect();
         Particles { items, top: cfg.size.1 + 10.0, color: cfg.color }
@@ -102,6 +102,79 @@ impl Particles {
             })
             .collect()
     }
+
+    /// Each particle's motion from `ms` on, as the segments a compositor can play by
+    /// itself (DirectComposition animations): `sprites` at `ms + τ` equals
+    /// [`Track::at`]`(τ)` for every visible sprite.
+    pub fn tracks(&self, ms: f32, height: f32) -> Vec<Track> {
+        let span = height + 2.0 * self.top;
+        self.items
+            .iter()
+            .map(|p| {
+                let t = ms - p.delay;
+                Track {
+                    wait: (-t).max(0.0),
+                    phase: t.max(0.0) % p.fall,
+                    fall: p.fall,
+                    top: -self.top,
+                    speed: span / p.fall,
+                    x: Wave::swing(p.x, p.sway, p.sway_period, t),
+                    rotation: Wave::swing(0.0, p.rotation, p.rotation_period, t),
+                }
+            })
+            .collect()
+    }
+}
+
+/// `bias + amplitude · sin(2π · frequency · τ + phase)`, τ in ms, phase in degrees.
+#[derive(Debug, Clone, Copy)]
+pub struct Wave {
+    pub bias: f32,
+    pub amplitude: f32,
+    /// Cycles per millisecond.
+    pub frequency: f32,
+    pub phase: f32,
+}
+
+impl Wave {
+    /// `base + amount · swing(t + τ, period)`: swing's eased ping-pong is exactly
+    /// (1 − cos(π t / period)) / 2, a sinusoid of period 2 · period.
+    fn swing(base: f32, amount: f32, period: f32, t: f32) -> Wave {
+        if period <= 0.0 {
+            return Wave { bias: base, amplitude: 0.0, frequency: 0.0, phase: 0.0 };
+        }
+        // −cos θ = sin(θ − 90°); θ at τ = 0 is π t / period.
+        let phase = ((t / period * 180.0 - 90.0) as f64).rem_euclid(360.0) as f32;
+        Wave { bias: base + amount / 2.0, amplitude: amount / 2.0, frequency: 1.0 / (2.0 * period), phase }
+    }
+
+    #[cfg(test)]
+    pub fn at(&self, tau: f32) -> f32 {
+        self.bias + self.amplitude * (std::f32::consts::TAU * self.frequency * tau + self.phase.to_radians()).sin()
+    }
+}
+
+/// One particle's motion (window DIPs, τ in ms from the start): it waits above the
+/// window, then falls at `speed` from `top` and starts over every `fall` ms, the
+/// first fall already `phase` ms along; x and rotation (degrees) swing all the while.
+#[derive(Debug, Clone, Copy)]
+pub struct Track {
+    pub wait: f32,
+    pub phase: f32,
+    pub fall: f32,
+    pub top: f32,
+    pub speed: f32,
+    pub x: Wave,
+    pub rotation: Wave,
+}
+
+impl Track {
+    /// Position (x, y) and rotation at τ.
+    #[cfg(test)]
+    pub fn at(&self, tau: f32) -> (f32, f32, f32) {
+        let y = if tau < self.wait { self.top } else { self.top + (self.phase + tau - self.wait) % self.fall * self.speed };
+        (self.x.at(tau), y, self.rotation.at(tau))
+    }
 }
 
 #[cfg(test)]
@@ -118,6 +191,24 @@ mod tests {
         assert_eq!(late.len(), cfg.count); // all delays (< 10 s) have passed
         assert!(late.iter().all(|s| s.y >= -40.0 && s.y <= 640.0));
         assert!(p.sprites(0.0, 600.0).len() < cfg.count);
+    }
+
+    #[test]
+    fn tracks_follow_the_sprites() {
+        for name in ["winter", "spring", "autumn"] {
+            let cfg = theme_def(name).unwrap().overlay.unwrap();
+            let p = Particles::new(&cfg, 900.0, 7);
+            for start in [0.0, 3_456.0, 61_000.0] {
+                let tracks = p.tracks(start, 700.0);
+                for tau in [0.0, 16.0, 999.0, 7_500.0, 40_000.0] {
+                    for s in p.sprites(start + tau, 700.0) {
+                        let (x, y, r) = tracks[s.index].at(tau);
+                        let close = |a: f32, b: f32| (a - b).abs() < 0.05 + b.abs() * 1e-4;
+                        assert!(close(x, s.x) && close(y, s.y) && close(r, s.rotation), "{name} {start} {tau}: {:?} vs {s:?}", (x, y, r));
+                    }
+                }
+            }
+        }
     }
 
     #[test]

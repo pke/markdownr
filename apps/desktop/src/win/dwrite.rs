@@ -381,11 +381,9 @@ impl Gfx {
             rt.BeginDraw();
             rt.SetTransform(&windows_numerics::Matrix3x2::translation(0.0, -scroll.round()));
             rt.Clear(Some(&color(theme.background)));
-            self.draw_sprites(&rt, particles, true, theme);
-            rt.SetTransform(&windows_numerics::Matrix3x2::translation(0.0, -scroll.round()));
             self.draw_layout(&rt, doc, selection, finds, theme, scroll, view_h);
             rt.SetTransform(&windows_numerics::Matrix3x2::identity());
-            self.draw_sprites(&rt, particles, false, theme);
+            self.draw_sprites(&rt, particles, theme);
             if let Some((c, alpha)) = chrome {
                 rt.SetTransform(&windows_numerics::Matrix3x2::identity());
                 let params = D2D1_LAYER_PARAMETERS {
@@ -418,28 +416,20 @@ impl Gfx {
         }
     }
 
-    /// Falling particles, in window coordinates. `behind` selects the layer
-    /// drawn under the text; the rest goes on top.
-    unsafe fn draw_sprites(&mut self, rt: &ID2D1RenderTarget, particles: Option<(&crate::particles::Particles, &[crate::particles::Sprite])>, behind: bool, theme: &Theme) {
+    /// Falling particles over the text, in window coordinates (drawn into the frame
+    /// only where no composition overlay animates them: PNG snapshots, or when the
+    /// overlay could not be made).
+    unsafe fn draw_sprites(&mut self, rt: &ID2D1RenderTarget, particles: Option<(&crate::particles::Particles, &[crate::particles::Sprite])>, theme: &Theme) {
         let Some((ps, sprites)) = particles else { return };
-        let [r, g, b, _] = theme.background.0;
-        let dark = (r as u32 + g as u32 + b as u32) < 384;
-        let tint = ps.color.map_or(theme.text, |(l, d)| Ink::rgb(if dark { d } else { l }));
+        let tint = particle_tint(ps, theme);
         let (mut dpi, mut dpi_y) = (96.0, 96.0);
         unsafe {
             rt.GetDpi(&mut dpi, &mut dpi_y);
             for s in sprites {
                 let p = &ps.items[s.index];
-                if p.behind != behind {
-                    continue;
-                }
                 // Each glyph is rasterised once into a bitmap; a frame only draws the
                 // bitmaps rotated (rotated text would be rasterised again every frame).
-                // The brush carries the opacity (monochrome glyphs use it, colour emoji
-                // ignore it); below 0.99 the whole sprite fades once more, as the layer
-                // used to do it when sprites were drawn as text.
-                let mut ink = tint;
-                ink.0[3] = (p.opacity * 255.0) as u8;
+                let (ink, fade) = particle_ink(tint, p);
                 let key = (p.text, p.size.to_bits(), u32::from_le_bytes(ink.0), dpi.to_bits());
                 let (bitmap, pad, w, h) = match self.sprites.get(&key) {
                     Some(v) => v.clone(),
@@ -449,7 +439,6 @@ impl Gfx {
                         v
                     }
                 };
-                let fade = if p.opacity < 0.99 && !p.text.is_ascii() { p.opacity } else { 1.0 };
                 let c = windows_numerics::Vector2 { X: s.x + p.size / 2.0, Y: s.y + p.size / 2.0 };
                 rt.SetTransform(&windows_numerics::Matrix3x2::rotation_around(s.rotation, c));
                 let dest = D2D_RECT_F { left: s.x - pad, top: s.y - pad, right: s.x - pad + w, bottom: s.y - pad + h };
@@ -462,15 +451,8 @@ impl Gfx {
     /// One particle glyph in `ink` (alpha included) on a transparent bitmap with `pad`
     /// DIPs around its layout box.
     unsafe fn sprite_bitmap(&mut self, rt: &ID2D1RenderTarget, text: &str, size: f32, ink: Ink) -> Option<(ID2D1Bitmap, f32, f32, f32)> {
-        let base = BaseStyle { size, color: ink, mono: false, bold: false, italic: false, line_height: 1.0 };
-        let format = self.format(&base);
-        let wide: Vec<u16> = text.encode_utf16().collect();
+        let (layout, pad, dips) = self.sprite_layout(text, size, ink)?;
         unsafe {
-            let layout = self.dw.CreateTextLayout(&wide, &format, 400.0, 400.0).ok()?;
-            let mut m = DWRITE_TEXT_METRICS::default();
-            layout.GetMetrics(&mut m).ok()?;
-            let pad = (size * 0.5).ceil() + 2.0;
-            let dips = D2D_SIZE_F { width: (m.widthIncludingTrailingWhitespace + 2.0 * pad).ceil(), height: (m.height + 2.0 * pad).ceil() };
             let format = D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED };
             let target = rt.CreateCompatibleRenderTarget(Some(&dips), None, Some(&format), D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE).ok()?;
             target.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
@@ -482,6 +464,73 @@ impl Gfx {
             Some((target.GetBitmap().ok()?, pad, dips.width, dips.height))
         }
     }
+
+    /// A particle glyph's text layout, the padding around it and the sprite's size
+    /// (layout box plus padding, whole DIPs).
+    pub fn sprite_layout(&mut self, text: &str, size: f32, ink: Ink) -> Option<(IDWriteTextLayout, f32, D2D_SIZE_F)> {
+        let base = BaseStyle { size, color: ink, mono: false, bold: false, italic: false, line_height: 1.0 };
+        let format = self.format(&base);
+        let wide: Vec<u16> = text.encode_utf16().collect();
+        unsafe {
+            let layout = self.dw.CreateTextLayout(&wide, &format, 400.0, 400.0).ok()?;
+            let mut m = DWRITE_TEXT_METRICS::default();
+            layout.GetMetrics(&mut m).ok()?;
+            let pad = (size * 0.5).ceil() + 2.0;
+            let dips = D2D_SIZE_F { width: (m.widthIncludingTrailingWhitespace + 2.0 * pad).ceil(), height: (m.height + 2.0 * pad).ceil() };
+            Some((layout, pad, dips))
+        }
+    }
+
+    /// A particle glyph rendered in software at `scale` pixels per DIP: premultiplied
+    /// BGRA rows (stride `w · 4`), w, h and the padding in DIPs. (Rendering colour emoji
+    /// on a composition device of its own costs tens of MB of glyph caches there.)
+    pub fn sprite_pixels(&mut self, text: &str, size: f32, ink: Ink, scale: f32) -> Option<(Vec<u8>, u32, u32, f32)> {
+        use windows::Win32::Graphics::Imaging::*;
+        use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
+        let (layout, pad, dips) = self.sprite_layout(text, size, ink)?;
+        let (w, h) = (((dips.width * scale).ceil() as u32).max(1), ((dips.height * scale).ceil() as u32).max(1));
+        unsafe {
+            let wic: IWICImagingFactory = CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER).ok()?;
+            let bmp = wic.CreateBitmap(w, h, &GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad).ok()?;
+            let props = D2D1_RENDER_TARGET_PROPERTIES {
+                r#type: D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+                pixelFormat: D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED },
+                dpiX: 96.0 * scale,
+                dpiY: 96.0 * scale,
+                usage: D2D1_RENDER_TARGET_USAGE_NONE,
+                minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
+            };
+            let rt = self.d2d.CreateWicBitmapRenderTarget(&bmp, &props).ok()?;
+            rt.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            let brush = rt.CreateSolidColorBrush(&color(ink), None).ok()?;
+            rt.BeginDraw();
+            rt.Clear(Some(&D2D1_COLOR_F { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }));
+            rt.DrawTextLayout(windows_numerics::Vector2 { X: pad, Y: pad }, &layout, &brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
+            rt.EndDraw(None, None).ok()?;
+            let mut pixels = vec![0u8; (w * h * 4) as usize];
+            bmp.CopyPixels(std::ptr::null(), w * 4, &mut pixels).ok()?;
+            Some((pixels, w, h, pad))
+        }
+    }
+}
+
+/// The particles' tint: the theme's (light or dark) for monochrome glyphs, else the text colour.
+pub fn particle_tint(ps: &crate::particles::Particles, theme: &Theme) -> Ink {
+    let [r, g, b, _] = theme.background.0;
+    let dark = (r as u32 + g as u32 + b as u32) < 384;
+    ps.color.map_or(theme.text, |(l, d)| Ink::rgb(if dark { d } else { l }))
+}
+
+/// A particle's ink and fade. The brush carries the opacity (monochrome glyphs use it,
+/// colour emoji ignore it); below 0.99 the whole sprite fades once more, as a layer did
+/// when sprites were drawn as text.
+pub fn particle_ink(tint: Ink, p: &crate::particles::Particle) -> (Ink, f32) {
+    let mut ink = tint;
+    ink.0[3] = (p.opacity * 255.0) as u8;
+    (ink, if p.opacity < 0.99 && !p.text.is_ascii() { p.opacity } else { 1.0 })
+}
+
+impl Gfx {
 
     /// Santa hat (port of the iOS SantaHat SVG, 64×64 viewBox).
     unsafe fn draw_hat(&mut self, rt: &ID2D1RenderTarget, x: f32, y: f32, size: f32, scroll: f32) {

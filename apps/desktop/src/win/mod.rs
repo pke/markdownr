@@ -1,5 +1,6 @@
 //! Windows shell: plain Win32 window, Direct2D/DirectWrite rendering.
 
+mod comp;
 mod dwrite;
 mod images;
 
@@ -47,6 +48,10 @@ struct App {
     /// While the window is being resized (until 150 ms after the last WM_SIZE or the
     /// end of the drag) the idle layout waits: each size step would discard it.
     sizing_until: Option<Instant>,
+    /// Particle overlay on the compositor (made after the first frame); failed: not again.
+    overlay: Option<comp::Overlay>,
+    overlay_failed: bool,
+    painted: bool,
     snapshot: Option<PathBuf>,
     exit_after_snapshot: bool,
     snapshot_ready: bool,
@@ -293,11 +298,13 @@ impl App {
             self.arm_layout();
         }
         self.apply_caption();
+        self.particle_overlay();
         if !self.chrome_timer {
             // The layout just made may animate (particles, quote crossfades): arm the
             // timer now rather than at the next input.
             self.schedule();
         }
+        self.painted = true;
         let v = &self.viewer;
         let finds = v.find_highlights();
         let chrome = v.chrome_visible().then_some((&v.chrome, v.chrome_alpha));
@@ -308,6 +315,31 @@ impl App {
             self.viewer.invalidate();
             self.invalidate();
         }
+    }
+
+    /// From the second frame on, particles move on a compositor overlay (no frames of
+    /// ours); PNG snapshots, and a window whose overlay failed, draw them into the frame.
+    fn particle_overlay(&mut self) {
+        let v = &self.viewer;
+        let wanted = self.painted && !self.gfx.offscreen_mode && !self.overlay_failed && v.particles.is_some() && !v.reduce_motion;
+        if wanted && self.overlay.is_none() {
+            match comp::Overlay::new(self.hwnd) {
+                Ok(o) => self.overlay = Some(o),
+                Err(_) => self.overlay_failed = true,
+            }
+        }
+        if let (true, Some(o), Some(ps)) = (wanted, self.overlay.as_mut(), v.particles.as_ref()) {
+            let ms = (Instant::now() - v.anim_start).as_secs_f32() * 1000.0;
+            if o.show(&mut self.gfx, ps, v.particles_gen, &v.theme, v.view_h, dpi_scale(self.hwnd), ms).is_ok() {
+                self.viewer.composited = true;
+                return;
+            }
+            self.overlay_failed = true;
+        }
+        if let Some(o) = self.overlay.take() {
+            o.clear();
+        }
+        self.viewer.composited = false;
     }
 
     /// Drive the chrome fade: (re)arm or stop the animation timer.
@@ -961,6 +993,9 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             zoom: None,
             chrome_timer: false,
             sizing_until: None,
+            overlay: None,
+            overlay_failed: false,
+            painted: false,
             snapshot: std::env::var_os("MARKDOWNR_SNAPSHOT").map(PathBuf::from),
             exit_after_snapshot: std::env::var_os("MARKDOWNR_SNAPSHOT_EXIT").is_some(),
             snapshot_ready: false,

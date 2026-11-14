@@ -151,6 +151,11 @@ pub struct Viewer<P> {
     tip: Option<(String, f32, f32)>,
     pub tip_layout: DocLayout<P>,
     pub particles: Option<Particles>,
+    /// Bumped whenever `particles` is made anew.
+    pub particles_gen: u32,
+    /// The shell animates the particles itself (a compositor overlay): no particle
+    /// frames and no sprites to draw.
+    pub composited: bool,
     pub anim_start: Instant,
     /// System "show animations" off: no particles.
     pub reduce_motion: bool,
@@ -223,6 +228,8 @@ impl<P: Paragraph> Viewer<P> {
             tip: None,
             tip_layout: DocLayout::default(),
             particles: None,
+            particles_gen: 0,
+            composited: false,
             anim_start: Instant::now(),
             reduce_motion: false,
             today: (2026, 1, 1),
@@ -339,7 +346,9 @@ impl<P: Paragraph> Viewer<P> {
             // Keep the reading position: the block at the top of the view stays there.
             let anchor = self.scroll_anchor();
             self.theme = self.resolve_theme();
-            self.particles = self.theme.overlay.map(|o| Particles::new(o, self.view_w, 0x9e37_79b9 ^ self.view_w as u32));
+            // One seed at every width: a particle keeps its glyph and size, only x follows.
+            self.particles = self.theme.overlay.map(|o| Particles::new(o, self.view_w, 0x9e37_79b9));
+            self.particles_gen = self.particles_gen.wrapping_add(1);
             let w = self.view_w;
             let margin = (self.font_size * 2.0).min(w * 0.06).max(12.0);
             let column = (w - 2.0 * margin).min(self.font_size * MAX_COLUMN).max(100.0);
@@ -540,11 +549,11 @@ impl<P: Paragraph> Viewer<P> {
             let d = Duration::from_millis(wait);
             repaint |= t < 650;
             let next = Some(next.map_or(d, |n| n.min(d)));
-            if self.particles.is_none() {
+            if self.particles.is_none() || self.composited {
                 return (repaint, next);
             }
         }
-        if self.particles.is_some() && !self.reduce_motion {
+        if self.particles.is_some() && !self.reduce_motion && !self.composited {
             repaint = true;
             let frame = Some(Duration::from_millis(33));
             return (repaint, next.map_or(frame, |n| Some(n.min(Duration::from_millis(33)))));
@@ -1192,7 +1201,7 @@ impl<P: Paragraph> Viewer<P> {
     /// Particle sprites to draw now (empty without an animated theme).
     pub fn sprites(&self, now: Instant) -> Vec<Sprite> {
         match &self.particles {
-            Some(p) if !self.reduce_motion => p.sprites((now - self.anim_start).as_secs_f32() * 1000.0, self.view_h),
+            Some(p) if !self.reduce_motion && !self.composited => p.sprites((now - self.anim_start).as_secs_f32() * 1000.0, self.view_h),
             _ => Vec::new(),
         }
     }
