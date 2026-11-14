@@ -30,7 +30,7 @@ struct Job {
 
 #[link(name = "kernel32")]
 unsafe extern "system" {
-    fn TrySubmitThreadpoolCallback(cb: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void), ctx: *mut core::ffi::c_void, env: *const core::ffi::c_void) -> i32;
+    pub(super) fn TrySubmitThreadpoolCallback(cb: unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void), ctx: *mut core::ffi::c_void, env: *const core::ffi::c_void) -> i32;
 }
 
 unsafe extern "system" fn run_job(_instance: *mut core::ffi::c_void, ctx: *mut core::ffi::c_void) {

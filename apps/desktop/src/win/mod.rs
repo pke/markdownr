@@ -81,6 +81,62 @@ fn read_doc(path: &Path) -> (String, String, Node) {
     (path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), text, doc)
 }
 
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn CreateEventW(attributes: *const core::ffi::c_void, manual_reset: i32, initial: i32, name: *const u16) -> isize;
+    fn SetEvent(event: isize) -> i32;
+    fn WaitForSingleObject(handle: isize, ms: u32) -> u32;
+    fn CloseHandle(handle: isize) -> i32;
+}
+
+/// The start document, read and parsed on the thread pool while the window and
+/// Direct2D are set up (`join` waits for it).
+struct BackgroundDoc {
+    path: PathBuf,
+    done: isize,
+    /// Running on the pool: `result` belongs to the worker until `done` is set.
+    pooled: bool,
+    result: Option<(String, String, Node)>,
+}
+
+impl BackgroundDoc {
+    fn start(path: &Path) -> *mut BackgroundDoc {
+        // SAFETY: plain Win32 calls; `run_parse` only touches the job until it signals `done`.
+        // The worker only reads `path` and writes `result` (through the raw pointer,
+        // field by field); the main thread only writes `pooled` until it waits.
+        unsafe {
+            let job = Box::into_raw(Box::new(BackgroundDoc { path: path.to_path_buf(), done: CreateEventW(core::ptr::null(), 1, 0, core::ptr::null()), pooled: false, result: None }));
+            let pooled = (*job).done != 0 && images::TrySubmitThreadpoolCallback(Self::run_parse, job as *mut _, core::ptr::null()) != 0;
+            (*job).pooled = pooled;
+            job
+        }
+    }
+
+    unsafe extern "system" fn run_parse(_instance: *mut core::ffi::c_void, ctx: *mut core::ffi::c_void) {
+        // SAFETY: ctx is the job from `start`; the main thread waits for `done` before using `result`.
+        unsafe {
+            let job = ctx as *mut BackgroundDoc;
+            (*job).result = Some(read_doc(&(*job).path));
+            SetEvent((*job).done);
+        }
+    }
+
+    fn join(job: *mut BackgroundDoc) -> (String, String, Node) {
+        // SAFETY: `job` comes from `start` and is used once; after `done` is signalled
+        // (or when it never ran on the pool) the worker no longer touches it.
+        unsafe {
+            let mut job = Box::from_raw(job);
+            if job.pooled {
+                WaitForSingleObject(job.done, u32::MAX);
+            }
+            if job.done != 0 {
+                CloseHandle(job.done);
+            }
+            job.result.take().unwrap_or_else(|| read_doc(&job.path))
+        }
+    }
+}
+
 fn mtime(path: &Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
@@ -790,6 +846,8 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
                 crate::transforms::set_locale(&String::from_utf16_lossy(&buf[..n as usize - 1]));
             }
         }
+        // Parse the document while the window and Direct2D come up.
+        let background = path.as_deref().map(BackgroundDoc::start);
         let instance = GetModuleHandleW(None).expect("module handle");
         let class = w!("MarkdownrWindow");
         let wc = WNDCLASSEXW {
@@ -832,9 +890,16 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
 
         let settings_path = std::env::var_os("MARKDOWNR_SETTINGS").map(PathBuf::from).unwrap_or_else(settings_path);
         let mut settings = Settings::load(&settings_path);
+        let mut gfx = Gfx::new(hwnd).expect("Direct2D/DirectWrite");
+        gfx.offscreen_mode = std::env::var("MARKDOWNR_SNAPSHOT").is_ok_and(|p| p.ends_with(".png"));
+        {
+            // The render target (D3D device) takes long to create; do it now, in parallel with the parse.
+            let (w, h) = client_size(hwnd);
+            let _ = gfx.ensure_target(w, h, dpi_scale(hwnd) * 96.0);
+        }
         let sample_mode = std::env::var_os("MARKDOWNR_SAMPLE").is_some();
-        let (title, source, doc) = match &path {
-            Some(p) => read_doc(p),
+        let (title, source, doc) = match background {
+            Some(job) => BackgroundDoc::join(job),
             None if sample_mode => ("Beispiel".into(), sample.to_string(), parse(sample)),
             None => {
                 let start = settings.start_page();
@@ -850,8 +915,6 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         viewer.theme_choice = ThemeChoice::from_name(&settings.theme);
         viewer.remember_fullscreen = settings.remember_fullscreen;
         let start_fullscreen = settings.remember_fullscreen && settings.fullscreen;
-        let mut gfx = Gfx::new(hwnd).expect("Direct2D/DirectWrite");
-        gfx.offscreen_mode = std::env::var("MARKDOWNR_SNAPSHOT").is_ok_and(|p| p.ends_with(".png"));
         gfx.images.set_base(path.as_ref().and_then(|p| p.parent().map(Path::to_path_buf)).or_else(|| std::env::current_dir().ok()));
         let mut app = App {
             hwnd,
@@ -917,7 +980,9 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             });
         }
         SetTimer(Some(hwnd), TIMER_WATCH, 1000, None);
-        SetTimer(Some(hwnd), 3, 1500, None);
+        if std::env::var_os("MARKDOWNR_SNAPSHOT").is_some() {
+            SetTimer(Some(hwnd), 3, 1500, None); // snapshot after 1.5 s (images, fades)
+        }
         let _ = ShowWindow(hwnd, SW_SHOW);
         if start_fullscreen {
             toggle_fullscreen(hwnd, Some(true));
