@@ -721,10 +721,11 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 .flatten();
                 let _ = EndPaint(hwnd, &ps);
                 if let Some((path, exit)) = snap {
-                    let r = if path.extension().is_some_and(|e| e == "png") { with_app(|a| a.gfx.save_png(&path).map_err(std::io::Error::other)).unwrap_or(Ok(())) } else { snapshot(hwnd, &path) };
-                    match r {
-                        Ok(()) => crate::util::log(&["snapshot: ", &path.to_string_lossy()]),
-                        Err(_) => crate::util::log(&["snapshot failed"]),
+                    let ok = if path.extension().is_some_and(|e| e == "png") { with_app(|a| a.gfx.save_png(&path).is_ok()).unwrap_or(true) } else { snapshot(hwnd, &path).is_ok() };
+                    if ok {
+                        crate::util::log(&["snapshot: ", &path.to_string_lossy()]);
+                    } else {
+                        crate::util::log(&["snapshot failed"]);
                     }
                     if exit {
                         DestroyWindow(hwnd).ok();
