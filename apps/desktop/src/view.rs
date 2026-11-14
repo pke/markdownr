@@ -188,6 +188,19 @@ impl<P: Paragraph> Viewer<P> {
         v
     }
 
+    /// Plain text of the document's first heading (any level, document order), if any.
+    pub fn first_heading(&self) -> Option<String> {
+        fn find(n: &Node) -> Option<&Node> {
+            if matches!(n.kind, Kind::Heading { .. }) {
+                return Some(n);
+            }
+            n.children.iter().find_map(find)
+        }
+        let text = find(&self.doc)?.plain_text();
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.to_string())
+    }
+
     fn display_title(&self, fallback: String) -> String {
         self.front_matter.iter().find(|(k, _)| k == "title").map(|(_, v)| v.clone()).filter(|t| !t.is_empty()).unwrap_or(fallback)
     }

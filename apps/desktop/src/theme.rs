@@ -146,15 +146,25 @@ impl Theme {
 
     /// Apply simple overrides from front matter (`background: #fff`, `color:`, `link:`).
     pub fn with_overrides(mut self, pairs: &[(String, String)]) -> Self {
+        let (mut heading, mut text) = (None, None);
         for (k, v) in pairs {
             let Some(ink) = parse_color(v) else { continue };
             match k.as_str() {
                 "background" | "background-color" => self.background = ink,
-                "color" | "text" | "text-color" => self.text = ink,
+                "color" | "text" | "text-color" => text = Some(ink),
                 "link" | "link-color" | "accent" => self.link = ink,
-                "heading" | "heading-color" => self.heading = ink,
+                "heading" | "heading-color" => heading = Some(ink),
                 _ => {}
             }
+        }
+        // A text colour from the front matter colours the headings too unless they get their own:
+        // the theme's heading colour is made for its own background, not for the one brought here.
+        if let Some(t) = text {
+            self.text = t;
+            self.heading = t;
+        }
+        if let Some(h) = heading {
+            self.heading = h;
         }
         self
     }

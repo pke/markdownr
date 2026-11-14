@@ -152,7 +152,12 @@ impl App {
     }
 
     fn set_title(&self) {
-        unsafe { SetWindowTextW(self.hwnd, &HSTRING::from([&self.viewer.title, " – Markdownr"].concat())).ok() };
+        // "First heading | Markdownr", or just "Markdownr" when the document has no heading.
+        let title = match self.viewer.first_heading() {
+            Some(h) => [h.as_str(), " | Markdownr"].concat(),
+            None => "Markdownr".to_string(),
+        };
+        unsafe { SetWindowTextW(self.hwnd, &HSTRING::from(title)).ok() };
     }
 
     fn apply_dark(&mut self) {
