@@ -45,15 +45,35 @@ fn covered_value(d: &[u8], sub: usize, gid: u16) -> Option<i16> {
     (idx < u16_at(d, sub + 2)? as usize).then(|| u16_at(d, sub + 4 + 4 * idx).map(|v| v as i16))?
 }
 
+/// First index in `0..n` for which `below(i)` is false (the records are sorted, as
+/// the OpenType spec requires for cmap groups/segments and coverage tables).
+fn lower_bound(n: usize, below: impl Fn(usize) -> bool) -> usize {
+    let (mut lo, mut hi) = (0, n);
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if below(mid) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
 fn coverage(d: &[u8], c: usize, gid: u16) -> Option<usize> {
     let n = u16_at(d, c + 2)? as usize;
     match u16_at(d, c)? {
-        1 => (0..n).find(|&i| u16_at(d, c + 4 + 2 * i) == Some(gid)),
-        2 => (0..n).find_map(|i| {
+        1 => {
+            let i = lower_bound(n, |i| u16_at(d, c + 4 + 2 * i).is_some_and(|g| g < gid));
+            (i < n && u16_at(d, c + 4 + 2 * i) == Some(gid)).then_some(i)
+        }
+        2 => {
+            // First range whose end is >= gid.
+            let i = lower_bound(n, |i| u16_at(d, c + 4 + 6 * i + 2).is_some_and(|e| e < gid));
             let r = c + 4 + 6 * i;
             let (s, e, start) = (u16_at(d, r)?, u16_at(d, r + 2)?, u16_at(d, r + 4)?);
-            (s..=e).contains(&gid).then(|| (start + gid - s) as usize)
-        }),
+            (i < n && (s..=e).contains(&gid)).then(|| (start + gid - s) as usize)
+        }
         _ => None,
     }
 }
@@ -113,15 +133,25 @@ impl Font {
         let s = self.cmap?;
         let c = c as u32;
         let g = match self.u16(s)? {
-            12 => (0..u32_at(self.d, s + 12)? as usize).find_map(|i| {
+            12 => {
+                // Sequential map groups (start, end, glyph), sorted by start.
+                let n = u32_at(self.d, s + 12)? as usize;
+                let i = lower_bound(n, |i| u32_at(self.d, s + 16 + 12 * i + 4).is_some_and(|end| end < c));
                 let r = s + 16 + 12 * i;
                 let (a, b, g) = (u32_at(self.d, r)?, u32_at(self.d, r + 4)?, u32_at(self.d, r + 8)?);
-                (a..=b).contains(&c).then(|| (g + c - a) as u16)
-            })?,
+                if i >= n || !(a..=b).contains(&c) {
+                    return None;
+                }
+                (g + c - a) as u16
+            }
             4 if c <= 0xFFFF => {
                 let segx2 = self.u16(s + 6)? as usize;
                 let c = c as u16;
-                let i = (0..segx2 / 2).find(|&i| self.u16(s + 14 + 2 * i).is_some_and(|e| e >= c))?;
+                let segs = segx2 / 2;
+                let i = lower_bound(segs, |i| self.u16(s + 14 + 2 * i).is_some_and(|e| e < c));
+                if i >= segs {
+                    return None;
+                }
                 let start = self.u16(s + 16 + segx2 + 2 * i)?;
                 if start > c {
                     return None;
@@ -218,4 +248,94 @@ impl Font {
 /// Whether the face at `face` carries an OpenType MATH table.
 pub fn has_math(d: &[u8], face: usize) -> bool {
     table(d, face, b"MATH").is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The former linear scans, as the reference for the binary searches.
+    fn ref_coverage(d: &[u8], c: usize, gid: u16) -> Option<usize> {
+        let n = u16_at(d, c + 2)? as usize;
+        match u16_at(d, c)? {
+            1 => (0..n).find(|&i| u16_at(d, c + 4 + 2 * i) == Some(gid)),
+            2 => (0..n).find_map(|i| {
+                let r = c + 4 + 6 * i;
+                let (s, e, start) = (u16_at(d, r)?, u16_at(d, r + 2)?, u16_at(d, r + 4)?);
+                (s..=e).contains(&gid).then(|| (start + gid - s) as usize)
+            }),
+            _ => None,
+        }
+    }
+
+    fn ref_lookup(f: &Font, s: usize, c: u32) -> Option<u16> {
+        let d = f.d;
+        match u16_at(d, s)? {
+            12 => (0..u32_at(d, s + 12)? as usize).find_map(|i| {
+                let r = s + 16 + 12 * i;
+                let (a, b, g) = (u32_at(d, r)?, u32_at(d, r + 4)?, u32_at(d, r + 8)?);
+                (a..=b).contains(&c).then(|| (g + c - a) as u16)
+            }),
+            4 if c <= 0xFFFF => {
+                let segx2 = u16_at(d, s + 6)? as usize;
+                let c = c as u16;
+                let i = (0..segx2 / 2).find(|&i| u16_at(d, s + 14 + 2 * i).is_some_and(|e| e >= c))?;
+                let start = u16_at(d, s + 16 + segx2 + 2 * i)?;
+                if start > c {
+                    return None;
+                }
+                let delta = u16_at(d, s + 16 + 2 * segx2 + 2 * i)?;
+                let ro_pos = s + 16 + 3 * segx2 + 2 * i;
+                let ro = u16_at(d, ro_pos)?;
+                Some(if ro == 0 {
+                    c.wrapping_add(delta)
+                } else {
+                    let g = u16_at(d, ro_pos + ro as usize + 2 * (c - start) as usize)?;
+                    if g == 0 { 0 } else { g.wrapping_add(delta) }
+                })
+            }
+            _ => None,
+        }
+        .filter(|&g| g != 0)
+    }
+
+    #[test]
+    fn binary_searches_match_linear_scans() {
+        let Ok(data) = std::fs::read(r"C:\Windows\Fonts\cambria.ttc") else { return };
+        let face = faces(&data)[1];
+        let f = Font::new(data, face).expect("Cambria Math");
+        let d = f.d;
+        // Every unicode cmap subtable of the face (format 12 and format 4).
+        let cmap = table(d, face, b"cmap").unwrap();
+        let mut checked = 0;
+        for i in 0..u16_at(d, cmap + 2).unwrap() as usize {
+            let sub = cmap + u32_at(d, cmap + 4 + 8 * i + 4).unwrap() as usize;
+            if !matches!(u16_at(d, sub), Some(4 | 12)) {
+                continue;
+            }
+            let g = Font { cmap: Some(sub), ..f };
+            for c in 0..0x2_0000u32 {
+                let Some(ch) = char::from_u32(c) else { continue };
+                assert_eq!(g.glyph_index(ch), ref_lookup(&f, sub, c), "cmap {sub} U+{c:X}");
+            }
+            checked += 1;
+        }
+        assert!(checked >= 2, "expected format 4 and 12 subtables");
+        // Every coverage table the layout uses, for every glyph id.
+        let gi = f.glyph_info;
+        let v = f.variants;
+        let covs = [
+            gi + u16_at(d, gi).unwrap() as usize,
+            gi + u16_at(d, gi + 2).unwrap() as usize,
+            v + u16_at(d, v + 2).unwrap() as usize,
+            v + u16_at(d, v + 4).unwrap() as usize,
+        ];
+        for (k, base) in covs.into_iter().enumerate() {
+            // MathItalicsCorrectionInfo / MathTopAccentAttachment start with their coverage offset.
+            let cov = if k < 2 { base + u16_at(d, base).unwrap() as usize } else { base };
+            for gid in 0..=u16::MAX {
+                assert_eq!(coverage(d, cov, gid), ref_coverage(d, cov, gid), "coverage {k} glyph {gid}");
+            }
+        }
+    }
 }

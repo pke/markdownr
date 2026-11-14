@@ -1,0 +1,336 @@
+true fe381b2d7c1f1428 \frac{a}{b} + \dfrac{1}{2} + \tfrac{x}{y} + \cfrac{1}{1+\cfrac{1}{x}} + \frac12 + \frac a b + {a+b \over c}
+false 1c6a5729e22efe63 \frac{a}{b} + \dfrac{1}{2} + \tfrac{x}{y} + \cfrac{1}{1+\cfrac{1}{x}} + \frac12 + \frac a b + {a+b \over c}
+true 46525081e89cb4ff \binom{n}{k} + \dbinom{n}{2} + \tbinom{m}{3} + \frac{\frac{a}{b}}{\frac{c}{d}}
+false 4fd443ea3bc203bb \binom{n}{k} + \dbinom{n}{2} + \tbinom{m}{3} + \frac{\frac{a}{b}}{\frac{c}{d}}
+true f14473a0bc396cc5 \sqrt{x} + \sqrt[3]{x+1} + \sqrt[n]{\frac{a}{b}} + \sqrt{\sqrt{y}} + \sqrt 2
+false 83cd1c6efd5d3e65 \sqrt{x} + \sqrt[3]{x+1} + \sqrt[n]{\frac{a}{b}} + \sqrt{\sqrt{y}} + \sqrt 2
+true 995d9f369bcb2de1 x^2 + x_i^2 + x^{2}_{i} + x'' + f'(x) + a_{i_j} + x'^2 + y_1' + e^{-x^2} + 2^{2^{2}}
+false 995d9f369bcb2de1 x^2 + x_i^2 + x^{2}_{i} + x'' + f'(x) + a_{i_j} + x'^2 + y_1' + e^{-x^2} + 2^{2^{2}}
+true 2215d35e7808d3b4 3.14 + 0.5 + 12 \cdot 345.6 + 1{,}000 + . + x.y
+false 2215d35e7808d3b4 3.14 + 0.5 + 12 \cdot 345.6 + 1{,}000 + . + x.y
+true 54f2d5a38776bf13 \sum_{k=1}^n k \quad \prod_{i} \quad \coprod \quad \int_0^1 \quad \iint \quad \iiint \quad \oint_C
+false bd3f83da0e1a1609 \sum_{k=1}^n k \quad \prod_{i} \quad \coprod \quad \int_0^1 \quad \iint \quad \iiint \quad \oint_C
+true 0ff3bd5b51f255ea \sum\limits_{k} \quad \int\limits_0^1 \quad \sum\nolimits_k \quad \bigcup_i A_i \quad \bigcap \bigvee \bigwedge \bigoplus \bigotimes \bigodot \biguplus \bigsqcup
+false d7a58c603fb1529c \sum\limits_{k} \quad \int\limits_0^1 \quad \sum\nolimits_k \quad \bigcup_i A_i \quad \bigcap \bigvee \bigwedge \bigoplus \bigotimes \bigodot \biguplus \bigsqcup
+true 4998c869f5bf3b49 \sin x + \cos y + \tan z + \cot \sec \csc \arcsin \arccos \arctan \sinh \cosh \tanh \coth
+false 4998c869f5bf3b49 \sin x + \cos y + \tan z + \cot \sec \csc \arcsin \arccos \arctan \sinh \cosh \tanh \coth
+true 2be41ace0df87d1b \log_2 n + \ln x + \lg \exp \deg \dim \ker \hom \arg \gcd \Pr \det \quad a \bmod b \quad \mod
+false 2be41ace0df87d1b \log_2 n + \ln x + \lg \exp \deg \dim \ker \hom \arg \gcd \Pr \det \quad a \bmod b \quad \mod
+true 8c640c99878d9b2c \lim_{x \to 0} \frac{\sin x}{x} \quad \liminf_{n} \quad \limsup \quad \max_{i} \min_j \sup \inf \operatorname{argmax}_x \argmax \argmin \operatorname{tr} A
+false 1181379013f52548 \lim_{x \to 0} \frac{\sin x}{x} \quad \liminf_{n} \quad \limsup \quad \max_{i} \min_j \sup \inf \operatorname{argmax}_x \argmax \argmin \operatorname{tr} A
+true 18d126205d352da1 \lim\limits_{n} a_n \quad \max\nolimits_i \quad \displaystyle\sum \textstyle\sum \scriptstyle x \nonumber \notag
+false 1c1e39627bf3bb78 \lim\limits_{n} a_n \quad \max\nolimits_i \quad \displaystyle\sum \textstyle\sum \scriptstyle x \nonumber \notag
+true a7ea16480069f3df \left( \frac{a}{b} \right) \left[ \frac{a}{b} \right] \left\{ \frac{a}{b} \right\} \left| \frac{a}{b} \right| \left\| \frac{a}{b} \right\|
+false 1ac67f20f215a23d \left( \frac{a}{b} \right) \left[ \frac{a}{b} \right] \left\{ \frac{a}{b} \right\} \left| \frac{a}{b} \right| \left\| \frac{a}{b} \right\|
+true e4234016c6c78cc0 \left\langle \frac{a}{b} \right\rangle \left\lfloor \frac{a}{b} \right\rfloor \left\lceil \frac{a}{b} \right\rceil \left. \frac{a}{b} \right| \left\uparrow \frac{a}{b} \right\downarrow
+false 8b1b13681d97b360 \left\langle \frac{a}{b} \right\rangle \left\lfloor \frac{a}{b} \right\rfloor \left\lceil \frac{a}{b} \right\rceil \left. \frac{a}{b} \right| \left\uparrow \frac{a}{b} \right\downarrow
+true 1a4e5a2a44df36da \left\lbrace x \right\rbrace \left\lvert x \right\rvert \left\lVert x \right\rVert \left\vert x \right\Vert \left/ x \right\backslash \left( x \right.
+false 1a4e5a2a44df36da \left\lbrace x \right\rbrace \left\lvert x \right\rvert \left\lVert x \right\rVert \left\vert x \right\Vert \left/ x \right\backslash \left( x \right.
+true 8023d966abe1ea08 \left( \left[ \left\{ \frac{\frac{1}{2}}{3} \right\} \right] \right) \quad \left\alpha x \right\foo
+false 787434cc3b078534 \left( \left[ \left\{ \frac{\frac{1}{2}}{3} \right\} \right] \right) \quad \left\alpha x \right\foo
+true f407d008ae8a376b \big( \Big[ \bigg\{ \Bigg| \quad \bigl( x \bigr) \Bigl[ y \Bigr] \biggl\{ z \biggr\} \Biggl\langle w \Biggr\rangle \big. \big\|
+false f407d008ae8a376b \big( \Big[ \bigg\{ \Bigg| \quad \bigl( x \bigr) \Bigl[ y \Bigr] \biggl\{ z \biggr\} \Biggl\langle w \Biggr\rangle \big. \big\|
+true 13ea511b0ee6fa42 \hat x + \widehat{abc} + \tilde y + \widetilde{xyz} + \bar z + \vec v + \dot a + \ddot b
+false 13ea511b0ee6fa42 \hat x + \widehat{abc} + \tilde y + \widetilde{xyz} + \bar z + \vec v + \dot a + \ddot b
+true ab2dbe061ff07edc \acute e + \grave e + \breve u + \check c + \mathring A + \overrightarrow{AB} + \hat{\hat{x}}
+false ab2dbe061ff07edc \acute e + \grave e + \breve u + \check c + \mathring A + \overrightarrow{AB} + \hat{\hat{x}}
+true 37af27c2a230a6ae \overline{x+y} + \underline{z} + \overline{\overline{a}} + \overbrace{a+b+c} + \underbrace{c+d}_{n} + \overbrace{x+y}^{k}
+false 37af27c2a230a6ae \overline{x+y} + \underline{z} + \overline{\overline{a}} + \overbrace{a+b+c} + \underbrace{c+d}_{n} + \overbrace{x+y}^{k}
+true 46fc4dfb5d64c4cb \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix} \begin{bmatrix} a & b \\ c & d \end{bmatrix} \begin{Bmatrix} x \\ y \end{Bmatrix}
+false 46fc4dfb5d64c4cb \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix} \begin{bmatrix} a & b \\ c & d \end{bmatrix} \begin{Bmatrix} x \\ y \end{Bmatrix}
+true 7c4aa6eaccf2f5c9 \begin{vmatrix} a & b \\ c & d \end{vmatrix} \begin{Vmatrix} 1 & 0 \\ 0 & 1 \end{Vmatrix} \begin{matrix} p & q \\ r & s \\ \end{matrix}
+false 7c4aa6eaccf2f5c9 \begin{vmatrix} a & b \\ c & d \end{vmatrix} \begin{Vmatrix} 1 & 0 \\ 0 & 1 \end{Vmatrix} \begin{matrix} p & q \\ r & s \\ \end{matrix}
+true 2dbda0d586410622 f(x) = \begin{cases} 1 & x > 0 \\ 0 & \text{otherwise} \end{cases}
+false 2dbda0d586410622 f(x) = \begin{cases} 1 & x > 0 \\ 0 & \text{otherwise} \end{cases}
+true 4d420d60a375d25f \begin{aligned} a &= b + c \\ d &= e \end{aligned} \quad \begin{align*} x &= 1 \end{align*}
+false 4d420d60a375d25f \begin{aligned} a &= b + c \\ d &= e \end{aligned} \quad \begin{align*} x &= 1 \end{align*}
+true 9826116b2bdb934b \begin{split} a &= b \\[2pt] &= c \end{split} \quad \begin{gathered} x \\ y \end{gathered} \quad \begin{alignat}{2} a & b \end{alignat}
+false 9826116b2bdb934b \begin{split} a &= b \\[2pt] &= c \end{split} \quad \begin{gathered} x \\ y \end{gathered} \quad \begin{alignat}{2} a & b \end{alignat}
+true e7e1253e573b4166 \begin{array}{cc} 1 & 2 \\ 3 & 4 \end{array} \quad \begin{pmatrix*} 1 \end{pmatrix*} \quad \begin{foo} a & b \end{foo} \quad \begin{cases*} x \end{cases*}
+false e7e1253e573b4166 \begin{array}{cc} 1 & 2 \\ 3 & 4 \end{array} \quad \begin{pmatrix*} 1 \end{pmatrix*} \quad \begin{foo} a & b \end{foo} \quad \begin{cases*} x \end{cases*}
+true 6b7c94bae63bfead \begin{pmatrix} \frac{1}{2} & \sqrt{3} \\ \alpha & \begin{bmatrix} 0 \end{bmatrix} \end{pmatrix} \quad \begin{bmatrix} 1 & 2 }
+false 6b7c94bae63bfead \begin{pmatrix} \frac{1}{2} & \sqrt{3} \\ \alpha & \begin{bmatrix} 0 \end{bmatrix} \end{pmatrix} \quad \begin{bmatrix} 1 & 2 }
+true 2151f830141d460e \text{if } x > 0 \text{ and } \textrm{rm} \mbox{box} \textnormal{normal} \textup{up} \textbf{bold 12} \textit{italic 3} \text{a {nested} b}
+false 2151f830141d460e \text{if } x > 0 \text{ and } \textrm{rm} \mbox{box} \textnormal{normal} \textup{up} \textbf{bold 12} \textit{italic 3} \text{a {nested} b}
+true 952db4bcf10d91cd \mathbb{R} \mathbb{N} \mathbb{Z} \mathbb{Q} \mathbb{C} \mathbb{H} \mathbb{P} \mathbb{1} \mathbb{x} \quad \mathcal{L} \mathcal{B} \mathcal{EFHIMRT} \mathscr{ego} \mathcal{A}
+false 952db4bcf10d91cd \mathbb{R} \mathbb{N} \mathbb{Z} \mathbb{Q} \mathbb{C} \mathbb{H} \mathbb{P} \mathbb{1} \mathbb{x} \quad \mathcal{L} \mathcal{B} \mathcal{EFHIMRT} \mathscr{ego} \mathcal{A}
+true 24552c3abd6fe71d \mathbf{v} + \mathbf{12} + \bf x \quad \rm{abc} \quad \mathrm{d}x \quad \boldsymbol\alpha \bm{x1} \mathit{xyz} \it h \quad h \hbar
+false 24552c3abd6fe71d \mathbf{v} + \mathbf{12} + \bf x \quad \rm{abc} \quad \mathrm{d}x \quad \boldsymbol\alpha \bm{x1} \mathit{xyz} \it h \quad h \hbar
+true e3cba512a9d9750a \mathfrak{g} \mathfrak{CHIRZ} \mathfrak{a} \quad \mathsf{A1b} \quad \mathtt{x1}\quad \mathbf{\alpha \Gamma \le} \mathbf{a^2}
+false e3cba512a9d9750a \mathfrak{g} \mathfrak{CHIRZ} \mathfrak{a} \quad \mathsf{A1b} \quad \mathtt{x1}\quad \mathbf{\alpha \Gamma \le} \mathbf{a^2}
+true fb50ff98b082ea64 \color{red}{x} + \textcolor{blue}{y} + \color{#ff8800}{z} + \color{grey} w + \color{gray}{v} + \color{green}{a} \color{orange}{b} \color{purple}{c} \color{violet}{d} \color{magenta}{e} \color{cyan}{f} \color{brown}{g} \color{chartreuse}{h} \color{ red }{i} \color{#12}{j}
+false fb50ff98b082ea64 \color{red}{x} + \textcolor{blue}{y} + \color{#ff8800}{z} + \color{grey} w + \color{gray}{v} + \color{green}{a} \color{orange}{b} \color{purple}{c} \color{violet}{d} \color{magenta}{e} \color{cyan}{f} \color{brown}{g} \color{chartreuse}{h} \color{ red }{i} \color{#12}{j}
+true 7c2a2ffc7ecac7ed a \not= b \quad x \not\in A \quad \not\subset \not\subseteq \not\le \not\ge \not\sim \not\equiv \not< \not> \not a \not{=} \not\alpha
+false 7c2a2ffc7ecac7ed a \not= b \quad x \not\in A \quad \not\subset \not\subseteq \not\le \not\ge \not\sim \not\equiv \not< \not> \not a \not{=} \not\alpha
+true 193a89e5d0e6b00b \operatorname{span}(v) \quad \operatorname{Hom} \quad \text{} \quad \mathbb{}
+false 193a89e5d0e6b00b \operatorname{span}(v) \quad \operatorname{Hom} \quad \text{} \quad \mathbb{}
+true 17ce5ab2caf91365 \alpha \beta \gamma \delta \epsilon \varepsilon \zeta \eta \theta \vartheta \iota \kappa \lambda \mu \nu \xi \omicron \pi \varpi \rho \varrho \sigma \varsigma \tau \upsilon \phi \varphi \chi \psi \omega
+false 17ce5ab2caf91365 \alpha \beta \gamma \delta \epsilon \varepsilon \zeta \eta \theta \vartheta \iota \kappa \lambda \mu \nu \xi \omicron \pi \varpi \rho \varrho \sigma \varsigma \tau \upsilon \phi \varphi \chi \psi \omega
+true a0aa4c10d08a357c \Gamma \Delta \Theta \Lambda \Xi \Pi \Sigma \Upsilon \Phi \Psi \Omega \quad α β ≤ ∞ x²
+false a0aa4c10d08a357c \Gamma \Delta \Theta \Lambda \Xi \Pi \Sigma \Upsilon \Phi \Psi \Omega \quad α β ≤ ∞ x²
+true 3c2a2a305271fb02 a\,b\:c\>d\;e\!f\ g\quad h\qquad i \\ j \{ x \} \| \% \$ \# \& \_
+false 3c2a2a305271fb02 a\,b\:c\>d\;e\!f\ g\quad h\qquad i \\ j \{ x \} \| \% \$ \# \& \_
+true a223bedb7243fc25 \pm \mp \times \div \cdot \ast \star \circ \bullet \oplus \ominus \otimes \oslash \odot \cap \cup \wedge \land \vee \lor \setminus \wr \amalg \dagger \ddagger \diamond
+false a223bedb7243fc25 \pm \mp \times \div \cdot \ast \star \circ \bullet \oplus \ominus \otimes \oslash \odot \cap \cup \wedge \land \vee \lor \setminus \wr \amalg \dagger \ddagger \diamond
+true c78fb3065d8fc03c \le \leq \ge \geq \neq \ne \leqslant \geqslant \ll \gg \approx \sim \simeq \cong \equiv \propto \in \notin \ni \subset \supset \subseteq \supseteq \subsetneq \supsetneq
+false c78fb3065d8fc03c \le \leq \ge \geq \neq \ne \leqslant \geqslant \ll \gg \approx \sim \simeq \cong \equiv \propto \in \notin \ni \subset \supset \subseteq \supseteq \subsetneq \supsetneq
+true eb413ee9f12cf1e8 \mid \parallel \perp \models \vdash \dashv \doteq \prec \succ \preceq \succeq \asymp \coloneqq \therefore \because
+false eb413ee9f12cf1e8 \mid \parallel \perp \models \vdash \dashv \doteq \prec \succ \preceq \succeq \asymp \coloneqq \therefore \because
+true 76bc781f0e80a6b3 \to \rightarrow \gets \leftarrow \leftrightarrow \Rightarrow \implies \Leftarrow \Leftrightarrow \iff \mapsto \longrightarrow \longleftarrow \Longrightarrow \longmapsto \uparrow \downarrow \hookrightarrow \rightharpoonup \nearrow \searrow
+false 76bc781f0e80a6b3 \to \rightarrow \gets \leftarrow \leftrightarrow \Rightarrow \implies \Leftarrow \Leftrightarrow \iff \mapsto \longrightarrow \longleftarrow \Longrightarrow \longmapsto \uparrow \downarrow \hookrightarrow \rightharpoonup \nearrow \searrow
+true bc0221e17cb902cf \infty \partial \nabla \forall \exists \nexists \emptyset \varnothing \neg \lnot \angle \triangle \ell \hbar \Re \Im \aleph \wp \prime \top \bot \degree \checkmark
+false bc0221e17cb902cf \infty \partial \nabla \forall \exists \nexists \emptyset \varnothing \neg \lnot \angle \triangle \ell \hbar \Re \Im \aleph \wp \prime \top \bot \degree \checkmark
+true 9984523e28191885 \ldots \dots \dotsc \dotso \cdots \dotsb \dotsm \vdots \ddots \colon \lbrace \rbrace \langle \rangle \lfloor \rfloor \lceil \rceil \vert \Vert \lvert \rvert \lVert \rVert \backslash
+false 9984523e28191885 \ldots \dots \dotsc \dotso \cdots \dotsb \dotsm \vdots \ddots \colon \lbrace \rbrace \langle \rangle \lfloor \rfloor \lceil \rceil \vert \Vert \lvert \rvert \lVert \rVert \backslash
+true 3c6ac01f7c65c9bc \square \blacksquare \Box \clubsuit \heartsuit \spadesuit \diamondsuit \flat \sharp \quad a - b * c / d : e ; f , g ! h ? (x) [y] = < >
+false 3c6ac01f7c65c9bc \square \blacksquare \Box \clubsuit \heartsuit \spadesuit \diamondsuit \flat \sharp \quad a - b * c / d : e ; f , g ! h ? (x) [y] = < >
+true b50e677fb7ced6d9 \foo + \frac{a} + \sqrt[ + x
+false bd46599a99c7576c \foo + \frac{a} + \sqrt[ + x
+true 16f111e92c13f3b2 \left( x \quad y
+false 16f111e92c13f3b2 \left( x \quad y
+true 1a8c8f303139f37a a } b ] c ) \right) d
+false 1a8c8f303139f37a a } b ] c ) \right) d
+true cfe255d44f68cb88 { unbalanced
+false cfe255d44f68cb88 { unbalanced
+true 1f0c32dc093437b1 ^2 + _3 + x^ 
+false 1f0c32dc093437b1 ^2 + _3 + x^ 
+true 7fea76419f29a1b0 \text{unclosed
+false 7fea76419f29a1b0 \text{unclosed
+true 97b09cc599951b18 x & y \\ z
+false 97b09cc599951b18 x & y \\ z
+true 6932bce886ba4520 \begin{pmatrix} 1 & 2
+false 6932bce886ba4520 \begin{pmatrix} 1 & 2
+true e5556fffd90c1653 \end{pmatrix} x
+false e5556fffd90c1653 \end{pmatrix} x
+true 2d9b9aa7a9530fa3 \over 2 + a \over b \over c + \overx
+false d6fb6da55856c899 \over 2 + a \over b \over c + \overx
+true e5556fffd90c1653 \\ \\ \frac\\x \sqrt\\ \overline \hat
+false e5556fffd90c1653 \\ \\ \frac\\x \sqrt\\ \overline \hat
+true d7b6987debbb83f6 \α + \é + \1 + \@ + \^ + \' 
+false d7b6987debbb83f6 \α + \é + \1 + \@ + \^ + \' 
+true 17aedcdc89c3fca0 x \
+false 17aedcdc89c3fca0 x \
+true 7050eb8e57640929 x^2 + y_i
+false 7050eb8e57640929 x^2 + y_i
+true 3c5307528c58cfc1 \frac{a}{b}
+false 3748395b6cdb3790 \frac{a}{b}
+true dfa8b16ef7cf3f17 \sum_{k=1}^n k
+false 6749eaa18025f953 \sum_{k=1}^n k
+true 9441715ce0bc35d6 \int_0^1 f
+false 11c4087d5edf7f6c \int_0^1 f
+true 045848a32df2aff9 \lim_{x\to 0}
+false 84c6df4e18e6c035 \lim_{x\to 0}
+true c89cc7d86e39deb8 \sqrt{2}
+false a742b63ab3c3fc55 \sqrt{2}
+true 3c5307528c58cfc1 a \over b
+false 3748395b6cdb3790 a \over b
+true fe381b2d7c1f1428 \frac{a}{b} + \dfrac{1}{2} + \tfrac{x}{y} + \cfrac{1}{1+\cfrac{1}{x}} + \frac12 + \frac a b + {a+b \over c}
+false 1c6a5729e22efe63 \frac{a}{b} + \dfrac{1}{2} + \tfrac{x}{y} + \cfrac{1}{1+\cfrac{1}{x}} + \frac12 + \frac a b + {a+b \over c}
+true 46525081e89cb4ff \binom{n}{k} + \dbinom{n}{2} + \tbinom{m}{3} + \frac{\frac{a}{b}}{\frac{c}{d}}
+false 4fd443ea3bc203bb \binom{n}{k} + \dbinom{n}{2} + \tbinom{m}{3} + \frac{\frac{a}{b}}{\frac{c}{d}}
+true f14473a0bc396cc5 \sqrt{x} + \sqrt[3]{x+1} + \sqrt[n]{\frac{a}{b}} + \sqrt{\sqrt{y}} + \sqrt 2
+false 83cd1c6efd5d3e65 \sqrt{x} + \sqrt[3]{x+1} + \sqrt[n]{\frac{a}{b}} + \sqrt{\sqrt{y}} + \sqrt 2
+true 995d9f369bcb2de1 x^2 + x_i^2 + x^{2}_{i} + x'' + f'(x) + a_{i_j} + x'^2 + y_1' + e^{-x^2} + 2^{2^{2}}
+false 995d9f369bcb2de1 x^2 + x_i^2 + x^{2}_{i} + x'' + f'(x) + a_{i_j} + x'^2 + y_1' + e^{-x^2} + 2^{2^{2}}
+true 2215d35e7808d3b4 3.14 + 0.5 + 12 \cdot 345.6 + 1{,}000 + . + x.y
+false 2215d35e7808d3b4 3.14 + 0.5 + 12 \cdot 345.6 + 1{,}000 + . + x.y
+true 54f2d5a38776bf13 \sum_{k=1}^n k \quad \prod_{i} \quad \coprod \quad \int_0^1 \quad \iint \quad \iiint \quad \oint_C
+false bd3f83da0e1a1609 \sum_{k=1}^n k \quad \prod_{i} \quad \coprod \quad \int_0^1 \quad \iint \quad \iiint \quad \oint_C
+true 0ff3bd5b51f255ea \sum\limits_{k} \quad \int\limits_0^1 \quad \sum\nolimits_k \quad \bigcup_i A_i \quad \bigcap \bigvee \bigwedge \bigoplus \bigotimes \bigodot \biguplus \bigsqcup
+false d7a58c603fb1529c \sum\limits_{k} \quad \int\limits_0^1 \quad \sum\nolimits_k \quad \bigcup_i A_i \quad \bigcap \bigvee \bigwedge \bigoplus \bigotimes \bigodot \biguplus \bigsqcup
+true 4998c869f5bf3b49 \sin x + \cos y + \tan z + \cot \sec \csc \arcsin \arccos \arctan \sinh \cosh \tanh \coth
+false 4998c869f5bf3b49 \sin x + \cos y + \tan z + \cot \sec \csc \arcsin \arccos \arctan \sinh \cosh \tanh \coth
+true 2be41ace0df87d1b \log_2 n + \ln x + \lg \exp \deg \dim \ker \hom \arg \gcd \Pr \det \quad a \bmod b \quad \mod
+false 2be41ace0df87d1b \log_2 n + \ln x + \lg \exp \deg \dim \ker \hom \arg \gcd \Pr \det \quad a \bmod b \quad \mod
+true 8c640c99878d9b2c \lim_{x \to 0} \frac{\sin x}{x} \quad \liminf_{n} \quad \limsup \quad \max_{i} \min_j \sup \inf \operatorname{argmax}_x \argmax \argmin \operatorname{tr} A
+false 1181379013f52548 \lim_{x \to 0} \frac{\sin x}{x} \quad \liminf_{n} \quad \limsup \quad \max_{i} \min_j \sup \inf \operatorname{argmax}_x \argmax \argmin \operatorname{tr} A
+true 18d126205d352da1 \lim\limits_{n} a_n \quad \max\nolimits_i \quad \displaystyle\sum \textstyle\sum \scriptstyle x \nonumber \notag
+false 1c1e39627bf3bb78 \lim\limits_{n} a_n \quad \max\nolimits_i \quad \displaystyle\sum \textstyle\sum \scriptstyle x \nonumber \notag
+true b50e677fb7ced6d9 \foo + \frac{a} + \sqrt[ + x
+false bd46599a99c7576c \foo + \frac{a} + \sqrt[ + x
+true 16f111e92c13f3b2 \left( x \quad y
+false 16f111e92c13f3b2 \left( x \quad y
+true 1a8c8f303139f37a a } b ] c ) \right) d
+false 1a8c8f303139f37a a } b ] c ) \right) d
+true cfe255d44f68cb88 { unbalanced
+false cfe255d44f68cb88 { unbalanced
+true 1f0c32dc093437b1 ^2 + _3 + x^ 
+false 1f0c32dc093437b1 ^2 + _3 + x^ 
+true 7fea76419f29a1b0 \text{unclosed
+false 7fea76419f29a1b0 \text{unclosed
+true 97b09cc599951b18 x & y \\ z
+false 97b09cc599951b18 x & y \\ z
+true 6932bce886ba4520 \begin{pmatrix} 1 & 2
+false 6932bce886ba4520 \begin{pmatrix} 1 & 2
+true e5556fffd90c1653 \end{pmatrix} x
+false e5556fffd90c1653 \end{pmatrix} x
+true 2d9b9aa7a9530fa3 \over 2 + a \over b \over c + \overx
+false d6fb6da55856c899 \over 2 + a \over b \over c + \overx
+true e5556fffd90c1653 \\ \\ \frac\\x \sqrt\\ \overline \hat
+false e5556fffd90c1653 \\ \\ \frac\\x \sqrt\\ \overline \hat
+true d7b6987debbb83f6 \α + \é + \1 + \@ + \^ + \' 
+false d7b6987debbb83f6 \α + \é + \1 + \@ + \^ + \' 
+true 17aedcdc89c3fca0 x \
+false 17aedcdc89c3fca0 x \
+true 6d1afff5bb31c928 \undefined
+false 6d1afff5bb31c928 \undefined
+true fd9c9f7ccd4a87e3 \frac
+false fcf71b38e94a5248 \frac
+true 5d1767eacf3c339c \left(
+false 5d1767eacf3c339c \left(
+true e102ce25bf45b9c5 \begin
+false e102ce25bf45b9c5 \begin
+true e0d7d23e40b0f6a4 x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+false 8e5906ccf9fe5eb1 x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+true 5b4c704669762b84 e^{i\pi} + 1 = 0
+false 5b4c704669762b84 e^{i\pi} + 1 = 0
+true e0a0876a08c06e35 \sum_{k=1}^{n} k = \frac{n(n+1)}{2}
+false ee1bde4354e4fbf6 \sum_{k=1}^{n} k = \frac{n(n+1)}{2}
+true 08fa4a0b5fcbda1e \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+false 6a0948ebc45a2ce4 \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+true 2a9a6c492fb0ba28 f(x) = \sum_{n=0}^{\infty} \frac{f^{(n)}(a)}{n!} (x-a)^n
+false 382102ad1cd8e0ff f(x) = \sum_{n=0}^{\infty} \frac{f^{(n)}(a)}{n!} (x-a)^n
+true 05d1531bf72efded \nabla \times \mathbf{E} = -\frac{\partial \mathbf{B}}{\partial t}
+false 5d261d025f899c22 \nabla \times \mathbf{E} = -\frac{\partial \mathbf{B}}{\partial t}
+true 42c14409c50d570b \det(A - \lambda I) = 0
+false 42c14409c50d570b \det(A - \lambda I) = 0
+true eafab61c18257bf9 \left\| \mathbf{x} \right\|_2 = \sqrt{\sum_{i=1}^n x_i^2}
+false cd84cbfbe515fc3f \left\| \mathbf{x} \right\|_2 = \sqrt{\sum_{i=1}^n x_i^2}
+true 726031bfc68ea6e5 P(A \mid B) = \frac{P(B \mid A)\,P(A)}{P(B)}
+false 79cb3d1bfeb02a03 P(A \mid B) = \frac{P(B \mid A)\,P(A)}{P(B)}
+true bfcf8bfed25079ed \hat{x} \cdot \vec{v} \leq \|v\|
+false bfcf8bfed25079ed \hat{x} \cdot \vec{v} \leq \|v\|
+true 6bf64f9d20eec234 \mathbb{R}^n \subseteq \mathcal{H}
+false 6bf64f9d20eec234 \mathbb{R}^n \subseteq \mathcal{H}
+true 36c931d7972e0593 \sqrt[3]{\alpha^2 + \beta_i'}
+false 0ca65f42a810191a \sqrt[3]{\alpha^2 + \beta_i'}
+true 1402999573b5077b \lim_{x \to 0} \frac{\sin x}{x} = 1
+false 9261bbdb32ff80d5 \lim_{x \to 0} \frac{\sin x}{x} = 1
+true 5e0610843d9c63ed \binom{n}{k} = \frac{n!}{k!(n-k)!}
+false 956ca75fff5f1da7 \binom{n}{k} = \frac{n!}{k!(n-k)!}
+true 16fbca40d1b865a6 \oint_{\partial \Sigma} \mathbf{B} \cdot d\mathbf{l} = \mu_0 \iint_\Sigma \mathbf{J} \cdot d\mathbf{S}
+false 6f56e5b993b170e2 \oint_{\partial \Sigma} \mathbf{B} \cdot d\mathbf{l} = \mu_0 \iint_\Sigma \mathbf{J} \cdot d\mathbf{S}
+true 1949a30d33a05ea9 A = \begin{bmatrix} a_{11} & a_{12} \ a_{21} & a_{22} \end{bmatrix}
+false 1949a30d33a05ea9 A = \begin{bmatrix} a_{11} & a_{12} \ a_{21} & a_{22} \end{bmatrix}
+true 650c4f3bc7ecc95d |x| = \begin{cases} x & x \ge 0 \ -x & x < 0 \end{cases}
+false 650c4f3bc7ecc95d |x| = \begin{cases} x & x \ge 0 \ -x & x < 0 \end{cases}
+true bd58badac5d2fd68 \zeta(s) = \prod_{p \text{ prime}} \frac{1}{1 - p^{-s}}
+false a0a31a933d213ff6 \zeta(s) = \prod_{p \text{ prime}} \frac{1}{1 - p^{-s}}
+true c1ab7ae6eafdea60 \Gamma(z) = \int_0^\infty t^{z-1} e^{-t}\,dt
+false 25475bd73df19a6c \Gamma(z) = \int_0^\infty t^{z-1} e^{-t}\,dt
+true 4e1617455c1c8739 \color{red}{a^2} + \color{blue}{b^2} = c^2
+false 4e1617455c1c8739 \color{red}{a^2} + \color{blue}{b^2} = c^2
+true bed8ecd9392356ed \alpha{x} \beta{x} \gamma{x} \delta{x} \epsilon{x} \varepsilon{x} \zeta{x} \eta{x} \theta{x} \vartheta{x} \iota{x} \kappa{x}
+false bed8ecd9392356ed \alpha{x} \beta{x} \gamma{x} \delta{x} \epsilon{x} \varepsilon{x} \zeta{x} \eta{x} \theta{x} \vartheta{x} \iota{x} \kappa{x}
+true c108afb544b3d02e \lambda{x} \mu{x} \nu{x} \xi{x} \omicron{x} \pi{x} \varpi{x} \rho{x} \varrho{x} \sigma{x} \varsigma{x} \tau{x}
+false c108afb544b3d02e \lambda{x} \mu{x} \nu{x} \xi{x} \omicron{x} \pi{x} \varpi{x} \rho{x} \varrho{x} \sigma{x} \varsigma{x} \tau{x}
+true 7cb46d0a63db1d8a \upsilon{x} \phi{x} \varphi{x} \chi{x} \psi{x} \omega{x} \Gamma{x} \Delta{x} \Theta{x} \Lambda{x} \Xi{x} \Pi{x}
+false 7cb46d0a63db1d8a \upsilon{x} \phi{x} \varphi{x} \chi{x} \psi{x} \omega{x} \Gamma{x} \Delta{x} \Theta{x} \Lambda{x} \Xi{x} \Pi{x}
+true 9cc434321e53243b \Sigma{x} \Upsilon{x} \Phi{x} \Psi{x} \Omega{x} \pm{x} \mp{x} \times{x} \div{x} \cdot{x} \ast{x} \star{x}
+false 9cc434321e53243b \Sigma{x} \Upsilon{x} \Phi{x} \Psi{x} \Omega{x} \pm{x} \mp{x} \times{x} \div{x} \cdot{x} \ast{x} \star{x}
+true a33b42ef5d1e9b8c \circ{x} \bullet{x} \oplus{x} \ominus{x} \otimes{x} \oslash{x} \odot{x} \cap{x} \cup{x} \wedge{x} \land{x} \vee{x}
+false a33b42ef5d1e9b8c \circ{x} \bullet{x} \oplus{x} \ominus{x} \otimes{x} \oslash{x} \odot{x} \cap{x} \cup{x} \wedge{x} \land{x} \vee{x}
+true db18fec7b22c16b9 \lor{x} \setminus{x} \wr{x} \amalg{x} \dagger{x} \ddagger{x} \le{x} \leq{x} \ge{x} \geq{x} \neq{x} \ne{x}
+false db18fec7b22c16b9 \lor{x} \setminus{x} \wr{x} \amalg{x} \dagger{x} \ddagger{x} \le{x} \leq{x} \ge{x} \geq{x} \neq{x} \ne{x}
+true 45a038e5e2268a5a \leqslant{x} \geqslant{x} \ll{x} \gg{x} \approx{x} \sim{x} \simeq{x} \cong{x} \equiv{x} \propto{x} \in{x} \notin{x}
+false 45a038e5e2268a5a \leqslant{x} \geqslant{x} \ll{x} \gg{x} \approx{x} \sim{x} \simeq{x} \cong{x} \equiv{x} \propto{x} \in{x} \notin{x}
+true 505fe1eb459229e2 \ni{x} \subset{x} \supset{x} \subseteq{x} \supseteq{x} \subsetneq{x} \supsetneq{x} \mid{x} \parallel{x} \perp{x} \models{x} \vdash{x}
+false 505fe1eb459229e2 \ni{x} \subset{x} \supset{x} \subseteq{x} \supseteq{x} \subsetneq{x} \supsetneq{x} \mid{x} \parallel{x} \perp{x} \models{x} \vdash{x}
+true cefe046762c4bf2d \dashv{x} \doteq{x} \prec{x} \succ{x} \preceq{x} \succeq{x} \asymp{x} \coloneqq{x} \to{x} \rightarrow{x} \gets{x} \leftarrow{x}
+false cefe046762c4bf2d \dashv{x} \doteq{x} \prec{x} \succ{x} \preceq{x} \succeq{x} \asymp{x} \coloneqq{x} \to{x} \rightarrow{x} \gets{x} \leftarrow{x}
+true ed01d2b5f1bceeed \leftrightarrow{x} \Rightarrow{x} \implies{x} \Leftarrow{x} \Leftrightarrow{x} \iff{x} \mapsto{x} \longrightarrow{x} \longleftarrow{x} \Longrightarrow{x} \longmapsto{x} \uparrow{x}
+false ed01d2b5f1bceeed \leftrightarrow{x} \Rightarrow{x} \implies{x} \Leftarrow{x} \Leftrightarrow{x} \iff{x} \mapsto{x} \longrightarrow{x} \longleftarrow{x} \Longrightarrow{x} \longmapsto{x} \uparrow{x}
+true d57a5a60c37c0467 \downarrow{x} \hookrightarrow{x} \rightharpoonup{x} \nearrow{x} \searrow{x} \infty{x} \partial{x} \nabla{x} \forall{x} \exists{x} \nexists{x} \emptyset{x}
+false d57a5a60c37c0467 \downarrow{x} \hookrightarrow{x} \rightharpoonup{x} \nearrow{x} \searrow{x} \infty{x} \partial{x} \nabla{x} \forall{x} \exists{x} \nexists{x} \emptyset{x}
+true 1328dd342d23c34a \varnothing{x} \neg{x} \lnot{x} \angle{x} \triangle{x} \ell{x} \hbar{x} \Re{x} \Im{x} \aleph{x} \wp{x} \prime{x}
+false 1328dd342d23c34a \varnothing{x} \neg{x} \lnot{x} \angle{x} \triangle{x} \ell{x} \hbar{x} \Re{x} \Im{x} \aleph{x} \wp{x} \prime{x}
+true 5a104b91f637d41f \top{x} \bot{x} \degree{x} \checkmark{x} \ldots{x} \dots{x} \dotsc{x} \dotso{x} \cdots{x} \dotsb{x} \dotsm{x} \vdots{x}
+false 5a104b91f637d41f \top{x} \bot{x} \degree{x} \checkmark{x} \ldots{x} \dots{x} \dotsc{x} \dotso{x} \cdots{x} \dotsb{x} \dotsm{x} \vdots{x}
+true 1704d01e74671333 \ddots{x} \colon{x} \lbrace{x} \rbrace{x} \langle{x} \rangle{x} \lfloor{x} \rfloor{x} \lceil{x} \rceil{x} \vert{x} \Vert{x}
+false 1704d01e74671333 \ddots{x} \colon{x} \lbrace{x} \rbrace{x} \langle{x} \rangle{x} \lfloor{x} \rfloor{x} \lceil{x} \rceil{x} \vert{x} \Vert{x}
+true 9e7830929c5dfc5e \lvert{x} \rvert{x} \lVert{x} \rVert{x} \backslash{x} \square{x} \blacksquare{x} \Box{x} \diamond{x} \clubsuit{x} \heartsuit{x} \spadesuit{x}
+false 9e7830929c5dfc5e \lvert{x} \rvert{x} \lVert{x} \rVert{x} \backslash{x} \square{x} \blacksquare{x} \Box{x} \diamond{x} \clubsuit{x} \heartsuit{x} \spadesuit{x}
+true 6461218c71992944 \diamondsuit{x} \flat{x} \sharp{x} \therefore{x} \because{x} \sum{x} \prod{x} \coprod{x} \int{x} \iint{x} \iiint{x} \oint{x}
+false b9a187bdfc953bc8 \diamondsuit{x} \flat{x} \sharp{x} \therefore{x} \because{x} \sum{x} \prod{x} \coprod{x} \int{x} \iint{x} \iiint{x} \oint{x}
+true f15a3948987b43e9 \bigcup{x} \bigcap{x} \bigvee{x} \bigwedge{x} \bigoplus{x} \bigotimes{x} \bigodot{x} \biguplus{x} \bigsqcup{x} \hat{x} \widehat{x} \tilde{x}
+false 7bb8f8a50276841a \bigcup{x} \bigcap{x} \bigvee{x} \bigwedge{x} \bigoplus{x} \bigotimes{x} \bigodot{x} \biguplus{x} \bigsqcup{x} \hat{x} \widehat{x} \tilde{x}
+true 4c0e0d27fba31a0d \widetilde{x} \bar{x} \vec{x} \dot{x} \ddot{x} \acute{x} \grave{x} \breve{x} \check{x} \mathring{x} \overrightarrow{x}
+false 4c0e0d27fba31a0d \widetilde{x} \bar{x} \vec{x} \dot{x} \ddot{x} \acute{x} \grave{x} \breve{x} \check{x} \mathring{x} \overrightarrow{x}
+true e6641741cf260aac \left\{ x \right\{ \Big\{ \left\lbrace x \right\lbrace \Big\lbrace \left\} x \right\} \Big\} \left\rbrace x \right\rbrace \Big\rbrace \left\| x \right\| \Big\|
+false e6641741cf260aac \left\{ x \right\{ \Big\{ \left\lbrace x \right\lbrace \Big\lbrace \left\} x \right\} \Big\} \left\rbrace x \right\rbrace \Big\rbrace \left\| x \right\| \Big\|
+true 444b767e7be16fe8 \left\Vert x \right\Vert \Big\Vert \left\lVert x \right\lVert \Big\lVert \left\rVert x \right\rVert \Big\rVert \left\vert x \right\vert \Big\vert \left\lvert x \right\lvert \Big\lvert
+false 444b767e7be16fe8 \left\Vert x \right\Vert \Big\Vert \left\lVert x \right\lVert \Big\lVert \left\rVert x \right\rVert \Big\rVert \left\vert x \right\vert \Big\vert \left\lvert x \right\lvert \Big\lvert
+true a71436e184c69465 \left\rvert x \right\rvert \Big\rvert \left\langle x \right\langle \Big\langle \left\rangle x \right\rangle \Big\rangle \left\lfloor x \right\lfloor \Big\lfloor \left\rfloor x \right\rfloor \Big\rfloor
+false a71436e184c69465 \left\rvert x \right\rvert \Big\rvert \left\langle x \right\langle \Big\langle \left\rangle x \right\rangle \Big\rangle \left\lfloor x \right\lfloor \Big\lfloor \left\rfloor x \right\rfloor \Big\rfloor
+true 2ce5fbf1b92d07af \left\lceil x \right\lceil \Big\lceil \left\rceil x \right\rceil \Big\rceil \left\backslash x \right\backslash \Big\backslash \left\uparrow x \right\uparrow \Big\uparrow \left\downarrow x \right\downarrow \Big\downarrow
+false 2ce5fbf1b92d07af \left\lceil x \right\lceil \Big\lceil \left\rceil x \right\rceil \Big\rceil \left\backslash x \right\backslash \Big\backslash \left\uparrow x \right\uparrow \Big\uparrow \left\downarrow x \right\downarrow \Big\downarrow
+true e5556fffd90c1653 
+false e5556fffd90c1653 
+true 31c2714589695bfe \frac{Ab1}{c2 d} \frac \dfrac{Ab1}{c2 d} \dfrac \tfrac{Ab1}{c2 d} \tfrac \cfrac{Ab1}{c2 d} \cfrac \binom{Ab1}{c2 d} \binom \dbinom{Ab1}{c2 d} \dbinom \tbinom{Ab1}{c2 d} \tbinom \sqrt{Ab1}{c2 d} \sqrt 
+false e6a1e9ef2dc6534c \frac{Ab1}{c2 d} \frac \dfrac{Ab1}{c2 d} \dfrac \tfrac{Ab1}{c2 d} \tfrac \cfrac{Ab1}{c2 d} \cfrac \binom{Ab1}{c2 d} \binom \dbinom{Ab1}{c2 d} \dbinom \tbinom{Ab1}{c2 d} \tbinom \sqrt{Ab1}{c2 d} \sqrt 
+true 74752095c7afe437 \text{Ab1}{c2 d} \text \textrm{Ab1}{c2 d} \textrm \mbox{Ab1}{c2 d} \mbox \textnormal{Ab1}{c2 d} \textnormal \textup{Ab1}{c2 d} \textup \textbf{Ab1}{c2 d} \textbf \textit{Ab1}{c2 d} \textit 
+false 74752095c7afe437 \text{Ab1}{c2 d} \text \textrm{Ab1}{c2 d} \textrm \mbox{Ab1}{c2 d} \mbox \textnormal{Ab1}{c2 d} \textnormal \textup{Ab1}{c2 d} \textup \textbf{Ab1}{c2 d} \textbf \textit{Ab1}{c2 d} \textit 
+true dd2c2dd825970bb2 \operatorname{Ab1}{c2 d} \operatorname \mathrm{Ab1}{c2 d} \mathrm \rm{Ab1}{c2 d} \rm \mathbf{Ab1}{c2 d} \mathbf \bf{Ab1}{c2 d} \bf \boldsymbol{Ab1}{c2 d} \boldsymbol \bm{Ab1}{c2 d} \bm 
+false dd2c2dd825970bb2 \operatorname{Ab1}{c2 d} \operatorname \mathrm{Ab1}{c2 d} \mathrm \rm{Ab1}{c2 d} \rm \mathbf{Ab1}{c2 d} \mathbf \bf{Ab1}{c2 d} \bf \boldsymbol{Ab1}{c2 d} \boldsymbol \bm{Ab1}{c2 d} \bm 
+true 1ad58ccbc968814d \mathit{Ab1}{c2 d} \mathit \it{Ab1}{c2 d} \it \mathbb{Ab1}{c2 d} \mathbb \mathcal{Ab1}{c2 d} \mathcal \mathscr{Ab1}{c2 d} \mathscr \mathfrak{Ab1}{c2 d} \mathfrak \mathsf{Ab1}{c2 d} \mathsf 
+false 1ad58ccbc968814d \mathit{Ab1}{c2 d} \mathit \it{Ab1}{c2 d} \it \mathbb{Ab1}{c2 d} \mathbb \mathcal{Ab1}{c2 d} \mathcal \mathscr{Ab1}{c2 d} \mathscr \mathfrak{Ab1}{c2 d} \mathfrak \mathsf{Ab1}{c2 d} \mathsf 
+true f3300d806b100715 \mathtt{Ab1}{c2 d} \mathtt \big{Ab1}{c2 d} \big \Big{Ab1}{c2 d} \Big \bigg{Ab1}{c2 d} \bigg \Bigg{Ab1}{c2 d} \Bigg \bigl{Ab1}{c2 d} \bigl \bigr{Ab1}{c2 d} \bigr \Bigl{Ab1}{c2 d} \Bigl \Bigr{Ab1}{c2 
+false f3300d806b100715 \mathtt{Ab1}{c2 d} \mathtt \big{Ab1}{c2 d} \big \Big{Ab1}{c2 d} \Big \bigg{Ab1}{c2 d} \bigg \Bigg{Ab1}{c2 d} \Bigg \bigl{Ab1}{c2 d} \bigl \bigr{Ab1}{c2 d} \bigr \Bigl{Ab1}{c2 d} \Bigl \Bigr{Ab1}{c2 
+true 8b60f18326da2780 d} \Bigr \biggl{Ab1}{c2 d} \biggl \biggr{Ab1}{c2 d} \biggr \Biggl{Ab1}{c2 d} \Biggl \Biggr{Ab1}{c2 d} \Biggr \overline{Ab1}{c2 d} \overline \underline{Ab1}{c2 d} \underline \overbrace{Ab1}{c2 d} 
+false 8b60f18326da2780 d} \Bigr \biggl{Ab1}{c2 d} \biggl \biggr{Ab1}{c2 d} \biggr \Biggl{Ab1}{c2 d} \Biggl \Biggr{Ab1}{c2 d} \Biggr \overline{Ab1}{c2 d} \overline \underline{Ab1}{c2 d} \underline \overbrace{Ab1}{c2 d} 
+true c82c743ea7151325 \overbrace \underbrace{Ab1}{c2 d} \underbrace \limits{Ab1}{c2 d} \limits \nolimits{Ab1}{c2 d} \nolimits \displaystyle{Ab1}{c2 d} \displaystyle \textstyle{Ab1}{c2 d} \textstyle \scriptstyle{Ab1}{c2 d} 
+false c82c743ea7151325 \overbrace \underbrace{Ab1}{c2 d} \underbrace \limits{Ab1}{c2 d} \limits \nolimits{Ab1}{c2 d} \nolimits \displaystyle{Ab1}{c2 d} \displaystyle \textstyle{Ab1}{c2 d} \textstyle \scriptstyle{Ab1}{c2 d} 
+true 9420ff23d7d9b557 \scriptstyle \nonumber{Ab1}{c2 d} \nonumber \notag{Ab1}{c2 d} \notag \color{Ab1}{c2 d} \color \textcolor{Ab1}{c2 d} \textcolor \not{Ab1}{c2 d} \not \lim{Ab1}{c2 d} \lim \liminf{Ab1}{c2 d} \liminf 
+false 9420ff23d7d9b557 \scriptstyle \nonumber{Ab1}{c2 d} \nonumber \notag{Ab1}{c2 d} \notag \color{Ab1}{c2 d} \color \textcolor{Ab1}{c2 d} \textcolor \not{Ab1}{c2 d} \not \lim{Ab1}{c2 d} \lim \liminf{Ab1}{c2 d} \liminf 
+true 48bc51daf393e952 \limsup{Ab1}{c2 d} \limsup \max{Ab1}{c2 d} \max \min{Ab1}{c2 d} \min \sup{Ab1}{c2 d} \sup \inf{Ab1}{c2 d} \inf \argmax{Ab1}{c2 d} \argmax \argmin{Ab1}{c2 d} \argmin \sin{Ab1}{c2 d} \sin \cos{Ab1}{c2 
+false 48bc51daf393e952 \limsup{Ab1}{c2 d} \limsup \max{Ab1}{c2 d} \max \min{Ab1}{c2 d} \min \sup{Ab1}{c2 d} \sup \inf{Ab1}{c2 d} \inf \argmax{Ab1}{c2 d} \argmax \argmin{Ab1}{c2 d} \argmin \sin{Ab1}{c2 d} \sin \cos{Ab1}{c2 
+true e051fb3d44859b2e d} \cos \tan{Ab1}{c2 d} \tan \cot{Ab1}{c2 d} \cot \sec{Ab1}{c2 d} \sec \csc{Ab1}{c2 d} \csc \arcsin{Ab1}{c2 d} \arcsin \arccos{Ab1}{c2 d} \arccos \arctan{Ab1}{c2 d} \arctan \sinh{Ab1}{c2 d} \sinh 
+false e051fb3d44859b2e d} \cos \tan{Ab1}{c2 d} \tan \cot{Ab1}{c2 d} \cot \sec{Ab1}{c2 d} \sec \csc{Ab1}{c2 d} \csc \arcsin{Ab1}{c2 d} \arcsin \arccos{Ab1}{c2 d} \arccos \arctan{Ab1}{c2 d} \arctan \sinh{Ab1}{c2 d} \sinh 
+true c562590e8901acf4 \cosh{Ab1}{c2 d} \cosh \tanh{Ab1}{c2 d} \tanh \coth{Ab1}{c2 d} \coth \log{Ab1}{c2 d} \log \ln{Ab1}{c2 d} \ln \lg{Ab1}{c2 d} \lg \exp{Ab1}{c2 d} \exp \deg{Ab1}{c2 d} \deg \dim{Ab1}{c2 d} \dim 
+false c562590e8901acf4 \cosh{Ab1}{c2 d} \cosh \tanh{Ab1}{c2 d} \tanh \coth{Ab1}{c2 d} \coth \log{Ab1}{c2 d} \log \ln{Ab1}{c2 d} \ln \lg{Ab1}{c2 d} \lg \exp{Ab1}{c2 d} \exp \deg{Ab1}{c2 d} \deg \dim{Ab1}{c2 d} \dim 
+true 0feef49763be4c27 \ker{Ab1}{c2 d} \ker \hom{Ab1}{c2 d} \hom \arg{Ab1}{c2 d} \arg \gcd{Ab1}{c2 d} \gcd \Pr{Ab1}{c2 d} \Pr \det{Ab1}{c2 d} \det \mod{Ab1}{c2 d} \mod \bmod{Ab1}{c2 d} \bmod 
+false 0feef49763be4c27 \ker{Ab1}{c2 d} \ker \hom{Ab1}{c2 d} \hom \arg{Ab1}{c2 d} \arg \gcd{Ab1}{c2 d} \gcd \Pr{Ab1}{c2 d} \Pr \det{Ab1}{c2 d} \det \mod{Ab1}{c2 d} \mod \bmod{Ab1}{c2 d} \bmod 
+true 807e8acf56c965f7 \mathbf{\alpha} \mathbf{\le} \bf \alpha \it 2.5 \mathrm{3.14} \mathbb{2} .5 1.2.3 \textbf{a b} \textit{Z 9 é}
+false 807e8acf56c965f7 \mathbf{\alpha} \mathbf{\le} \bf \alpha \it 2.5 \mathrm{3.14} \mathbb{2} .5 1.2.3 \textbf{a b} \textit{Z 9 é}
+true df8dacfc548e991c \color{red}x \color{#00ff00}{y} \color{#}{z} \color{#+12}{w} \color{#123456789}{v} \color{}{u} \color
+false df8dacfc548e991c \color{red}x \color{#00ff00}{y} \color{#}{z} \color{#+12}{w} \color{#123456789}{v} \color{}{u} \color
+true fec25ace0f63acdf \begin{matrix} \end{matrix} \begin{array}{c|c} a & b \end{array} \begin{align} a \right) b \end{align} \begin{cases} a \\ \\ \end{cases}
+false fec25ace0f63acdf \begin{matrix} \end{matrix} \begin{array}{c|c} a & b \end{array} \begin{align} a \right) b \end{align} \begin{cases} a \\ \\ \end{cases}
+true e3dfa7c67decff06 \begin{pmatrix} a \\[3pt] b \\ \end{pmatrix*} \begin{frac} x \end{frac} \begin{red} y \end{red} \begin{Bmatrix**} z \end{Bmatrix**} \begin x \end y
+false e3dfa7c67decff06 \begin{pmatrix} a \\[3pt] b \\ \end{pmatrix*} \begin{frac} x \end{frac} \begin{red} y \end{red} \begin{Bmatrix**} z \end{Bmatrix**} \begin x \end y
+true 0727a12ad80c431d x^{a}^{b}_{c}_{d} x__ ^^ 'x'' x^2' {}^{14}C a_{b}' x_1'' \sum'_k
+false 54c480771ed85635 x^{a}^{b}_{c}_{d} x__ ^^ 'x'' x^2' {}^{14}C a_{b}' x_1'' \sum'_k
+true 5e910e053803df46 \sqrt[\frac12]{x} \sqrt[] \sqrt[ \frac{\left(}{x}
+false 010e0b487d3d83cc \sqrt[\frac12]{x} \sqrt[] \sqrt[ \frac{\left(}{x}
+true b92fcb50c11ecd33 a b c\ \  x\ y\
+false b92fcb50c11ecd33 a b c\ \  x\ y\
+true cea67f87e34645c5 \left\{ \middle| \right\} \left\ \right \left
+false cea67f87e34645c5 \left\{ \middle| \right\} \left\ \right \left
+true 97b09cc599951b18 x \\ y & z } ] \right. \end{x} \over
+false 97b09cc599951b18 x \\ y & z } ] \right. \end{x} \over
+true a3e2aa512f3a52e7 \text{a\}b\{c} \text{\\} \text x \text \textbf{\} \text{é} \operatorname*{arg}
+false a3e2aa512f3a52e7 \text{a\}b\{c} \text{\\} \text x \text \textbf{\} \text{é} \operatorname*{arg}
+true d02703065d0df165 \red \cases \pmatrix \gray \limitsx \sum\limitsx \int\nolimits\limits \sum \limits
+false 652968c30121d04b \red \cases \pmatrix \gray \limitsx \sum\limitsx \int\nolimits\limits \sum \limits
+true 632e46d5bd3eb437 \frac\alpha\beta \frac{}{} \frac1 \sqrt\sqrt x \hat\hat x \not\not= \not \color{blue}\color{red}x
+false 2edb0b285045357b \frac\alpha\beta \frac{}{} \frac1 \sqrt\sqrt x \hat\hat x \not\not= \not \color{blue}\color{red}x
+true 92af44ecb833dccf \{ \} \| \% \$ \# \& \_ \, \: \> \; \! \quad \qquad \\
+false 92af44ecb833dccf \{ \} \| \% \$ \# \& \_ \, \: \> \; \! \quad \qquad \\
+true 0fe406c1198f05b9 \big \Big. \bigg\| \Bigg\langle \bigl\{ \Biggr\rVert \big\alpha \big]
+false 0fe406c1198f05b9 \big \Big. \bigg\| \Bigg\langle \bigl\{ \Biggr\rVert \big\alpha \big]
+true c438cd45689ebf03 12.34.56 0.0 . .. 1,000 3x 2^10 10^{-3} \mathbb 123 \mathit{12}
+false c438cd45689ebf03 12.34.56 0.0 . .. 1,000 3x 2^10 10^{-3} \mathbb 123 \mathit{12}
+true d23469a065633406 \mathcal{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789}
+false d23469a065633406 \mathcal{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789}
+true 6ab9e8be89e24439 \mathfrak{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789}
+false 6ab9e8be89e24439 \mathfrak{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789}
+true 5f04c1a604210981 \mathbb{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789}
+false 5f04c1a604210981 \mathbb{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789}
+true a492021b652920e2 \mathsf{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789} \mathtt{ABCxyz019} \bm{Ab9} \mathbf{Zz09}
+false a492021b652920e2 \mathsf{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789} \mathtt{ABCxyz019} \bm{Ab9} \mathbf{Zz09}
+true 484651a917495a65 ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 + - * / = < > : ; , . ! ? ( ) [ ] | @ " ~ `
+false 484651a917495a65 ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 + - * / = < > : ; , . ! ? ( ) [ ] | @ " ~ `
+true 08d75e3558e09296 ∑ ∫ α ∈ → ≤ é 中 😀 \😀 𝑥
+false 08d75e3558e09296 ∑ ∫ α ∈ → ≤ é 中 😀 \😀 𝑥
+true 0716ad057408a53c a b c \  x \	x	 rac  {1} {2} \ xy
+false 0716ad057408a53c a b c \  x \	x	 rac  {1} {2} \ xy

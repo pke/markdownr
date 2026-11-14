@@ -879,8 +879,9 @@ mod tests {
 
     fn font() -> Option<MathFont> {
         let data = std::fs::read(r"C:\Windows\Fonts\cambria.ttc").ok()?;
-        // Cambria Math is the second face in the collection.
-        MathFont::new(data, 1)
+        // Cambria Math is the second face in the collection (`new` takes its offset).
+        let face = *super::super::otf::faces(&data).get(1)?;
+        MathFont::new(data, face)
     }
 
     #[test]
@@ -891,6 +892,31 @@ mod tests {
             assert!(b.w > 0.0 && b.asc > 0.0, "{src}: {b:?}");
             assert!(!b.items.is_empty());
         }
+    }
+
+    /// Every corpus formula, display and inline, must lay out to exactly the
+    /// recorded boxes (`UPDATE_GOLDEN=1` rewrites the file).
+    #[test]
+    fn golden_boxes() {
+        let Some(f) = font() else { return };
+        let mut out = String::new();
+        for src in include_str!("../../assets/math-tests/corpus.txt").lines() {
+            for display in [true, false] {
+                // FNV-1a of the full box dump keeps the file small; a mismatch names the formula.
+                let dump = format!("{:?}", f.layout(src, 16.0, display));
+                let hash = dump.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3));
+                out.push_str(&format!("{display} {hash:016x} {src}\n"));
+            }
+        }
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/math-tests/layout-golden.txt");
+        if std::env::var_os("UPDATE_GOLDEN").is_some() {
+            std::fs::write(path, &out).unwrap();
+        }
+        let want = std::fs::read_to_string(path).unwrap().replace("\r\n", "\n");
+        for (i, (a, b)) in want.lines().zip(out.lines()).enumerate() {
+            assert_eq!(a, b, "layout golden line {}", i + 1);
+        }
+        assert_eq!(want.lines().count(), out.lines().count());
     }
 
     #[test]
