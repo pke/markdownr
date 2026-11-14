@@ -168,11 +168,13 @@ pub struct DocLayout<P> {
     pub toc: Vec<TocEntry>,
     pub front_matter: Option<String>,
     pub height: f32,
+    /// Top-level layout steps: (first node index, y, index of its first block).
+    pub tops: Vec<(usize, f32, usize)>,
 }
 
 impl<P> Default for DocLayout<P> {
     fn default() -> Self {
-        DocLayout { blocks: Vec::new(), rects: Vec::new(), math: Vec::new(), images: Vec::new(), hats: Vec::new(), anchors: Vec::new(), cycles: Vec::new(), toc: Vec::new(), front_matter: None, height: 0.0 }
+        DocLayout { blocks: Vec::new(), rects: Vec::new(), math: Vec::new(), images: Vec::new(), hats: Vec::new(), anchors: Vec::new(), cycles: Vec::new(), toc: Vec::new(), front_matter: None, height: 0.0, tops: Vec::new() }
     }
 }
 
@@ -223,16 +225,18 @@ impl<T: Typesetter> Layouter<'_, T> {
     pub fn layout(&mut self, doc: &Node, x: f32, width: f32, top: f32) -> DocLayout<T::Para> {
         let mut out = DocLayout::default();
         let mut at = Resume { next: 0, y: top, x, width };
-        self.layout_more(doc, &mut at, &mut out, f32::INFINITY, None);
+        self.layout_more(doc, &mut at, &mut out, f32::INFINITY, usize::MAX, None);
         out
     }
 
     /// Lay out the document's top-level blocks from `at` on, appending to `out`,
-    /// until the running y passes `until_y` or `deadline` is reached (both checked
-    /// before each top-level block) or the document ends. Returns true when done;
-    /// only then is `out.height` final. Stopping and resuming at top-level blocks
-    /// gives exactly the same layout as one full pass.
-    pub fn layout_more(&mut self, doc: &Node, at: &mut Resume, out: &mut DocLayout<T::Para>, until_y: f32, deadline: Option<Instant>) -> bool {
+    /// until the running y passes `until_y`, the next node index reaches `until_next`
+    /// or `deadline` is reached (all checked before each top-level block; the
+    /// deadline only after at least one block, so slices always progress) or the
+    /// document ends. Returns true when done; only then is `out.height` final.
+    /// Stopping and resuming at top-level blocks gives exactly the same layout as
+    /// one full pass.
+    pub fn layout_more(&mut self, doc: &Node, at: &mut Resume, out: &mut DocLayout<T::Para>, until_y: f32, until_next: usize, deadline: Option<Instant>) -> bool {
         let ctx = Ctx {
             x: at.x,
             width: at.width,
@@ -242,12 +246,14 @@ impl<T: Typesetter> Layouter<'_, T> {
         };
         // Same grouping as `blocks` (top level always joins as paragraphs).
         let nodes = &doc.children;
+        let first = at.next;
         while at.next < nodes.len() {
-            if at.y > until_y || deadline.is_some_and(|d| Instant::now() >= d) {
+            if at.y > until_y || at.next >= until_next || (at.next > first && deadline.is_some_and(|d| Instant::now() >= d)) {
                 out.height = at.y + self.base * 2.0;
                 return false;
             }
             let i = at.next;
+            out.tops.push((i, at.y, out.blocks.len()));
             if nodes[i].kind.is_inline() {
                 let j = nodes[i..].iter().position(|n| !n.kind.is_inline()).map_or(nodes.len(), |p| i + p);
                 self.paragraph(&nodes[i..j], &ctx, &mut at.y, out, Join::Paragraph);
@@ -852,12 +858,12 @@ impl<P: Paragraph> DocLayout<P> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// Monospace fake typesetter: 1 char = 10 px, 20 px lines, no wrapping.
-    struct Fake;
-    struct FakePara(String);
+    pub(crate) struct Fake;
+    pub(crate) struct FakePara(pub String);
     impl Paragraph for FakePara {
         fn size(&self) -> (f32, f32) {
             (self.0.chars().count() as f32 * 10.0, 20.0)
@@ -912,7 +918,7 @@ mod tests {
     }
 
     /// Everything a layout produces, for comparisons.
-    fn summary(l: &DocLayout<FakePara>) -> String {
+    pub(crate) fn summary(l: &DocLayout<FakePara>) -> String {
         let mut s = String::new();
         for b in &l.blocks {
             s += &format!("B {:?} {} {} {} {} {} {:?} {:?} {:?}\n", b.para.0, b.x, b.y, b.w, b.h, b.selectable, b.join, b.links, b.object_sources);
@@ -923,6 +929,7 @@ mod tests {
         for m in &l.math {
             s += &format!("M {} {} {:?}\n", m.x, m.y, m.mbox);
         }
+        s += &format!("S {:?}\n", l.tops);
         s += &format!("I {:?}\nH {:?}\nA {:?}\nC {:?}\nT {:?}\nF {:?}\nh {}\n", l.images.iter().map(|i| (&i.url, i.r)).collect::<Vec<_>>(), l.hats, l.anchors, l.cycles, l.toc, l.front_matter, l.height);
         s
     }
@@ -945,11 +952,11 @@ mod tests {
             let mut l = Layouter { ts: &mut Fake, theme: &theme, base: 16.0 };
             let mut out = DocLayout::default();
             let mut at = Resume { next: 0, y: 24.0, x: 12.0, width: 600.0 };
-            assert!(!l.layout_more(&doc, &mut at, &mut out, stop, None) || stop > full.height);
+            assert!(!l.layout_more(&doc, &mut at, &mut out, stop, usize::MAX, None) || stop > full.height);
             // Then in one-block steps.
             loop {
                 let y = at.y;
-                if l.layout_more(&doc, &mut at, &mut out, y, None) {
+                if l.layout_more(&doc, &mut at, &mut out, y, usize::MAX, None) {
                     break;
                 }
             }

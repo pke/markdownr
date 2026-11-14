@@ -7,7 +7,7 @@
 //! typesetter as the document, in window coordinates.
 
 use crate::ast::{Kind, Node};
-use crate::layout::{BaseStyle, DocLayout, DocSelection, Join, Layouter, Paragraph, Rect, RectF, Resume, TextBlock, Typesetter};
+use crate::layout::{BaseStyle, DocLayout, DocPos, DocSelection, Join, Layouter, Paragraph, Rect, RectF, Resume, TextBlock, Typesetter};
 use crate::particles::{Particles, Sprite};
 use crate::util::num;
 use crate::theme::{Ink, Theme, ThemeChoice, front_matter_pairs, seasonal_theme};
@@ -177,6 +177,18 @@ pub struct Viewer<P> {
     pub last_layout_time: Duration,
     /// Where a partial document layout continues (None when complete).
     resume: Option<Resume>,
+    /// Exact layout from the top being built behind a provisional one (after a relayout
+    /// while scrolled down).
+    rebuild: Option<Rebuild<P>>,
+}
+
+/// The exact layout from the top, built in idle time behind a provisional layout that
+/// starts at top-level node `node` placed at `y0` (where it was before the relayout).
+struct Rebuild<P> {
+    layout: DocLayout<P>,
+    at: Resume,
+    node: usize,
+    y0: f32,
 }
 
 fn front_matter_of(doc: &Node) -> Vec<(String, String)> {
@@ -232,6 +244,7 @@ impl<P: Paragraph> Viewer<P> {
             last_click: None,
             last_layout_time: Duration::ZERO,
             resume: None,
+            rebuild: None,
         };
         v.title = v.display_title(title);
         v
@@ -310,10 +323,21 @@ impl<P: Paragraph> Viewer<P> {
         if auto { base.with_overrides(&self.front_matter) } else { base }
     }
 
+    /// Top-level layout step at the top of the view: (node index, its y).
+    fn scroll_anchor(&self) -> Option<(usize, f32)> {
+        if self.scroll <= 0.0 {
+            return None;
+        }
+        let tops = &self.layout.tops;
+        let i = tops.partition_point(|t| t.1 <= self.scroll).checked_sub(1)?;
+        Some((tops[i].0, tops[i].1))
+    }
+
     pub fn ensure_layout<T: Typesetter<Para = P>>(&mut self, ts: &mut T) {
         if self.dirty {
             self.dirty = false;
-            let ratio = if self.layout.height > 0.0 { self.scroll / self.layout.height } else { 0.0 };
+            // Keep the reading position: the block at the top of the view stays there.
+            let anchor = self.scroll_anchor();
             self.theme = self.resolve_theme();
             self.particles = self.theme.overlay.map(|o| Particles::new(o, self.view_w, 0x9e37_79b9 ^ self.view_w as u32));
             let w = self.view_w;
@@ -327,21 +351,44 @@ impl<P: Paragraph> Viewer<P> {
                 self.source_doc = Some(Node { kind: Kind::Document, text: String::new(), children: vec![code] });
             }
             let doc = if self.show_source { self.source_doc.as_ref().unwrap() } else { &self.doc };
-            // From the top only the first screens are laid out now; the rest follows
-            // in idle time (`continue_layout`) or on demand. Keeping a relative scroll
-            // position, searching and the TOC need the whole document at once.
-            let whole = ratio > 0.0 || self.find.is_some() || self.toc_open;
-            let until = if whole { f32::INFINITY } else { self.view_h * 2.0 };
-            let mut at = Resume { next: 0, y: self.font_size * 1.5, x, width: column };
+            // Only the screens around the view are laid out now; the rest follows in idle
+            // time (`continue_layout`) or on demand. Searching and the TOC need everything.
+            let whole = self.find.is_some() || self.toc_open;
+            let until = if whole { f32::INFINITY } else { self.scroll + self.view_h * 2.0 };
+            let top = Resume { next: 0, y: self.font_size * 1.5, x, width: column };
+            let mut layouter = Layouter { ts, theme: &self.theme, base: self.font_size };
             self.layout = DocLayout::default();
-            let done = Layouter { ts, theme: &self.theme, base: self.font_size }.layout_more(doc, &mut at, &mut self.layout, until, None);
-            self.resume = (!done).then_some(at);
+            self.rebuild = None;
+            match anchor {
+                // Scrolled down: lay out from the anchor block at its old place now
+                // (provisional); the exact layout from the top follows in `rebuild`.
+                Some((node, y0)) if !whole => {
+                    let node = node.min(doc.children.len());
+                    let mut at = Resume { next: node, y: y0, ..top };
+                    let done = layouter.layout_more(doc, &mut at, &mut self.layout, until, usize::MAX, None);
+                    self.resume = (!done).then_some(at);
+                    self.rebuild = Some(Rebuild { layout: DocLayout::default(), at: top, node, y0 });
+                }
+                _ => {
+                    let mut at = top;
+                    let done = layouter.layout_more(doc, &mut at, &mut self.layout, until, usize::MAX, None);
+                    self.resume = (!done).then_some(at);
+                    if let Some((node, y0)) = anchor {
+                        if let Some(t) = self.layout.tops.iter().find(|t| t.0 >= node) {
+                            self.scroll += t.1 - y0;
+                        }
+                    }
+                }
+            }
             self.last_layout_time = started.elapsed();
             self.selection = None;
-            self.scroll = ratio * self.layout.height;
             self.clamp_scroll();
             self.refind(false);
             self.chrome_dirty = true;
+        }
+        // Scrolled above the provisional part: the exact layout is needed now.
+        if self.rebuild.as_ref().is_some_and(|r| self.scroll < r.y0) {
+            self.advance_rebuild(ts, None);
         }
         // Scrolled past the laid-out part (wheel, End key): extend to cover the view.
         if self.resume.is_some_and(|at| at.y <= self.scroll + self.view_h) {
@@ -361,7 +408,7 @@ impl<P: Paragraph> Viewer<P> {
             return; // a fresh layout replaces it at the next paint
         }
         let doc = if self.show_source { self.source_doc.as_ref().unwrap() } else { &self.doc };
-        let done = Layouter { ts, theme: &self.theme, base: self.font_size }.layout_more(doc, &mut at, &mut self.layout, until_y, deadline);
+        let done = Layouter { ts, theme: &self.theme, base: self.font_size }.layout_more(doc, &mut at, &mut self.layout, until_y, usize::MAX, deadline);
         if done {
             self.resume = None;
             self.clamp_scroll();
@@ -372,25 +419,57 @@ impl<P: Paragraph> Viewer<P> {
         }
     }
 
+    /// Advance the exact layout from the top behind a provisional one. Once it reaches
+    /// the provisional part's first block it takes over: the blocks from there on are
+    /// the same, so the scroll position (and a selection) just shift with it.
+    fn advance_rebuild<T: Typesetter<Para = P>>(&mut self, ts: &mut T, deadline: Option<Instant>) {
+        let Some(r) = &mut self.rebuild else { return };
+        if self.dirty {
+            return;
+        }
+        let doc = if self.show_source { self.source_doc.as_ref().unwrap() } else { &self.doc };
+        let ended = Layouter { ts, theme: &self.theme, base: self.font_size }.layout_more(doc, &mut r.at, &mut r.layout, f32::INFINITY, r.node, deadline);
+        if !ended && r.at.next < r.node {
+            return;
+        }
+        let Some(r) = self.rebuild.take() else { return };
+        let head = r.layout.blocks.len();
+        self.scroll += r.at.y - r.y0;
+        self.selection = self.selection.map(|s| {
+            let shift = |p: DocPos| DocPos { block: p.block + head, ..p };
+            DocSelection { anchor: shift(s.anchor), focus: shift(s.focus) }
+        });
+        self.layout = r.layout;
+        self.resume = (!ended).then_some(r.at);
+        self.clamp_scroll();
+        self.refind(false);
+        self.chrome_dirty = true;
+    }
+
     /// Whether part of the document still waits for `continue_layout`.
     pub fn layout_pending(&self) -> bool {
-        self.resume.is_some() && !self.dirty
+        (self.resume.is_some() || self.rebuild.is_some()) && !self.dirty
     }
 
     /// Idle-time slice of a pending layout; returns true once it is complete.
     pub fn continue_layout<T: Typesetter<Para = P>>(&mut self, ts: &mut T, budget: Duration) -> bool {
-        self.extend_layout(ts, f32::INFINITY, Some(Instant::now() + budget));
-        self.resume.is_none()
+        let deadline = Instant::now() + budget;
+        self.advance_rebuild(ts, Some(deadline));
+        if self.rebuild.is_none() {
+            self.extend_layout(ts, f32::INFINITY, Some(deadline));
+        }
+        self.resume.is_none() && self.rebuild.is_none()
     }
 
     /// Complete a pending layout now (before input that may need all of it).
     pub fn finish_layout<T: Typesetter<Para = P>>(&mut self, ts: &mut T) {
+        self.advance_rebuild(ts, None);
         self.extend_layout(ts, f32::INFINITY, None);
     }
 
     fn clamp_scroll(&mut self) {
         // While the layout is incomplete the end is not known yet.
-        let max = if self.resume.is_some() { f32::INFINITY } else { (self.layout.height - self.view_h).max(0.0) };
+        let max = if self.resume.is_some() || self.rebuild.is_some() { f32::INFINITY } else { (self.layout.height - self.view_h).max(0.0) };
         self.scroll = self.scroll.clamp(0.0, max);
     }
 
@@ -1127,5 +1206,94 @@ impl<P: Paragraph> Viewer<P> {
         let (y, m, d) = self.today;
         let name = seasonal_theme(y, m, d, self.southern);
         (self.theme_choice.name() != name).then_some(name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::tests::{Fake, FakePara, summary};
+
+    /// The test document (built once: `:::quotes` order is shuffled per build).
+    fn doc() -> Node {
+        static DOC: std::sync::OnceLock<Node> = std::sync::OnceLock::new();
+        DOC.get_or_init(build_doc).clone()
+    }
+
+    fn build_doc() -> Node {
+        let one = [include_str!("../assets/sample.md"), include_str!("../assets/extensions.md"), include_str!("../assets/transform-tests/transforms.md")].concat();
+        let src = one.repeat(6);
+        let mut d = crate::ast::parse(&crate::transforms::preprocess_html(&src));
+        crate::transforms::compose(&mut d, &crate::transforms::default_pipeline());
+        d
+    }
+
+    fn viewer(w: f32) -> Viewer<FakePara> {
+        let mut v = Viewer::new("t".into(), String::new(), doc());
+        v.resize(w, 600.0);
+        v
+    }
+
+    /// The complete layout of a fresh viewer at width `w`.
+    fn reference(w: f32) -> String {
+        let mut v = viewer(w);
+        v.ensure_layout(&mut Fake);
+        v.finish_layout(&mut Fake);
+        summary(&v.layout)
+    }
+
+    #[test]
+    fn fresh_layout_is_partial_then_complete() {
+        let mut v = viewer(900.0);
+        v.ensure_layout(&mut Fake);
+        assert!(v.layout_pending());
+        assert!(v.layout.blocks.len() < 100);
+        while !v.continue_layout(&mut Fake, Duration::ZERO) {}
+        assert_eq!(summary(&v.layout), reference(900.0));
+    }
+
+    #[test]
+    fn relayout_keeps_the_block_at_the_top_and_converges() {
+        for finish_by_slices in [false, true] {
+            let mut v = viewer(900.0);
+            v.ensure_layout(&mut Fake);
+            v.finish_layout(&mut Fake);
+            v.scroll_by(20_000.0);
+            v.ensure_layout(&mut Fake);
+            let (node, y) = v.scroll_anchor().unwrap();
+            let offset = v.scroll - y;
+            let before = v.scroll;
+            // Narrower window: provisional layout from the anchor block, same scroll.
+            v.resize(700.0, 600.0);
+            v.ensure_layout(&mut Fake);
+            assert!(v.rebuild.is_some());
+            assert_eq!(v.scroll, before);
+            assert_eq!((v.layout.tops[0].0, v.layout.tops[0].1), (node, y));
+            assert!(v.layout.blocks.len() < 200, "only the view is laid out");
+            if finish_by_slices {
+                while !v.continue_layout(&mut Fake, Duration::ZERO) {}
+            } else {
+                v.finish_layout(&mut Fake);
+            }
+            // Exactly the fresh layout, with the anchor block still at the top of the view.
+            assert_eq!(summary(&v.layout), reference(700.0));
+            let t = v.layout.tops.iter().find(|t| t.0 == node).unwrap();
+            assert!((v.scroll - (t.1 + offset)).abs() < 0.01, "{} vs {}", v.scroll, t.1 + offset);
+        }
+    }
+
+    #[test]
+    fn scrolling_above_a_provisional_layout_completes_it() {
+        let mut v = viewer(900.0);
+        v.ensure_layout(&mut Fake);
+        v.finish_layout(&mut Fake);
+        v.scroll_by(20_000.0);
+        v.ensure_layout(&mut Fake);
+        v.resize(700.0, 600.0);
+        v.ensure_layout(&mut Fake);
+        v.scroll_by(-15_000.0);
+        v.ensure_layout(&mut Fake);
+        assert!(v.rebuild.is_none());
+        assert_eq!(v.layout.tops[0].0, 0);
     }
 }
