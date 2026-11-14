@@ -769,6 +769,8 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             lpfnWndProc: Some(wndproc),
             hInstance: instance.into(),
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+            // Icon resource 1 (data/app.res); the small one comes from the same resource.
+            hIcon: LoadIconW(Some(instance.into()), PCWSTR(1 as _)).unwrap_or_default(),
             lpszClassName: class,
             ..Default::default()
         };
