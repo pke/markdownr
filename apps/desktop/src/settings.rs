@@ -59,9 +59,7 @@ impl Settings {
     }
 
     pub fn save(&self, path: &Path) {
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
+        let _ = std::fs::create_dir(crate::util::path::parent(path)); // %APPDATA%Markdownr
         let _ = std::fs::write(path, self.serialize());
     }
 
@@ -69,7 +67,7 @@ impl Settings {
     pub fn add_recent(&mut self, path: &Path) {
         let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         let path = PathBuf::from(path.to_string_lossy().trim_start_matches(r"\\?\"));
-        self.recent.retain(|p| p != &path);
+        self.recent.retain(|p| p.as_os_str() != path.as_os_str());
         self.recent.insert(0, path);
         self.recent.truncate(MAX_RECENT);
     }
@@ -81,8 +79,8 @@ impl Settings {
         if !recent.is_empty() {
             s.push_str("## Zuletzt geöffnet\n\n");
             for p in recent {
-                let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let dir = p.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+                let name = crate::util::path::file_name(p).to_string_lossy().into_owned();
+                let dir = crate::util::path::parent(p).to_string_lossy().into_owned();
                 let url = p.to_string_lossy().replace('\\', "/").replace(' ', "%20");
                 for part in ["- [", &name.replace(['[', ']'], ""), "](<file:///", &url, ">) — ", &dir.replace('\\', "\\\\"), "\n"] {
                     s.push_str(part);

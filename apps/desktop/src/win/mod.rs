@@ -88,7 +88,7 @@ fn read_doc(path: &Path) -> (String, String, Node) {
         Err(_) => ["# Datei kann nicht geöffnet werden\n\n`", &path.to_string_lossy(), "`"].concat(),
     };
     let doc = parse(&text);
-    (path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), text, doc)
+    (crate::util::path::file_name(path).to_string_lossy().into_owned(), text, doc)
 }
 
 #[link(name = "kernel32")]
@@ -394,7 +394,7 @@ impl App {
     fn load(&mut self, path: PathBuf) {
         let (title, source, doc) = read_doc(&path);
         let same = self.path.as_ref() == Some(&path);
-        self.gfx.images.set_base(path.parent().map(Path::to_path_buf));
+        self.gfx.images.set_base(Some(crate::util::path::parent(&path).to_path_buf()));
         self.viewer.set_document(title, source, doc, same);
         self.modified = mtime(&path);
         self.settings.add_recent(&path);
@@ -474,17 +474,17 @@ impl App {
         let file = percent_decode(url.split('#').next().unwrap_or(""));
         let file = file.strip_prefix("file:///").or_else(|| file.strip_prefix("file://")).unwrap_or(&file).to_string();
         let p = Path::new(&file);
-        let target = if p.is_absolute() {
+        let target = if crate::util::path::is_absolute(p) {
             p.to_path_buf()
-        } else if let Some(dir) = self.path.as_ref().and_then(|p| p.parent()) {
-            dir.join(p)
+        } else if let Some(doc) = &self.path {
+            crate::util::path::join(crate::util::path::parent(doc), p)
         } else {
             return;
         };
         if !target.is_file() {
             return;
         }
-        let ext = target.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        let ext = crate::util::path::extension(&target);
         if matches!(ext.as_str(), "md" | "markdown" | "mdown" | "mkd" | "txt") {
             self.load(target);
         } else {
@@ -721,7 +721,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 .flatten();
                 let _ = EndPaint(hwnd, &ps);
                 if let Some((path, exit)) = snap {
-                    let ok = if path.extension().is_some_and(|e| e == "png") { with_app(|a| a.gfx.save_png(&path).is_ok()).unwrap_or(true) } else { snapshot(hwnd, &path).is_ok() };
+                    let ok = if crate::util::path::extension(&path) == "png" { with_app(|a| a.gfx.save_png(&path).is_ok()).unwrap_or(true) } else { snapshot(hwnd, &path).is_ok() };
                     if ok {
                         crate::util::log(&["snapshot: ", &path.to_string_lossy()]);
                     } else {
@@ -1013,7 +1013,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         viewer.theme_choice = ThemeChoice::from_name(&settings.theme);
         viewer.remember_fullscreen = settings.remember_fullscreen;
         let start_fullscreen = settings.remember_fullscreen && settings.fullscreen;
-        gfx.images.set_base(path.as_ref().and_then(|p| p.parent().map(Path::to_path_buf)).or_else(|| std::env::current_dir().ok()));
+        gfx.images.set_base(path.as_ref().map(|p| crate::util::path::parent(p).to_path_buf()).or_else(|| std::env::current_dir().ok()));
         let mut app = App {
             hwnd,
             gfx,

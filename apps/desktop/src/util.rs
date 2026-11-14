@@ -138,3 +138,100 @@ impl<K, V> VecMap<K, V> {
         self.0.iter_mut().map(|(_, v)| v)
     }
 }
+
+/// Windows path helpers on the raw bytes (`\` or `/` separate, `X:` or `\` starts an
+/// absolute path), in place of `Path::parent`/`join`/`file_name`/`extension`/
+/// `is_absolute`, whose `Components` parser costs about 5 KB of exe. Splitting an
+/// `OsStr` at an ASCII byte keeps it valid, as `from_encoded_bytes_unchecked` requires.
+pub mod path {
+    use std::ffi::OsStr;
+    use std::path::{Path, PathBuf};
+
+    fn bytes(p: &Path) -> &[u8] {
+        p.as_os_str().as_encoded_bytes()
+    }
+
+    /// Without trailing separators (`C:\a\` → `C:\a`), as std's parent/file_name see it.
+    fn trimmed(p: &Path) -> &[u8] {
+        let mut b = bytes(p);
+        while b.len() > 1 && matches!(b[b.len() - 1], b'\\' | b'/') && !(b.len() == 3 && b[1] == b':') {
+            b = &b[..b.len() - 1];
+        }
+        b
+    }
+
+    fn os(b: &[u8]) -> &Path {
+        // SAFETY: `b` is a prefix or suffix of a path's encoded bytes, split at an ASCII byte.
+        Path::new(unsafe { OsStr::from_encoded_bytes_unchecked(b) })
+    }
+
+    fn last_sep(b: &[u8]) -> Option<usize> {
+        b.iter().rposition(|&c| c == b'\\' || c == b'/')
+    }
+
+    /// `C:\x`, `C:/x`, `\server\x` or `\x` (rooted).
+    pub fn is_absolute(p: &Path) -> bool {
+        let b = bytes(p);
+        (b.len() >= 3 && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/')) || b.first().is_some_and(|&c| c == b'\\' || c == b'/')
+    }
+
+    /// The directory part: `C:\a\b.md` → `C:\a`, `C:\b.md` → `C:\`, `b.md` → `` (as std).
+    pub fn parent(p: &Path) -> &Path {
+        let b = trimmed(p);
+        match last_sep(b) {
+            None => os(&[]),
+            Some(i) if i == 2 && b[1] == b':' => os(&b[..3]),
+            Some(0) => os(&b[..1]),
+            Some(i) => os(&b[..i]),
+        }
+    }
+
+    /// The last part: `C:\a\b.md` → `b.md`.
+    pub fn file_name(p: &Path) -> &Path {
+        let b = trimmed(p);
+        os(&b[last_sep(b).map_or(0, |i| i + 1)..])
+    }
+
+    /// The file name's extension, lowercased (`b.MD` → `md`; none for `.bashrc` or `b`).
+    pub fn extension(p: &Path) -> String {
+        let name = bytes(file_name(p));
+        match name.iter().rposition(|&c| c == b'.') {
+            Some(i) if i > 0 => String::from_utf8_lossy(&name[i + 1..]).to_ascii_lowercase(),
+            _ => String::new(),
+        }
+    }
+
+    /// `rel` against `dir` (`rel` itself if absolute or `dir` empty).
+    pub fn join(dir: &Path, rel: &Path) -> PathBuf {
+        let d = bytes(dir);
+        if is_absolute(rel) || d.is_empty() {
+            return rel.to_path_buf();
+        }
+        let mut s = dir.as_os_str().to_os_string();
+        if !matches!(d.last(), Some(b'\\' | b'/')) {
+            s.push("\\");
+        }
+        s.push(rel.as_os_str());
+        PathBuf::from(s)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn like_std_for_our_paths() {
+            for s in [r"C:\a\b.md", r"C:\b.MD", "b.md", r"\srv\share\x.png", r"C:/a/b.tar.gz", ".bashrc", r"C:\a\", "dir/sub/f"] {
+                let p = Path::new(s);
+                assert_eq!(parent(p), p.parent().unwrap_or(Path::new("")), "{s}");
+                assert_eq!(file_name(p), Path::new(p.file_name().unwrap_or_default()), "{s}");
+                assert_eq!(extension(p), p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default(), "{s}");
+                assert_eq!(is_absolute(p), p.is_absolute() || s.starts_with('\\') || s.starts_with('/'), "{s}");
+            }
+            assert_eq!(join(Path::new(r"C:\a"), Path::new("img/x.png")), PathBuf::from(r"C:\a\img/x.png"));
+            assert_eq!(join(Path::new(r"C:\"), Path::new("x.png")), PathBuf::from(r"C:\x.png"));
+            assert_eq!(join(Path::new(""), Path::new("x.png")), PathBuf::from("x.png"));
+            assert_eq!(join(Path::new(r"C:\a"), Path::new(r"D:\y.png")), PathBuf::from(r"D:\y.png"));
+        }
+    }
+}

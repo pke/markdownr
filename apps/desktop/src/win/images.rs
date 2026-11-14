@@ -145,7 +145,7 @@ fn resolve(url: &str, base: Option<&Path>) -> Option<Source> {
     let path = url.strip_prefix("file:///").or_else(|| url.strip_prefix("file://")).unwrap_or(url);
     let path = percent_decode(path.split(['?', '#']).next().unwrap_or(path));
     let p = Path::new(&path);
-    Some(Source::File(if p.is_absolute() { p.to_path_buf() } else { base?.join(p) }))
+    Some(Source::File(if crate::util::path::is_absolute(p) { p.to_path_buf() } else { crate::util::path::join(base?, p) }))
 }
 
 fn percent_decode(s: &str) -> String {
