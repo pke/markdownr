@@ -55,17 +55,17 @@ impl Settings {
     }
 
     pub fn load(path: &Path) -> Self {
-        std::fs::read_to_string(path).map(|t| Self::parse(&t)).unwrap_or_default()
+        crate::util::fs::read(path).map(|b| Self::parse(&String::from_utf8_lossy(&b))).unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) {
-        let _ = std::fs::create_dir(crate::util::path::parent(path)); // %APPDATA%Markdownr
-        let _ = std::fs::write(path, self.serialize());
+        crate::util::fs::create_dir(crate::util::path::parent(path)); // %APPDATA%\Markdownr
+        crate::util::fs::write(path, self.serialize().as_bytes());
     }
 
     /// Move `path` to the front of the recent list.
     pub fn add_recent(&mut self, path: &Path) {
-        let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let path = crate::util::fs::canonical(path).unwrap_or_else(|| path.to_path_buf());
         let path = PathBuf::from(path.to_string_lossy().trim_start_matches(r"\\?\"));
         self.recent.retain(|p| p.as_os_str() != path.as_os_str());
         self.recent.insert(0, path);
@@ -75,7 +75,7 @@ impl Settings {
     /// Start page shown without a file: open button, recent files, sample.
     pub fn start_page(&self) -> String {
         let mut s = String::from("---\ntitle: Markdownr\n---\n# Markdownr\n\nEin schneller, schlanker Markdown-Reader.\n\n[Datei öffnen …](markdownr:open) · [Beispieldokument](markdownr:sample)\n\nAuch per Drag & Drop oder `Strg+O`. `F11` Vollbild, `Strg+F` Suchen, `Strg+T` Inhalt, `F1` alle Tastenkürzel.\n\n");
-        let recent: Vec<_> = self.recent.iter().filter(|p| p.is_file()).collect();
+        let recent: Vec<_> = self.recent.iter().filter(|p| crate::util::fs::is_file(p)).collect();
         if !recent.is_empty() {
             s.push_str("## Zuletzt geöffnet\n\n");
             for p in recent {

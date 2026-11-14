@@ -235,3 +235,168 @@ pub mod path {
         }
     }
 }
+
+/// The few file operations the app needs. On Windows straight Win32 calls: std::fs pulls
+/// in its error construction (an `io::Error` with a message, and so core::fmt) and file
+/// abstractions, several KB of exe for reading a document and a settings file.
+pub mod fs {
+    use std::path::{Path, PathBuf};
+
+    #[cfg(windows)]
+    mod imp {
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+        use std::path::{Path, PathBuf};
+        use windows::Win32::Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE, HANDLE};
+        use windows::Win32::Storage::FileSystem::*;
+        use windows::core::PCWSTR;
+
+        fn wide(p: &Path) -> Vec<u16> {
+            p.as_os_str().encode_wide().chain([0]).collect()
+        }
+
+        fn open(p: &Path, access: u32, disposition: FILE_CREATION_DISPOSITION) -> Option<HANDLE> {
+            let w = wide(p);
+            let share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+            // FILE_FLAG_BACKUP_SEMANTICS also opens directories (for `canonical`).
+            unsafe { CreateFileW(PCWSTR(w.as_ptr()), access, share, None, disposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, None) }.ok()
+        }
+
+        pub fn read(p: &Path) -> Option<Vec<u8>> {
+            let h = open(p, GENERIC_READ.0, OPEN_EXISTING)?;
+            let mut out = Vec::new();
+            let mut size = 0i64;
+            if unsafe { GetFileSizeEx(h, &mut size) }.is_ok() {
+                out.reserve(size.max(0) as usize);
+            }
+            let mut buf = vec![0u8; 64 * 1024];
+            let ok = loop {
+                let mut n = 0u32;
+                if unsafe { ReadFile(h, Some(&mut buf), Some(&mut n), None) }.is_err() {
+                    break false;
+                }
+                if n == 0 {
+                    break true;
+                }
+                out.extend_from_slice(&buf[..n as usize]);
+            };
+            unsafe { CloseHandle(h).ok() };
+            ok.then_some(out)
+        }
+
+        pub fn write(p: &Path, data: &[u8]) -> bool {
+            let Some(h) = open(p, GENERIC_WRITE.0, CREATE_ALWAYS) else { return false };
+            let mut rest = data;
+            while !rest.is_empty() {
+                let mut n = 0u32;
+                let chunk = &rest[..rest.len().min(1 << 30)];
+                if unsafe { WriteFile(h, Some(chunk), Some(&mut n), None) }.is_err() || n == 0 {
+                    break;
+                }
+                rest = &rest[n as usize..];
+            }
+            unsafe { CloseHandle(h).ok() };
+            rest.is_empty()
+        }
+
+        pub fn create_dir(p: &Path) {
+            let w = wide(p);
+            let _ = unsafe { CreateDirectoryW(PCWSTR(w.as_ptr()), None) };
+        }
+
+        fn attributes(p: &Path) -> Option<WIN32_FILE_ATTRIBUTE_DATA> {
+            let w = wide(p);
+            let mut data = WIN32_FILE_ATTRIBUTE_DATA::default();
+            unsafe { GetFileAttributesExW(PCWSTR(w.as_ptr()), GetFileExInfoStandard, &mut data as *mut _ as *mut _) }.ok()?;
+            Some(data)
+        }
+
+        pub fn is_file(p: &Path) -> bool {
+            attributes(p).is_some_and(|a| a.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 == 0)
+        }
+
+        pub fn modified(p: &Path) -> Option<u64> {
+            attributes(p).map(|a| (a.ftLastWriteTime.dwHighDateTime as u64) << 32 | a.ftLastWriteTime.dwLowDateTime as u64)
+        }
+
+        pub fn canonical(p: &Path) -> Option<PathBuf> {
+            let h = open(p, 0, OPEN_EXISTING)?;
+            let mut buf = vec![0u16; 1024];
+            let mut n = unsafe { GetFinalPathNameByHandleW(h, &mut buf, FILE_NAME_NORMALIZED) } as usize;
+            if n > buf.len() {
+                buf.resize(n, 0);
+                n = unsafe { GetFinalPathNameByHandleW(h, &mut buf, FILE_NAME_NORMALIZED) } as usize;
+            }
+            unsafe { CloseHandle(h).ok() };
+            (n > 0 && n <= buf.len()).then(|| PathBuf::from(std::ffi::OsString::from_wide(&buf[..n])))
+        }
+    }
+
+    #[cfg(not(windows))]
+    mod imp {
+        use std::path::{Path, PathBuf};
+        pub fn read(p: &Path) -> Option<Vec<u8>> {
+            std::fs::read(p).ok()
+        }
+        pub fn write(p: &Path, data: &[u8]) -> bool {
+            std::fs::write(p, data).is_ok()
+        }
+        pub fn create_dir(p: &Path) {
+            let _ = std::fs::create_dir(p);
+        }
+        pub fn is_file(p: &Path) -> bool {
+            p.is_file()
+        }
+        pub fn modified(p: &Path) -> Option<u64> {
+            let t = std::fs::metadata(p).and_then(|m| m.modified()).ok()?;
+            Some(t.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos() as u64)
+        }
+        pub fn canonical(p: &Path) -> Option<PathBuf> {
+            std::fs::canonicalize(p).ok()
+        }
+    }
+
+    /// The whole file.
+    pub fn read(p: &Path) -> Option<Vec<u8>> {
+        imp::read(p)
+    }
+
+    /// Replace the file with `data`; false on failure.
+    pub fn write(p: &Path, data: &[u8]) -> bool {
+        imp::write(p, data)
+    }
+
+    /// Create one directory level (nothing if it exists or cannot be made).
+    pub fn create_dir(p: &Path) {
+        imp::create_dir(p)
+    }
+
+    pub fn is_file(p: &Path) -> bool {
+        imp::is_file(p)
+    }
+
+    /// Last write time (opaque, for change detection).
+    pub fn modified(p: &Path) -> Option<u64> {
+        imp::modified(p)
+    }
+
+    /// The absolute, normalised path (symlinks resolved; on Windows with the `\?\` prefix).
+    pub fn canonical(p: &Path) -> Option<PathBuf> {
+        imp::canonical(p)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        #[test]
+        fn round_trip() {
+            let dir = std::env::temp_dir();
+            let p = crate::util::path::join(&dir, std::path::Path::new("markdownr-fs-test.txt"));
+            assert!(super::write(&p, b"hallo"));
+            assert_eq!(super::read(&p).as_deref(), Some(&b"hallo"[..]));
+            assert!(super::is_file(&p) && !super::is_file(&dir));
+            assert!(super::modified(&p).is_some());
+            assert_eq!(super::canonical(&p), std::fs::canonicalize(&p).ok());
+            let _ = std::fs::remove_file(&p);
+            assert!(super::read(&p).is_none() && !super::is_file(&p));
+        }
+    }
+}

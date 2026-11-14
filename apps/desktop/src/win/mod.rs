@@ -11,7 +11,7 @@ use crate::view::{Effect, Key, Mods, Viewer};
 use dwrite::{DwPara, Gfx};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Dwm::{DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_CLOAK, DWMWA_TEXT_COLOR, DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
 use windows::Win32::Graphics::Gdi::*;
@@ -38,7 +38,7 @@ struct App {
     gfx: Gfx,
     viewer: Viewer<DwPara>,
     path: Option<PathBuf>,
-    modified: Option<SystemTime>,
+    modified: Option<u64>,
     fullscreen: Option<(WINDOWPLACEMENT, i32)>,
     mouse: (f32, f32),
     tracking: bool,
@@ -80,12 +80,12 @@ fn parse(text: &str) -> Node {
 }
 
 fn read_doc(path: &Path) -> (String, String, Node) {
-    let text = match std::fs::read(path) {
-        Ok(bytes) => {
+    let text = match crate::util::fs::read(path) {
+        Some(bytes) => {
             let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
             String::from_utf8(bytes.to_vec()).unwrap_or_else(|e| e.into_bytes().iter().map(|&b| b as char).collect())
         }
-        Err(_) => ["# Datei kann nicht geöffnet werden\n\n`", &path.to_string_lossy(), "`"].concat(),
+        None => ["# Datei kann nicht geöffnet werden\n\n`", &path.to_string_lossy(), "`"].concat(),
     };
     let doc = parse(&text);
     (crate::util::path::file_name(path).to_string_lossy().into_owned(), text, doc)
@@ -153,8 +153,8 @@ fn cloak(hwnd: HWND, on: bool) {
     unsafe { DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &v as *const _ as _, 4).ok() };
 }
 
-fn mtime(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+fn mtime(path: &Path) -> Option<u64> {
+    crate::util::fs::modified(path)
 }
 
 fn system_dark() -> bool {
@@ -199,7 +199,7 @@ fn from_touch() -> bool {
 
 fn settings_path() -> PathBuf {
     let base = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    base.join("Markdownr").join("settings.ini")
+    crate::util::path::join(&base, Path::new(r"Markdownr\settings.ini"))
 }
 
 fn percent_decode(s: &str) -> String {
@@ -481,7 +481,7 @@ impl App {
         } else {
             return;
         };
-        if !target.is_file() {
+        if !crate::util::fs::is_file(&target) {
             return;
         }
         let ext = crate::util::path::extension(&target);
@@ -508,10 +508,11 @@ fn apply(hwnd: HWND, effect: Effect) {
         Effect::ToggleFullscreen => toggle_fullscreen(hwnd, None),
         Effect::ExitFullscreen => toggle_fullscreen(hwnd, Some(false)),
         Effect::Snapshot => {
-            let path = std::env::temp_dir().join("markdownr-snapshot.bmp");
-            match snapshot(hwnd, &path) {
-                Ok(()) => crate::util::log(&["snapshot: ", &path.to_string_lossy()]),
-                Err(_) => crate::util::log(&["snapshot failed"]),
+            let path = crate::util::path::join(&std::env::temp_dir(), Path::new("markdownr-snapshot.bmp"));
+            if snapshot(hwnd, &path) {
+                crate::util::log(&["snapshot: ", &path.to_string_lossy()]);
+            } else {
+                crate::util::log(&["snapshot failed"]);
             }
         }
         Effect::OpenUrl(url) => {
@@ -585,7 +586,7 @@ fn copy_to_clipboard(hwnd: HWND, text: &str) {
 }
 
 /// Window-only screenshot (PrintWindow of our own window) written as a 32-bit BMP.
-fn snapshot(hwnd: HWND, path: &Path) -> std::io::Result<()> {
+fn snapshot(hwnd: HWND, path: &Path) -> bool {
     let (w, h) = client_size(hwnd);
     let (w, h) = (w as i32, h as i32);
     let mut pixels = vec![0u8; (w * h * 4) as usize];
@@ -627,7 +628,7 @@ fn snapshot(hwnd: HWND, path: &Path) -> std::io::Result<()> {
     file.extend_from_slice(&32u16.to_le_bytes());
     file.extend_from_slice(&[0u8; 24]);
     file.extend_from_slice(&pixels);
-    std::fs::write(path, file)
+    crate::util::fs::write(path, &file)
 }
 
 fn key_from_vk(vk: u16) -> Option<Key> {
@@ -721,7 +722,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 .flatten();
                 let _ = EndPaint(hwnd, &ps);
                 if let Some((path, exit)) = snap {
-                    let ok = if crate::util::path::extension(&path) == "png" { with_app(|a| a.gfx.save_png(&path).is_ok()).unwrap_or(true) } else { snapshot(hwnd, &path).is_ok() };
+                    let ok = if crate::util::path::extension(&path) == "png" { with_app(|a| a.gfx.save_png(&path).is_ok()).unwrap_or(true) } else { snapshot(hwnd, &path) };
                     if ok {
                         crate::util::log(&["snapshot: ", &path.to_string_lossy()]);
                     } else {
