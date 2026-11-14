@@ -22,47 +22,15 @@ const SHOW_FOR: Duration = Duration::from_millis(2500);
 const FADE_IN: f32 = 0.12; // seconds
 const FADE_OUT: f32 = 0.35;
 
-/// F1 overlay: (column, heading, [(keys, what they do)]).
-const HELP: &[(usize, &str, &[(&str, &str)])] = &[
-    (0, "Lesen", &[
-        ("Bild ↓   →   Leertaste", "Seite weiter"),
-        ("Bild ↑   ←   ⇧ Leertaste", "Seite zurück"),
-        ("↓   ↑   Mausrad", "Scrollen"),
-        ("Pos1   Ende", "Anfang / Ende"),
-        ("Strg+A   Strg+C", "Alles markieren / kopieren"),
-    ]),
-    (0, "Suchen", &[
-        ("Strg+F   F3", "Suchleiste öffnen"),
-        ("Enter   ⇧ Enter", "Nächster / vorheriger Treffer"),
-        ("Esc", "Suche schließen"),
-    ]),
-    (0, "Datei", &[
-        ("Strg+O", "Öffnen (auch per Drag & Drop)"),
-        ("F5   Strg+R", "Neu laden (Änderungen lädt es auch von selbst)"),
-        ("Strg+Q   Strg+W", "Beenden"),
-    ]),
-    (0, "Kommandozeile", &[
-        ("markdownr Datei.md", "Öffnet die Datei"),
-        ("markdownr", "Startseite mit den zuletzt geöffneten Dateien"),
-    ]),
-    (1, "Ansicht", &[
-        ("Strg+T", "Inhaltsverzeichnis"),
-        ("Strg+U", "Quelltext"),
-        ("Strg+D", "Theme wechseln"),
-        ("Strg++   Strg+−", "Schrift größer / kleiner"),
-        ("Strg+Mausrad", "Schriftgröße"),
-        ("Strg+0", "Schriftgröße zurücksetzen"),
-        ("F11   Esc", "Vollbild an / aus"),
-        ("F12", "Bildschirmfoto nach %TEMP%"),
-        ("F1", "Diese Hilfe"),
-    ]),
-    (1, "Umgebungsvariablen", &[
-        ("MARKDOWNR_SETTINGS=Datei", "Einstellungen aus dieser Datei statt %APPDATA%\\Markdownr\\settings.ini"),
-        ("MARKDOWNR_SAMPLE=1", "Ohne Datei das Beispieldokument zeigen"),
-        ("MARKDOWNR_LOCALE=de-DE", "Anführungszeichen dieser Sprache statt der Systemsprache"),
-        ("MARKDOWNR_SNAPSHOT=Bild.png", "Die Seite als PNG speichern"),
-        ("MARKDOWNR_SNAPSHOT_EXIT=1", "… und danach beenden"),
-    ]),
+/// F1 overlay: (column, [keys of each row]). Its texts (title, hint, then each section's
+/// heading and row descriptions in this order) are `tables::help()`, shipped compressed.
+const HELP: &[(usize, &[&str])] = &[
+    (0, &["Bild ↓   →   Leertaste", "Bild ↑   ←   ⇧ Leertaste", "↓   ↑   Mausrad", "Pos1   Ende", "Strg+A   Strg+C"]),
+    (0, &["Strg+F   F3", "Enter   ⇧ Enter", "Esc"]),
+    (0, &["Strg+O", "F5   Strg+R", "Strg+Q   Strg+W"]),
+    (0, &["markdownr Datei.md", "markdownr"]),
+    (1, &["Strg+T", "Strg+U", "Strg+D", "Strg++   Strg+−", "Strg+Mausrad", "Strg+0", "F11   Esc", "F12", "F1"]),
+    (1, &["MARKDOWNR_SETTINGS=Datei", "MARKDOWNR_SAMPLE=1", "MARKDOWNR_LOCALE=de-DE", "MARKDOWNR_SNAPSHOT=Bild.png", "MARKDOWNR_SNAPSHOT_EXIT=1"]),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -741,13 +709,17 @@ impl<P: Paragraph> Viewer<P> {
             items.push((para, s, x, y, pw, ph));
             (pw, ph)
         };
+        let mut texts = crate::tables::help().lines();
+        let mut next = || texts.next().unwrap_or("");
+        let (title_s, hint_s) = (next(), next());
         let mut col_h = [0.0f32; 2];
-        for &(col, title, rows) in HELP {
+        for &(col, rows) in HELP {
             let c = if two { col } else { 0 };
             let x0 = c as f32 * (col_w + gap);
             let mut y = if col_h[c] > 0.0 { col_h[c] + 14.0 } else { 0.0 };
-            y += put(ts, title, &head, x0, y, col_w).1 + 6.0;
-            for &(k, d) in rows {
+            y += put(ts, next(), &head, x0, y, col_w).1 + 6.0;
+            for &k in rows {
+                let d = next();
                 let (kw, kh) = put(ts, k, &keys, x0, y, col_w);
                 // Long keys (commands, variables) get the description on the next line.
                 let (dx, dy) = if kw + 12.0 <= key_w { (x0 + key_w, y) } else { (x0 + 16.0, y + kh) };
@@ -758,7 +730,6 @@ impl<P: Paragraph> Viewer<P> {
         }
         let pad = 24.0;
         let content_w = if two { 2.0 * col_w + gap } else { col_w };
-        let (title_s, hint_s) = ("Tastenkürzel", "Esc oder Klick schließt");
         let title_p = ts.paragraph(title_s, &[], &BaseStyle { size: 18.0, ..keys }, content_w);
         let (tw, tht) = title_p.size();
         let hint_p = ts.paragraph(hint_s, &[], &BaseStyle { color: th.muted, ..text }, content_w);
@@ -1305,5 +1276,15 @@ mod tests {
         v.ensure_layout(&mut Fake);
         assert!(v.rebuild.is_none());
         assert_eq!(v.layout.tops[0].0, 0);
+    }
+}
+
+#[cfg(test)]
+mod help_tests {
+    /// data/help.txt has exactly one text per HELP heading and row, plus title and hint.
+    #[test]
+    fn help_texts_match_keys() {
+        let want = 2 + super::HELP.iter().map(|(_, rows)| 1 + rows.len()).sum::<usize>();
+        assert_eq!(crate::tables::help().lines().count(), want);
     }
 }

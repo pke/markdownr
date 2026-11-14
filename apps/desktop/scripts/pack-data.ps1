@@ -1,12 +1,12 @@
-# Packs data/entities.txt, data/emoji.txt and data/math.txt into data/tables.bin with the
+# Packs data/entities.txt, data/emoji.txt, data/math.txt and data/help.txt into data/tables.bin with the
 # Windows Compression API (cabinet.dll). The app unpacks it with the same
 # OS DLL at runtime, so no decompressor code ends up in the exe.
-# Each table is sorted by key and front coded: per line one char (0x20 + bytes shared with the
+# The first three tables are sorted by key and front coded: per line one char (0x20 + bytes shared with the
 # previous key), the rest of the key, a tab, the value, a newline. src/tables.rs expands it back
 # to `\n key \t value \n` lines. (Measured: 1.6 KB smaller than plain lines; MSZIP, XPRESS and
 # keys/values in separate blocks all came out larger than LZMS on this.)
 # Format: 4-byte little-endian unpacked size, then the compressed stream of
-#   entities + "\0" + emoji + "\0" + math
+#   entities + "\0" + emoji + "\0" + math + "\0" + help   (help: the F1 texts in display order, as is)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 Add-Type -TypeDefinition @'
@@ -35,7 +35,7 @@ public static class CabPack {
 }
 '@
 $read = { param($name) [IO.File]::ReadAllText("$root\data\$name.txt") }
-$text = [CabPack]::FrontCode((& $read "entities")) + "`0" + [CabPack]::FrontCode((& $read "emoji")) + "`0" + [CabPack]::FrontCode((& $read "math"))
+$text = [CabPack]::FrontCode((& $read "entities")) + "`0" + [CabPack]::FrontCode((& $read "emoji")) + "`0" + [CabPack]::FrontCode((& $read "math")) + "`0" + (& $read "help")
 $raw = [Text.UTF8Encoding]::new($false).GetBytes($text)
 $packed = [CabPack]::Pack(5, $raw)   # 5 = COMPRESS_ALGORITHM_LZMS
 [IO.File]::WriteAllBytes("$root\data\tables.bin", [BitConverter]::GetBytes([uint32]$raw.Length) + $packed)

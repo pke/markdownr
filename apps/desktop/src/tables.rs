@@ -5,7 +5,7 @@
 
 use std::sync::OnceLock;
 
-static TABLES: OnceLock<[&'static str; 3]> = OnceLock::new();
+static TABLES: OnceLock<[&'static str; 4]> = OnceLock::new();
 
 /// Value of `name` in a table of `\n name \t value \n` lines sorted bytewise by
 /// name (emoji, math), or "" if absent. Binary search; `lo` and `hi` stay line starts.
@@ -51,11 +51,16 @@ pub fn math() -> &'static str {
     tables()[2]
 }
 
-fn tables() -> &'static [&'static str; 3] {
+/// The F1 help texts, one per line, in the order `view::HELP` shows them.
+pub fn help() -> &'static str {
+    tables()[3]
+}
+
+fn tables() -> &'static [&'static str; 4] {
     TABLES.get_or_init(|| {
         let all: &'static str = Box::leak(unpack().into_boxed_str());
         let mut parts = all.split('\0');
-        [(); 3].map(|_| parts.next().unwrap_or(""))
+        [(); 4].map(|_| parts.next().unwrap_or(""))
     })
 }
 
@@ -88,13 +93,18 @@ fn unpack() -> String {
 }
 
 /// Front-coded lines (one byte 0x20 + bytes shared with the previous key, rest of the key,
-/// tab, value, newline; tables separated by `\0`) back to `\n key \t value \n` lines.
+/// tab, value, newline; tables separated by `\0`) back to `\n key \t value \n` lines. The
+/// fourth table (help texts, in display order) is stored as is.
 #[cfg(windows)]
 fn expand(front: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(front.len() * 5 / 4);
     for (i, table) in front.split(|&b| b == 0).enumerate() {
         if i > 0 {
             out.push(0);
+        }
+        if i == 3 {
+            out.extend_from_slice(table);
+            continue;
         }
         out.push(b'\n');
         let mut prev = out.len();
@@ -111,7 +121,7 @@ fn expand(front: &[u8]) -> Vec<u8> {
 
 #[cfg(not(windows))]
 fn unpack() -> String {
-    [include_str!("../data/entities.txt"), "\0", include_str!("../data/emoji.txt"), "\0", include_str!("../data/math.txt")].concat()
+    [include_str!("../data/entities.txt"), "\0", include_str!("../data/emoji.txt"), "\0", include_str!("../data/math.txt"), "\0", include_str!("../data/help.txt")].concat()
 }
 
 #[cfg(test)]
@@ -134,5 +144,6 @@ mod tests {
         assert_eq!(lines(super::entities()), lines(include_str!("../data/entities.txt")));
         assert_eq!(lines(super::emoji()), lines(include_str!("../data/emoji.txt")));
         assert_eq!(super::math(), include_str!("../data/math.txt"));
+        assert_eq!(super::help(), include_str!("../data/help.txt"));
     }
 }
