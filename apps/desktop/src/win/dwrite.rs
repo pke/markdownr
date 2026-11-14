@@ -3,7 +3,7 @@
 use crate::layout::{BaseStyle, DocLayout, DocSelection, Paragraph, RectF, Span, TextAlign, Typesetter};
 use crate::math::{Item, MathFont};
 use crate::theme::{Ink, Theme};
-use std::collections::HashMap;
+use crate::util::VecMap;
 use std::ops::Range;
 use windows::Win32::Foundation::{D2DERR_RECREATE_TARGET, HWND};
 use windows::core::HRESULT;
@@ -162,14 +162,14 @@ pub struct Gfx {
     /// Offscreen WIC target (snapshots): (factory, bitmap, size).
     offscreen: Option<(windows::Win32::Graphics::Imaging::IWICImagingFactory, windows::Win32::Graphics::Imaging::IWICBitmap, u32, u32)>,
     pub offscreen_mode: bool,
-    brushes: HashMap<Ink, ID2D1SolidColorBrush>,
+    brushes: VecMap<Ink, ID2D1SolidColorBrush>,
     body: HSTRING,
     mono: HSTRING,
     typo_sup: IDWriteTypography,
     typo_sub: IDWriteTypography,
-    formats: HashMap<(u32, bool, bool, bool, u32), IDWriteTextFormat>,
+    formats: VecMap<(u32, bool, bool, bool, u32), IDWriteTextFormat>,
     /// Particle glyphs rendered once: (text, size, tint, dpi) → (bitmap, padding, width, height in DIPs).
-    sprites: HashMap<(&'static str, u32, u32, u32), (ID2D1Bitmap, f32, f32, f32)>,
+    sprites: VecMap<(&'static str, u32, u32, u32), (ID2D1Bitmap, f32, f32, f32)>,
     math: Option<MathFace>,
     pub images: super::images::Images,
     /// Animation clock for time-based effects (quote crossfades), ms.
@@ -228,11 +228,11 @@ impl Gfx {
                 hwnd_rt: None,
                 offscreen: None,
                 offscreen_mode: false,
-                brushes: HashMap::new(),
+                brushes: VecMap::new(),
                 body,
                 mono,
-                formats: HashMap::new(),
-                sprites: HashMap::new(),
+                formats: VecMap::new(),
+                sprites: VecMap::new(),
             })
         }
     }

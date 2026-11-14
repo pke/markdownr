@@ -22,12 +22,14 @@
 
 use core::cell::Cell;
 use std::cmp::{max, min};
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
+
+use crate::unicase::UniCase;
+use crate::vecmap::VecMap;
 use std::iter::FusedIterator;
 use std::num::NonZeroUsize;
 use std::ops::{Index, Range};
 
-use crate::unicase::UniCase;
 
 use crate::firstpass::run_first_pass;
 use crate::linklabel::{scan_link_label_rest, FootnoteLabel, LinkLabel, ReferenceLabel};
@@ -1914,7 +1916,7 @@ pub struct FootnoteDef {
 /// Tracks tree indices of code span delimiters of each length. It should prevent
 /// quadratic scanning behaviours by providing (amortized) constant time lookups.
 struct CodeDelims {
-    inner: HashMap<usize, VecDeque<TreeIndex>>,
+    inner: VecMap<usize, VecDeque<TreeIndex>>,
     seen_first: bool,
 }
 
@@ -1928,7 +1930,7 @@ impl CodeDelims {
 
     fn insert(&mut self, count: usize, ix: TreeIndex) {
         if self.seen_first {
-            self.inner.entry(count).or_default().push_back(ix);
+            self.inner.or_insert_with(count, VecDeque::new).push_back(ix);
         } else {
             // Skip the first insert, since that delimiter will always
             // be an opener and not a closer.
@@ -1941,7 +1943,7 @@ impl CodeDelims {
     }
 
     fn find(&mut self, open_ix: TreeIndex, count: usize) -> Option<TreeIndex> {
-        while let Some(ix) = self.inner.get_mut(&count)?.pop_front() {
+        while let Some(ix) = self.inner.get_mut_by(|&k| k == count)?.pop_front() {
             if ix > open_ix {
                 return Some(ix);
             }
@@ -1958,7 +1960,7 @@ impl CodeDelims {
 /// Tracks brace contexts and delimiter length for math delimiters.
 /// Provides amortized constant-time lookups.
 struct MathDelims {
-    inner: HashMap<u8, VecDeque<(TreeIndex, bool, bool)>>,
+    inner: VecMap<u8, VecDeque<(TreeIndex, bool, bool)>>,
 }
 
 impl MathDelims {
@@ -1976,8 +1978,7 @@ impl MathDelims {
         can_close: bool,
     ) {
         self.inner
-            .entry(brace_context)
-            .or_default()
+            .or_insert_with(brace_context, VecDeque::new)
             .push_back((ix, can_close, delim_is_display));
     }
 
@@ -1993,7 +1994,7 @@ impl MathDelims {
         brace_context: u8,
     ) -> Option<TreeIndex> {
         while let Some((ix, can_close, delim_is_display)) =
-            self.inner.get_mut(&brace_context)?.pop_front()
+            self.inner.get_mut_by(|&k| k == brace_context)?.pop_front()
         {
             if ix <= open_ix || (is_display && tree[open_ix].next == Some(ix)) {
                 continue;
@@ -2005,7 +2006,7 @@ impl MathDelims {
             // if we can't use it, leave it in the queue as a tombstone for the next
             // thing that tries to match it
             self.inner
-                .get_mut(&brace_context)?
+                .get_mut_by(|&k| k == brace_context)?
                 .push_front((ix, can_close, delim_is_display));
             break;
         }
@@ -2049,11 +2050,11 @@ pub(crate) struct HeadingAttributes<'a> {
 
 /// Keeps track of the reference definitions defined in the document.
 #[derive(Clone, Default, Debug)]
-pub struct RefDefs<'input>(pub(crate) HashMap<LinkLabel<'input>, LinkDef<'input>>);
+pub struct RefDefs<'input>(pub(crate) VecMap<(u64, LinkLabel<'input>), LinkDef<'input>>);
 
 /// Keeps track of the footnote definitions defined in the document.
 #[derive(Clone, Default, Debug)]
-pub struct FootnoteDefs<'input>(pub(crate) HashMap<FootnoteLabel<'input>, FootnoteDef>);
+pub struct FootnoteDefs<'input>(pub(crate) VecMap<(u64, FootnoteLabel<'input>), FootnoteDef>);
 
 impl<'input, 'b, 's> RefDefs<'input>
 where
@@ -2061,12 +2062,13 @@ where
 {
     /// Performs a lookup on reference label using unicode case folding.
     pub fn get(&'s self, key: &'b str) -> Option<&'b LinkDef<'input>> {
-        self.0.get(&UniCase::new(key.into()))
+        let h = fold_hash(key);
+        self.0.get_by(|(kh, k)| *kh == h && k.eq_str(key))
     }
 
     /// Provides an iterator over all the document's reference definitions.
     pub fn iter(&'s self) -> impl Iterator<Item = (&'s str, &'s LinkDef<'input>)> {
-        self.0.iter().map(|(k, v)| (k.as_ref(), v))
+        self.0.iter().map(|((_, k), v)| (k.as_ref(), v))
     }
 }
 
@@ -2076,11 +2078,13 @@ where
 {
     /// Performs a lookup on reference label using unicode case folding.
     pub fn contains(&'s self, key: &'b str) -> bool {
-        self.0.contains_key(&UniCase::new(key.into()))
+        let h = fold_hash(key);
+        self.0.get_by(|(kh, k)| *kh == h && k.eq_str(key)).is_some()
     }
     /// Performs a lookup on reference label using unicode case folding.
     pub fn get_mut(&'s mut self, key: CowStr<'input>) -> Option<&'s mut FootnoteDef> {
-        self.0.get_mut(&UniCase::new(key))
+        let h = fold_hash(&key);
+        self.0.get_mut_by(|(kh, k)| *kh == h && k.eq_str(&key))
     }
 }
 
@@ -3068,4 +3072,10 @@ pub fn set_smart_quotes(quotes: [&'static str; 5]) {
 
 fn smart_quotes() -> &'static [&'static str; 5] {
     SMART_QUOTES.get().unwrap_or(&["\u{201C}", "\u{201D}", "\u{2018}", "\u{2019}", "\u{2019}"])
+}
+
+/// Markdownr: hash of a label under the case folding labels compare with, so the linear
+/// lookups in `RefDefs`/`FootnoteDefs` compare numbers first.
+pub(crate) fn fold_hash(label: &str) -> u64 {
+    UniCase::new(label).fold_hash()
 }

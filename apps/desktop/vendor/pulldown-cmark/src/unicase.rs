@@ -12,6 +12,14 @@ impl<S: AsRef<str>> UniCase<S> {
     pub fn new(s: S) -> Self {
         UniCase(s)
     }
+    /// FNV-1a over the folded characters.
+    pub fn fold_hash(&self) -> u64 {
+        self.folded().fold(0xcbf2_9ce4_8422_2325, |h, c| (h ^ c as u64).wrapping_mul(0x100_0000_01b3))
+    }
+    /// Equal to `s` under the same case folding (lookups without building a key).
+    pub fn eq_str(&self, s: &str) -> bool {
+        self.folded().eq(UniCase(s).folded())
+    }
     fn folded(&self) -> impl Iterator<Item = char> + '_ {
         // Full case folding differs from lowercasing mainly for ß/ẞ → "ss".
         self.0

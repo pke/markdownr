@@ -6,7 +6,7 @@
 use super::dwrite::{Gfx, particle_ink, particle_tint};
 use crate::particles::{Particles, Track, Wave};
 use crate::theme::{Ink, Theme};
-use std::collections::HashMap;
+use crate::util::VecMap;
 use windows::Win32::Foundation::{HMODULE, HWND, POINT};
 use windows::Win32::Graphics::Direct2D::Common::*;
 use windows::Win32::Graphics::Direct2D::*;
@@ -17,7 +17,7 @@ use windows::Win32::Graphics::Dxgi::Common::{DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::core::{Interface, Result};
 
-type Surfaces = HashMap<(&'static str, u32, u32, u32), (IDCompositionSurface, f32)>;
+type Surfaces = VecMap<(&'static str, u32, u32, u32), (IDCompositionSurface, f32)>;
 
 pub struct Overlay {
     device: IDCompositionDesktopDevice,
@@ -45,7 +45,7 @@ impl Overlay {
             let root = device.CreateVisual()?;
             root.SetBitmapInterpolationMode(DCOMPOSITION_BITMAP_INTERPOLATION_MODE_LINEAR)?;
             target.SetRoot(&root)?;
-            Ok(Overlay { device, _d2d: d2d, _target: target, root, surfaces: HashMap::new(), shown: None })
+            Ok(Overlay { device, _d2d: d2d, _target: target, root, surfaces: VecMap::new(), shown: None })
         }
     }
 

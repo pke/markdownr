@@ -377,7 +377,7 @@ impl<'a, 'b> FirstPass<'a, 'b> {
         while let Some((bytecount, label, link_def)) =
             self.parse_refdef_total(start_ix + line_start.bytes_scanned())
         {
-            self.allocs.refdefs.0.entry(label).or_insert(link_def);
+            self.allocs.refdefs.0.or_insert_with((crate::parse::fold_hash(&label), label), || link_def);
             let container_start = start_ix + line_start.bytes_scanned();
             let mut ix = container_start + bytecount;
             // Refdefs act as if they were contained within a paragraph, for purposes of lazy
@@ -1734,7 +1734,7 @@ impl<'a, 'b> FirstPass<'a, 'b> {
         self.allocs
             .footdefs
             .0
-            .insert(UniCase::new(label.clone()), FootnoteDef { use_count: 0 });
+            .insert((crate::parse::fold_hash(&label), UniCase::new(label.clone())), FootnoteDef { use_count: 0 });
         self.tree.append(Item {
             start,
             end: 0, // will get set later

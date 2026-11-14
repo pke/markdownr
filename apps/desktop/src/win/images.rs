@@ -4,7 +4,7 @@
 //! needed. The UI thread turns the pixels into Direct2D bitmaps on first draw.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use crate::util::VecMap;
 use std::path::{Path, PathBuf};
 use windows::Win32::Foundation::{GENERIC_READ, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Direct2D::Common::{D2D_SIZE_U, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_PIXEL_FORMAT};
@@ -51,7 +51,7 @@ enum State {
 }
 
 pub struct Images {
-    map: RefCell<HashMap<String, State>>,
+    map: RefCell<VecMap<String, State>>,
     base: RefCell<Option<PathBuf>>,
     hwnd: isize,
 }

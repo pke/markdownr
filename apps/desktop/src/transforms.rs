@@ -5,7 +5,7 @@
 //! text nodes after parsing and turned into first-class node kinds.
 
 use crate::ast::{Kind, Node};
-use std::collections::HashMap;
+use crate::util::VecMap;
 
 pub type Transform = fn(&mut Node);
 
@@ -667,12 +667,12 @@ mod ios_parity_tests {
 
 /// GitHub-style slug ids for headings (`## Hello World` → `hello-world`), unique per document.
 pub fn heading_ids(node: &mut Node) {
-    let mut seen: HashMap<String, usize> = HashMap::new();
-    fn walk(node: &mut Node, seen: &mut HashMap<String, usize>) {
+    let mut seen: VecMap<String, usize> = VecMap::new();
+    fn walk(node: &mut Node, seen: &mut VecMap<String, usize>) {
         if let Kind::Heading { id, .. } = &mut node.kind {
             if id.is_empty() {
                 let base = slug(&node_plain(&node.children));
-                let n = seen.entry(base.clone()).or_insert(0);
+                let n = seen.or_insert_with(base.clone(), || 0);
                 *id = if *n == 0 { base } else { [&base, "-", &crate::util::num(*n as u64)].concat() };
                 *n += 1;
             }

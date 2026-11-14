@@ -86,6 +86,7 @@ pub mod html;
 pub mod utils;
 
 mod unicase;
+mod vecmap;
 mod entities;
 pub use entities::set_entity_table;
 pub use parse::set_smart_quotes;

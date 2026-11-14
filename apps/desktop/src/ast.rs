@@ -313,3 +313,18 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod refs_bench {
+    /// Many distinct link references (linear lookups with folded-label hashes):
+    /// `cargo test --release many_refs -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn many_refs() {
+        let mut s = String::new();
+        for i in 0..3000 { s += &format!("See [link {i}][ref{i}] and [again][Ref{i}].\n\n"); }
+        for i in 0..3000 { s += &format!("[ref{i}]: https://example.com/{i}\n"); }
+        let t = std::time::Instant::now();
+        let d = super::parse(&s);
+        eprintln!("REFS {} ms, {} blocks", t.elapsed().as_millis(), d.children.len());
+    }
+}

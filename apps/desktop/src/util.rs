@@ -55,3 +55,86 @@ pub fn log(parts: &[&str]) {
     }
     let _ = e.write_all(b"\n");
 }
+
+/// A map on a `Vec` with linear lookups and the few `HashMap` methods the app uses: its
+/// maps hold a handful of keys (brushes, text formats, glyph sprites, image URLs,
+/// heading slugs), and dropping std's `HashMap` (hashing, random seed, table code) from
+/// the whole program saves about 12 KB of exe.
+pub struct VecMap<K, V>(Vec<(K, V)>);
+
+impl<K, V> Default for VecMap<K, V> {
+    fn default() -> Self {
+        VecMap(Vec::new())
+    }
+}
+
+impl<K, V> VecMap<K, V> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn position<Q: PartialEq + ?Sized>(&self, key: &Q) -> Option<usize>
+    where
+        K: core::borrow::Borrow<Q>,
+    {
+        self.0.iter().position(|(k, _)| k.borrow() == key)
+    }
+
+    pub fn get<Q: PartialEq + ?Sized>(&self, key: &Q) -> Option<&V>
+    where
+        K: core::borrow::Borrow<Q>,
+    {
+        self.position(key).map(|i| &self.0[i].1)
+    }
+
+    pub fn get_mut<Q: PartialEq + ?Sized>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        K: core::borrow::Borrow<Q>,
+    {
+        self.position(key).map(|i| &mut self.0[i].1)
+    }
+
+    pub fn contains_key<Q: PartialEq + ?Sized>(&self, key: &Q) -> bool
+    where
+        K: core::borrow::Borrow<Q>,
+    {
+        self.position(key).is_some()
+    }
+
+    pub fn remove<Q: PartialEq + ?Sized>(&mut self, key: &Q) -> Option<V>
+    where
+        K: core::borrow::Borrow<Q>,
+    {
+        self.position(key).map(|i| self.0.swap_remove(i).1)
+    }
+
+    pub fn insert(&mut self, key: K, value: V)
+    where
+        K: PartialEq,
+    {
+        match self.position(&key) {
+            Some(i) => self.0[i].1 = value,
+            None => self.0.push((key, value)),
+        }
+    }
+
+    /// The value at `key`, inserted with `f()` if there is none.
+    pub fn or_insert_with(&mut self, key: K, f: impl FnOnce() -> V) -> &mut V
+    where
+        K: PartialEq,
+    {
+        let i = self.position(&key).unwrap_or_else(|| {
+            self.0.push((key, f()));
+            self.0.len() - 1
+        });
+        &mut self.0[i].1
+    }
+
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.0.iter_mut().map(|(_, v)| v)
+    }
+}
