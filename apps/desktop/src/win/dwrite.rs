@@ -519,21 +519,23 @@ impl Gfx {
         let sel_brush = self.brush(theme.selection);
         let find_brush = self.brush(theme.find);
         let current_brush = self.brush(theme.find_current);
-        // `:::quotes` crossfade: opacity per block / rect (absent = 1).
-        let mut block_alpha: HashMap<usize, f32> = HashMap::new();
-        let mut rect_alpha: HashMap<usize, f32> = HashMap::new();
-        for group in &doc.cycles {
-            let n = group.len().max(1);
-            let period = 10_000.0;
-            let k = (self.now_ms / period) as usize;
-            let (cur, prev) = (k % n, (k + n - 1) % n);
-            let f = if k == 0 { 1.0 } else { ((self.now_ms % period) / 600.0).min(1.0) };
-            for (qi, (br, rr)) in group.iter().enumerate() {
-                let a = if qi == cur { f } else if qi == prev && f < 1.0 { 1.0 - f } else { 0.0 };
-                br.clone().for_each(|b| _ = block_alpha.insert(b, a));
-                rr.clone().for_each(|r| _ = rect_alpha.insert(r, a));
-            }
-        }
+        // `:::quotes` crossfade: opacity per quote's block and rect ranges (elsewhere 1;
+        // the last range containing an index wins).
+        let now_ms = self.now_ms;
+        let fades: Vec<(&std::ops::Range<usize>, &std::ops::Range<usize>, f32)> = doc
+            .cycles
+            .iter()
+            .flat_map(|group| {
+                let n = group.len().max(1);
+                let period = 10_000.0;
+                let k = (now_ms / period) as usize;
+                let (cur, prev) = (k % n, (k + n - 1) % n);
+                let f = if k == 0 { 1.0 } else { ((now_ms % period) / 600.0).min(1.0) };
+                group.iter().enumerate().map(move |(qi, (br, rr))| (br, rr, if qi == cur { f } else if qi == prev && f < 1.0 { 1.0 - f } else { 0.0 }))
+            })
+            .collect();
+        let block_alpha = |i: usize| fades.iter().rev().find(|(br, _, _)| br.contains(&i)).map_or(1.0, |f| f.2);
+        let rect_alpha = |i: usize| fades.iter().rev().find(|(_, rr, _)| rr.contains(&i)).map_or(1.0, |f| f.2);
         let fade_layer = |rt: &ID2D1RenderTarget, a: f32| unsafe {
             let params = D2D1_LAYER_PARAMETERS {
                 contentBounds: D2D_RECT_F { left: -1e6, top: -1e6, right: 1e6, bottom: 1e6 },
@@ -548,7 +550,7 @@ impl Gfx {
         };
         unsafe {
             for (ri, r) in doc.rects.iter().enumerate() {
-                let a = rect_alpha.get(&ri).copied().unwrap_or(1.0);
+                let a = rect_alpha(ri);
                 if !visible(r.r.y, r.r.h) || a <= 0.0 {
                     continue;
                 }
@@ -575,7 +577,7 @@ impl Gfx {
                 }
             }
             for (i, block) in doc.blocks.iter().enumerate() {
-                let a = block_alpha.get(&i).copied().unwrap_or(1.0);
+                let a = block_alpha(i);
                 if !visible(block.y, block.h) || a <= 0.0 {
                     continue;
                 }
