@@ -88,6 +88,9 @@ pub(crate) enum ItemBody {
     OwnedInlineHtml(CowIndex),
     SynthesizeText(CowIndex),
     SynthesizeChar(char),
+    /// Markdownr: a smart quote, index into [`smart_quotes`] (open/close double, open/close
+    /// single, apostrophe).
+    SmartQuote(u8),
     Html,
     Text {
         backslash_escaped: bool,
@@ -170,6 +173,7 @@ impl ItemBody {
                 | OwnedInlineHtml(..)
                 | SynthesizeText(..)
                 | SynthesizeChar(..)
+                | SmartQuote(..)
                 | Html
                 | Text { .. }
                 | SoftBreak
@@ -1117,23 +1121,28 @@ impl<'input, F: BrokenLinkCallback<'input>> Parser<'input, F> {
                 ItemBody::MaybeSmartQuote(c, can_open, can_close) => {
                     self.tree[cur_ix].item.body = match c {
                         b'\'' => {
+                            // Markdownr: the locale's quotes (`smart_quotes`); a single quote
+                            // without a partner stays an apostrophe.
                             if let (Some(open_ix), true) = (single_quote_open, can_close) {
-                                self.tree[open_ix].item.body = ItemBody::SynthesizeChar('‘');
+                                self.tree[open_ix].item.body = ItemBody::SmartQuote(2);
                                 single_quote_open = None;
-                            } else if can_open {
-                                single_quote_open = Some(cur_ix);
+                                ItemBody::SmartQuote(3)
+                            } else {
+                                if can_open {
+                                    single_quote_open = Some(cur_ix);
+                                }
+                                ItemBody::SmartQuote(4)
                             }
-                            ItemBody::SynthesizeChar('’')
                         }
                         _ /* double quote */ => {
                             if can_close && double_quote_open {
                                 double_quote_open = false;
-                                ItemBody::SynthesizeChar('”')
+                                ItemBody::SmartQuote(1)
                             } else {
                                 if can_open && !double_quote_open {
                                     double_quote_open = true;
                                 }
-                                ItemBody::SynthesizeChar('“')
+                                ItemBody::SmartQuote(0)
                             }
                         }
                     };
@@ -2328,6 +2337,7 @@ fn item_to_event<'a>(item: &Item, text: &'a str, allocs: &mut Allocations<'a>) -
         ItemBody::Code(cow_ix) => return Event::Code(allocs.take_cow(cow_ix)),
         ItemBody::SynthesizeText(cow_ix) => return Event::Text(allocs.take_cow(cow_ix)),
         ItemBody::SynthesizeChar(c) => return Event::Text(c.into()),
+        ItemBody::SmartQuote(i) => return Event::Text(CowStr::Borrowed(smart_quotes()[i as usize])),
         ItemBody::HtmlBlock => Tag::HtmlBlock,
         ItemBody::Html => return Event::Html(text[item.start..item.end].into()),
         ItemBody::InlineHtml => return Event::InlineHtml(text[item.start..item.end].into()),
@@ -3045,4 +3055,17 @@ text
         assert_eq!(3, stack.get_lowerbound(b'_', 1, false));
         assert_eq!(3, stack.get_lowerbound(b'_', 1, true));
     }
+}
+
+static SMART_QUOTES: std::sync::OnceLock<[&'static str; 5]> = std::sync::OnceLock::new();
+
+/// Markdownr: the characters smart punctuation puts in for quotes, in the order open and
+/// close double, open and close single, apostrophe (default English `“ ” ‘ ’ ’`). Set once,
+/// before the first parse.
+pub fn set_smart_quotes(quotes: [&'static str; 5]) {
+    let _ = SMART_QUOTES.set(quotes);
+}
+
+fn smart_quotes() -> &'static [&'static str; 5] {
+    SMART_QUOTES.get().unwrap_or(&["\u{201C}", "\u{201D}", "\u{2018}", "\u{2019}", "\u{2019}"])
 }

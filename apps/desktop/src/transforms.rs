@@ -210,14 +210,15 @@ fn replace_emoji(text: &str) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
-// Typographic replacements   (c) → ©   "quotes" → „quotes"   -- → –
+// Typographic replacements   (c) → ©   -- → –   (quotes: the Markdown parser, see set_locale)
 // ---------------------------------------------------------------------------
 
-static LOCALE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-
-/// Set once by the platform shell (e.g. `de-DE`); controls the quote style.
+/// Set once by the platform shell (e.g. `de-DE`), before the first parse: the quote style.
+/// The Markdown parser pairs the quotes (smart punctuation, also across emphasis and
+/// links) and puts in this locale's; escaped ones (`\"`) stay as typed.
 pub fn set_locale(locale: &str) {
-    let _ = LOCALE.set(locale.to_string());
+    let [od, cd, os, cs] = quotes(locale);
+    pulldown_cmark::set_smart_quotes([od, cd, os, cs, "\u{2019}"]);
 }
 
 fn quotes(locale: &str) -> [&'static str; 4] {
@@ -234,8 +235,7 @@ fn quotes(locale: &str) -> [&'static str; 4] {
 }
 
 /// The iOS `createTypographicTransform` rules, applied per text node.
-pub fn typographic(text: &str, locale: &str) -> String {
-    let [od, cd, os, cs] = quotes(locale);
+pub fn typographic(text: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::with_capacity(text.len());
     let mut i = 0;
@@ -293,17 +293,6 @@ pub fn typographic(text: &str, locale: &str) -> String {
                 out.push(',');
                 i += n;
             }
-            '"' | '\'' => {
-                let after = chars.get(i + 1).copied();
-                let opening = before.is_none_or(|b| b.is_whitespace() || "([{".contains(b)) && after.is_some_and(|a| !a.is_whitespace());
-                out.push_str(match (c, opening) {
-                    ('"', true) => od,
-                    ('"', false) => cd,
-                    (_, true) => os,
-                    _ => cs,
-                });
-                i += 1;
-            }
             _ => {
                 out.push(c);
                 i += 1;
@@ -314,13 +303,12 @@ pub fn typographic(text: &str, locale: &str) -> String {
 }
 
 pub fn typographic_transform(node: &mut Node) {
-    let locale = LOCALE.get().map(String::as_str).unwrap_or("en");
     rewrite_text_nodes(node, &|t| {
         // Only these characters can change; most text nodes have none of them.
-        if !t.bytes().any(|b| matches!(b, b'-' | b'.' | b'+' | b'(' | b'?' | b'!' | b',' | b'"' | b'\'')) {
+        if !t.bytes().any(|b| matches!(b, b'-' | b'.' | b'+' | b'(' | b'?' | b'!' | b',')) {
             return None;
         }
-        let r = typographic(t, locale);
+        let r = typographic(t);
         (r != t).then(|| vec![Node::text(r)])
     });
 }
@@ -614,8 +602,17 @@ mod ios_parity_tests {
 
     #[test]
     fn typography_de() {
-        assert_eq!(typographic("\"Hallo\" -- (c) 2026...", "de-DE"), "\u{201E}Hallo\u{201C} \u{2013} \u{00A9} 2026\u{2026}");
-        assert_eq!(typographic("a---b +-1 (tm) it's", "en"), "a\u{2014}b \u{00B1}1 \u{2122} it\u{2019}s");
+        assert_eq!(typographic("Hallo -- (c) 2026..."), "Hallo \u{2013} \u{00A9} 2026\u{2026}");
+        assert_eq!(typographic("a---b +-1 (tm)"), "a\u{2014}b \u{00B1}1 \u{2122}");
+    }
+
+    /// Quotes come from the parser (English here: tests do not set a locale), paired
+    /// across emphasis; a lone single quote is an apostrophe, escaped quotes stay.
+    #[test]
+    fn quotes_from_the_parser() {
+        let mut doc = crate::ast::parse("\"**Fett** am Anfang\" und 'nein', geht's \\\"wörtlich\\\"");
+        typographic_transform(&mut doc);
+        assert_eq!(doc.plain_text(), "\u{201C}Fett am Anfang\u{201D} und \u{2018}nein\u{2019}, geht\u{2019}s \"wörtlich\"");
     }
 
     #[test]
@@ -846,9 +843,8 @@ mod perf_rewrite_tests {
     fn typographic_skip_is_exact() {
         // Text without trigger bytes is returned unchanged by `typographic`.
         for t in texts() {
-            if !t.bytes().any(|b| matches!(b, b'-' | b'.' | b'+' | b'(' | b'?' | b'!' | b',' | b'"' | b'\'')) {
-                assert_eq!(typographic(&t, "de"), t);
-                assert_eq!(typographic(&t, "fr"), t);
+            if !t.bytes().any(|b| matches!(b, b'-' | b'.' | b'+' | b'(' | b'?' | b'!' | b',')) {
+                assert_eq!(typographic(&t), t);
             }
         }
     }

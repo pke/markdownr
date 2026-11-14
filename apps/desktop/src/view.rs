@@ -59,6 +59,7 @@ const HELP: &[(usize, &str, &[(&str, &str)])] = &[
     (1, "Umgebungsvariablen", &[
         ("MARKDOWNR_SETTINGS=Datei", "Einstellungen aus dieser Datei statt %APPDATA%\\Markdownr\\settings.ini"),
         ("MARKDOWNR_SAMPLE=1", "Ohne Datei das Beispieldokument zeigen"),
+        ("MARKDOWNR_LOCALE=de-DE", "Anführungszeichen dieser Sprache statt der Systemsprache"),
         ("MARKDOWNR_SNAPSHOT=Bild.png", "Die Seite als PNG speichern"),
         ("MARKDOWNR_SNAPSHOT_EXIT=1", "… und danach beenden"),
     ]),

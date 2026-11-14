@@ -934,7 +934,9 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         let offscreen = std::env::var("MARKDOWNR_SNAPSHOT").is_ok_and(|p| p.ends_with(".png"));
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
-        {
+        if let Ok(locale) = std::env::var("MARKDOWNR_LOCALE") {
+            crate::transforms::set_locale(&locale);
+        } else {
             let mut buf = [0u16; 85];
             let n = windows::Win32::Globalization::GetUserDefaultLocaleName(&mut buf);
             if n > 1 {
