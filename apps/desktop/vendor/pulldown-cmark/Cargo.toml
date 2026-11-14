@@ -130,9 +130,6 @@ version = "2"
 version = "0.2"
 optional = true
 
-[dependencies.memchr]
-version = "2.5"
-
 [dependencies.pulldown-cmark-escape]
 version = "0.11"
 optional = true

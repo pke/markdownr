@@ -28,73 +28,14 @@ use crate::strings::CowStr;
 use crate::{entities, BlockQuoteKind, HeadingLevel};
 use crate::{Alignment, LinkType};
 
-use memchr::memchr;
+/// Markdownr: first `c` in `s` (instead of the memchr crate: ~2.5 KB of SIMD dispatch for
+/// searches within one line or tag).
+fn memchr(c: u8, s: &[u8]) -> Option<usize> {
+    s.iter().position(|&b| b == c)
+}
 
-// sorted for binary search
-const HTML_TAGS: [&str; 62] = [
-    "address",
-    "article",
-    "aside",
-    "base",
-    "basefont",
-    "blockquote",
-    "body",
-    "caption",
-    "center",
-    "col",
-    "colgroup",
-    "dd",
-    "details",
-    "dialog",
-    "dir",
-    "div",
-    "dl",
-    "dt",
-    "fieldset",
-    "figcaption",
-    "figure",
-    "footer",
-    "form",
-    "frame",
-    "frameset",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "head",
-    "header",
-    "hr",
-    "html",
-    "iframe",
-    "legend",
-    "li",
-    "link",
-    "main",
-    "menu",
-    "menuitem",
-    "nav",
-    "noframes",
-    "ol",
-    "optgroup",
-    "option",
-    "p",
-    "param",
-    "search",
-    "section",
-    "summary",
-    "table",
-    "tbody",
-    "td",
-    "tfoot",
-    "th",
-    "thead",
-    "title",
-    "tr",
-    "track",
-    "ul",
-];
+/// Markdownr: block-level HTML tag names, space-separated (one string instead of 62 `&str`).
+const HTML_TAGS: &str = "address article aside base basefont blockquote body caption center col colgroup dd details dialog dir div dl dt fieldset figcaption figure footer form frame frameset h1 h2 h3 h4 h5 h6 head header hr html iframe legend li link main menu menuitem nav noframes ol optgroup option p param search section summary table tbody td tfoot th thead title tr track ul";
 
 /// Analysis of the beginning of a line, including indentation and container
 /// markers.
@@ -1225,24 +1166,8 @@ pub(crate) fn starts_html_block_type_6(data: &[u8]) -> bool {
 }
 
 fn is_html_tag(tag: &[u8]) -> bool {
-    HTML_TAGS
-        .binary_search_by(|probe| {
-            let probe_bytes_iter = probe.as_bytes().iter();
-            let tag_bytes_iter = tag.iter();
-
-            probe_bytes_iter
-                .zip(tag_bytes_iter)
-                .find_map(|(&a, &b)| {
-                    // We can compare case insensitively because the probes are
-                    // all lower case alpha strings.
-                    match a.cmp(&(b | 0x20)) {
-                        std::cmp::Ordering::Equal => None,
-                        inequality => Some(inequality),
-                    }
-                })
-                .unwrap_or_else(|| probe.len().cmp(&tag.len()))
-        })
-        .is_ok()
+    // The names are lower case letters and digits, so `b | 0x20` compares case-insensitively.
+    HTML_TAGS.split(' ').any(|t| t.len() == tag.len() && t.bytes().zip(tag).all(|(a, &b)| a == b | 0x20))
 }
 
 /// Assumes that `data` starts with `<`.

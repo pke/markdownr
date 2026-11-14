@@ -311,6 +311,19 @@ mod tests {
         assert_eq!(t.children[0].children[0].kind, Kind::TableRow);
         assert_eq!(t.children[0].children[0].children.len(), 2);
     }
+
+    /// Only the block-level tag names (any case, with digits) may interrupt a paragraph.
+    #[test]
+    fn html_block_tags() {
+        for tag in ["<DIV>", "<h1>", "<Table>", "<details>", "</ul>"] {
+            let doc = parse(&["para\n", tag, "\n"].concat());
+            assert_eq!(doc.children.len(), 2, "{tag}");
+            assert_eq!(doc.children[1].kind, Kind::HtmlBlock, "{tag}");
+        }
+        for tag in ["<divx>", "<h7>", "<span>"] {
+            assert_eq!(parse(&["para\n", tag, "\n"].concat()).children.len(), 1, "{tag}");
+        }
+    }
 }
 
 #[cfg(test)]
