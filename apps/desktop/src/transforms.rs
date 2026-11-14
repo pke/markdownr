@@ -147,20 +147,13 @@ pub fn emoji(name: &str) -> Option<&'static str> {
     (!e.is_empty()).then_some(e)
 }
 
-/// Emoticon shortcuts (markdown-it-emoji `shortcuts.mjs`), longest first.
-const EMOTICONS: &[(&str, &str)] = &[
-    (":,'-(", "sob"), (">:-(", "angry"), (":-\")", "blush"), (":'-(", "cry"), (":,-(", "cry"), ("]:-(", "imp"), ("o:-)", "innocent"),
-    ("O:-)", "innocent"), ("0:-)", "innocent"), (":'-)", "joy"), (":,-)", "joy"), (":'-D", "joy"), (":,-D", "joy"), ("]:-)", "smiling_imp"),
-    (":,'(", "sob"), (",:-)", "sweat_smile"), (">:(", "angry"), (":\")", "blush"), ("</3", "broken_heart"), ("<\\3", "broken_heart"),
-    (":-/", "confused"), (":'(", "cry"), (":,(", "cry"), (":-(", "frowning"), ("]:(", "imp"), ("o:)", "innocent"), ("O:)", "innocent"),
-    ("0:)", "innocent"), (":')", "joy"), (":,)", "joy"), (":'D", "joy"), (":,D", "joy"), (":-*", "kissing"), ("x-)", "laughing"),
-    ("X-)", "laughing"), (":-|", "neutral_face"), (":-o", "open_mouth"), (":-O", "open_mouth"), (":-@", "rage"), (":-D", "smile"),
-    (":-)", "smiley"), ("]:)", "smiling_imp"), (";-(", "sob"), (":-P", "stuck_out_tongue"), ("8-)", "sunglasses"), ("B-)", "sunglasses"),
-    (",:(", "sweat"), (",:)", "sweat_smile"), (":-S", "unamused"), (":-Z", "unamused"), (":-$", "unamused"), (";-)", "wink"),
-    (":/", "confused"), (":(", "frowning"), ("<3", "heart"), (":*", "kissing"), (":|", "neutral_face"), (":o", "open_mouth"),
-    (":O", "open_mouth"), (":@", "rage"), (":D", "smile"), (":)", "smiley"), (";(", "sob"), (":P", "stuck_out_tongue"), (":s", "unamused"),
-    (":z", "unamused"), (":$", "unamused"), (";)", "wink"),
-];
+/// Emoticon shortcuts (markdown-it-emoji `shortcuts.mjs`), longest first: `face\tname`
+/// lines (one string instead of 70 pairs of `&str`).
+const EMOTICONS: &str = ":,'-(\tsob\n>:-(\tangry\n:-\")\tblush\n:'-(\tcry\n:,-(\tcry\n]:-(\timp\no:-)\tinnocent\nO:-)\tinnocent\n0:-)\tinnocent\n:'-)\tjoy\n:,-)\tjoy\n:'-D\tjoy\n:,-D\tjoy\n]:-)\tsmiling_imp\n:,'(\tsob\n,:-)\tsweat_smile\n>:(\tangry\n:\")\tblush\n</3\tbroken_heart\n<\\3\tbroken_heart\n:-/\tconfused\n:'(\tcry\n:,(\tcry\n:-(\tfrowning\n]:(\timp\no:)\tinnocent\nO:)\tinnocent\n0:)\tinnocent\n:')\tjoy\n:,)\tjoy\n:'D\tjoy\n:,D\tjoy\n:-*\tkissing\nx-)\tlaughing\nX-)\tlaughing\n:-|\tneutral_face\n:-o\topen_mouth\n:-O\topen_mouth\n:-@\trage\n:-D\tsmile\n:-)\tsmiley\n]:)\tsmiling_imp\n;-(\tsob\n:-P\tstuck_out_tongue\n8-)\tsunglasses\nB-)\tsunglasses\n,:(\tsweat\n,:)\tsweat_smile\n:-S\tunamused\n:-Z\tunamused\n:-$\tunamused\n;-)\twink\n:/\tconfused\n:(\tfrowning\n<3\theart\n:*\tkissing\n:|\tneutral_face\n:o\topen_mouth\n:O\topen_mouth\n:@\trage\n:D\tsmile\n:)\tsmiley\n;(\tsob\n:P\tstuck_out_tongue\n:s\tunamused\n:z\tunamused\n:$\tunamused\n;)\twink";
+
+fn emoticons() -> impl Iterator<Item = (&'static str, &'static str)> {
+    EMOTICONS.split('\n').filter_map(|l| l.split_once('\t'))
+}
 
 pub fn emoji_transform(node: &mut Node) {
     rewrite_text_nodes(node, &|t| replace_emoji(t).map(|r| vec![Node::text(r)]));
@@ -168,10 +161,13 @@ pub fn emoji_transform(node: &mut Node) {
 
 /// Bit set of the first bytes of all emoticons (all ASCII).
 const EMOTICON_STARTS: u128 = {
-    let mut m = 0u128;
+    let b = EMOTICONS.as_bytes();
+    let mut m = 1u128 << b[0];
     let mut i = 0;
-    while i < EMOTICONS.len() {
-        m |= 1 << EMOTICONS[i].0.as_bytes()[0];
+    while i + 1 < b.len() {
+        if b[i] == b'\n' {
+            m |= 1 << b[i + 1];
+        }
         i += 1;
     }
     m
@@ -197,7 +193,7 @@ fn replace_emoji(text: &str) -> Option<String> {
         }
         if hit.is_none() && word_start && b[i] < 128 && EMOTICON_STARTS & (1 << b[i]) != 0 {
             let rest = &text[i..];
-            for (face, name) in EMOTICONS {
+            for (face, name) in emoticons() {
                 if let Some(after) = rest.strip_prefix(face) {
                     if after.chars().next().is_none_or(|c| c.is_whitespace() || ".,!?)\"".contains(c)) {
                         if let Some(e) = emoji(name) {
@@ -826,7 +822,7 @@ mod perf_rewrite_tests {
             }
             let at_start = out.is_empty() || out.ends_with(char::is_whitespace) || out.ends_with(['(', '"']);
             if at_start {
-                for (face, name) in EMOTICONS {
+                for (face, name) in emoticons() {
                     if let Some(after) = rest.strip_prefix(face) {
                         if after.is_empty() || after.starts_with(|c: char| c.is_whitespace() || ".,!?)\"".contains(c)) {
                             if let Some(e) = emoji(name) {
@@ -958,5 +954,18 @@ mod abbr_rewrite_tests {
             }
             assert_eq!(abbreviate(&s, &defs, &first), old_abbreviate(&s, &defs), "{s:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod emoticon_table_tests {
+    /// All 68 shortcuts survive the packing, each with a known emoji, longest first.
+    #[test]
+    fn emoticons_intact() {
+        let all: Vec<_> = super::emoticons().collect();
+        assert_eq!(all.len(), 68);
+        assert!(all.iter().all(|(f, n)| !f.is_empty() && super::emoji(n).is_some()));
+        assert!(all.windows(2).all(|w| w[0].0.len() >= w[1].0.len()));
+        assert!(all.contains(&(":-\")", "blush")) && all.contains(&("<\\3", "broken_heart")));
     }
 }
