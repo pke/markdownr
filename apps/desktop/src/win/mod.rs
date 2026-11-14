@@ -293,6 +293,11 @@ impl App {
             self.arm_layout();
         }
         self.apply_caption();
+        if !self.chrome_timer {
+            // The layout just made may animate (particles, quote crossfades): arm the
+            // timer now rather than at the next input.
+            self.schedule();
+        }
         let v = &self.viewer;
         let finds = v.find_highlights();
         let chrome = v.chrome_visible().then_some((&v.chrome, v.chrome_alpha));

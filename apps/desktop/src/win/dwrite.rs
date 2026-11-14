@@ -168,7 +168,8 @@ pub struct Gfx {
     typo_sup: IDWriteTypography,
     typo_sub: IDWriteTypography,
     formats: HashMap<(u32, bool, bool, bool, u32), IDWriteTextFormat>,
-    sprite_layouts: HashMap<(&'static str, u32), IDWriteTextLayout>,
+    /// Particle glyphs rendered once: (text, size, tint, dpi) → (bitmap, padding, width, height in DIPs).
+    sprites: HashMap<(&'static str, u32, u32, u32), (ID2D1Bitmap, f32, f32, f32)>,
     math: Option<MathFace>,
     pub images: super::images::Images,
     /// Animation clock for time-based effects (quote crossfades), ms.
@@ -231,7 +232,7 @@ impl Gfx {
                 body,
                 mono,
                 formats: HashMap::new(),
-                sprite_layouts: HashMap::new(),
+                sprites: HashMap::new(),
             })
         }
     }
@@ -267,6 +268,7 @@ impl Gfx {
             }
             self.images.reset_device();
             self.brushes.clear();
+            self.sprites.clear();
             return Ok(true);
         }
         // Software rasteriser, not the GPU: creating it takes ~40 ms instead of ~160 ms
@@ -295,6 +297,7 @@ impl Gfx {
         self.hwnd_rt = Some(rt);
         self.images.reset_device();
         self.brushes.clear();
+        self.sprites.clear();
         Ok(true)
     }
 
@@ -407,6 +410,7 @@ impl Gfx {
                     self.rt = None;
                     self.hwnd_rt = None;
                     self.brushes.clear();
+                    self.sprites.clear();
                     self.images.reset_device();
                 }
             }
@@ -421,49 +425,61 @@ impl Gfx {
         let [r, g, b, _] = theme.background.0;
         let dark = (r as u32 + g as u32 + b as u32) < 384;
         let tint = ps.color.map_or(theme.text, |(l, d)| Ink::rgb(if dark { d } else { l }));
+        let (mut dpi, mut dpi_y) = (96.0, 96.0);
         unsafe {
+            rt.GetDpi(&mut dpi, &mut dpi_y);
             for s in sprites {
                 let p = &ps.items[s.index];
                 if p.behind != behind {
                     continue;
                 }
-                let key = (p.text, p.size.to_bits());
-                let layout = match self.sprite_layouts.get(&key) {
-                    Some(l) => l.clone(),
+                // Each glyph is rasterised once into a bitmap; a frame only draws the
+                // bitmaps rotated (rotated text would be rasterised again every frame).
+                // The brush carries the opacity (monochrome glyphs use it, colour emoji
+                // ignore it); below 0.99 the whole sprite fades once more, as the layer
+                // used to do it when sprites were drawn as text.
+                let mut ink = tint;
+                ink.0[3] = (p.opacity * 255.0) as u8;
+                let key = (p.text, p.size.to_bits(), u32::from_le_bytes(ink.0), dpi.to_bits());
+                let (bitmap, pad, w, h) = match self.sprites.get(&key) {
+                    Some(v) => v.clone(),
                     None => {
-                        let base = BaseStyle { size: p.size, color: tint, mono: false, bold: false, italic: false, line_height: 1.0 };
-                        let format = self.format(&base);
-                        let wide: Vec<u16> = p.text.encode_utf16().collect();
-                        let Ok(l) = self.dw.CreateTextLayout(&wide, &format, 400.0, 400.0) else { continue };
-                        self.sprite_layouts.insert(key, l.clone());
-                        l
+                        let Some(v) = self.sprite_bitmap(rt, p.text, p.size, ink) else { continue };
+                        self.sprites.insert(key, v.clone());
+                        v
                     }
                 };
+                let fade = if p.opacity < 0.99 && !p.text.is_ascii() { p.opacity } else { 1.0 };
                 let c = windows_numerics::Vector2 { X: s.x + p.size / 2.0, Y: s.y + p.size / 2.0 };
                 rt.SetTransform(&windows_numerics::Matrix3x2::rotation_around(s.rotation, c));
-                let mut brush_color = tint;
-                brush_color.0[3] = (p.opacity * 255.0) as u8;
-                let brush = self.brush(brush_color);
-                let fade = p.opacity < 0.99 && !p.text.is_ascii();
-                if fade {
-                    // Colour emoji ignore brush alpha: fade them with a layer.
-                    let params = D2D1_LAYER_PARAMETERS {
-                        contentBounds: D2D_RECT_F { left: s.x - 4.0, top: s.y - 4.0, right: s.x + p.size * 2.0, bottom: s.y + p.size * 2.0 },
-                        geometricMask: std::mem::ManuallyDrop::new(None),
-                        maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
-                        maskTransform: windows_numerics::Matrix3x2::identity(),
-                        opacity: p.opacity,
-                        opacityBrush: std::mem::ManuallyDrop::new(None),
-                        layerOptions: D2D1_LAYER_OPTIONS_NONE,
-                    };
-                    rt.PushLayer(&params, None);
-                }
-                rt.DrawTextLayout(windows_numerics::Vector2 { X: s.x, Y: s.y }, &layout, &brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
-                if fade {
-                    rt.PopLayer();
-                }
+                let dest = D2D_RECT_F { left: s.x - pad, top: s.y - pad, right: s.x - pad + w, bottom: s.y - pad + h };
+                rt.DrawBitmap(&bitmap, Some(&dest), fade, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, None);
             }
             rt.SetTransform(&windows_numerics::Matrix3x2::identity());
+        }
+    }
+
+    /// One particle glyph in `ink` (alpha included) on a transparent bitmap with `pad`
+    /// DIPs around its layout box.
+    unsafe fn sprite_bitmap(&mut self, rt: &ID2D1RenderTarget, text: &str, size: f32, ink: Ink) -> Option<(ID2D1Bitmap, f32, f32, f32)> {
+        let base = BaseStyle { size, color: ink, mono: false, bold: false, italic: false, line_height: 1.0 };
+        let format = self.format(&base);
+        let wide: Vec<u16> = text.encode_utf16().collect();
+        unsafe {
+            let layout = self.dw.CreateTextLayout(&wide, &format, 400.0, 400.0).ok()?;
+            let mut m = DWRITE_TEXT_METRICS::default();
+            layout.GetMetrics(&mut m).ok()?;
+            let pad = (size * 0.5).ceil() + 2.0;
+            let dips = D2D_SIZE_F { width: (m.widthIncludingTrailingWhitespace + 2.0 * pad).ceil(), height: (m.height + 2.0 * pad).ceil() };
+            let format = D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED };
+            let target = rt.CreateCompatibleRenderTarget(Some(&dips), None, Some(&format), D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE).ok()?;
+            target.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            let brush = target.CreateSolidColorBrush(&color(ink), None).ok()?;
+            target.BeginDraw();
+            target.Clear(Some(&D2D1_COLOR_F { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }));
+            target.DrawTextLayout(windows_numerics::Vector2 { X: pad, Y: pad }, &layout, &brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
+            target.EndDraw(None, None).ok()?;
+            Some((target.GetBitmap().ok()?, pad, dips.width, dips.height))
         }
     }
 
