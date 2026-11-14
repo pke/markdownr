@@ -20,8 +20,8 @@ pub enum Tok {
 }
 
 struct Lang {
-    keywords: &'static [&'static str],
-    literals: &'static [&'static str],
+    keywords: &'static str,
+    literals: &'static str,
     line_comments: &'static [&'static str],
     block_comment: Option<(&'static str, &'static str)>,
     /// Quote characters that start strings.
@@ -32,53 +32,20 @@ struct Lang {
     hash_comment: bool,
 }
 
-const C_LIKE_LIT: &[&str] = &["true", "false", "null", "NULL", "nullptr", "None", "Some", "Ok", "Err", "self", "Self", "this", "super", "undefined", "nil"];
+const C_LIKE_LIT: &str = "true false null NULL nullptr None Some Ok Err self Self this super undefined nil";
 
-const RUST: &[&str] = &[
-    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
-    "move", "mut", "pub", "ref", "return", "static", "struct", "trait", "type", "unsafe", "use", "where", "while", "yield", "i8", "i16", "i32", "i64", "i128", "isize",
-    "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64", "bool", "char", "str",
-];
-const JS: &[&str] = &[
-    "async", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "export", "extends", "finally", "for",
-    "from", "function", "if", "import", "in", "instanceof", "let", "new", "of", "return", "static", "switch", "throw", "try", "typeof", "var", "void", "while", "with",
-    "yield", "interface", "type", "enum", "implements", "private", "public", "protected", "readonly", "as", "declare", "namespace", "keyof", "string", "number",
-    "boolean", "any", "unknown", "never",
-];
-const PY: &[&str] = &[
-    "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import",
-    "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with", "yield", "match", "case",
-];
-const PY_LIT: &[&str] = &["True", "False", "None", "self", "cls"];
-const C: &[&str] = &[
-    "auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long",
-    "register", "return", "short", "signed", "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "class", "namespace",
-    "template", "typename", "public", "private", "protected", "virtual", "override", "new", "delete", "using", "try", "catch", "throw", "bool", "constexpr", "noexcept",
-    "#include", "#define", "#if", "#ifdef", "#ifndef", "#endif", "#else", "#pragma",
-];
-const JAVA: &[&str] = &[
-    "abstract", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends", "final",
-    "finally", "float", "for", "if", "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "package", "private", "protected", "public",
-    "return", "short", "static", "super", "switch", "synchronized", "throw", "throws", "try", "void", "volatile", "while", "var", "val", "fun", "when", "object",
-    "string", "using", "namespace", "async", "await", "override", "virtual", "readonly", "get", "set", "let", "func", "guard", "struct", "protocol", "extension",
-    "init", "deinit", "where", "in", "is", "as",
-];
-const GO: &[&str] = &[
-    "break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough", "for", "func", "go", "goto", "if", "import", "interface", "map",
-    "package", "range", "return", "select", "struct", "switch", "type", "var", "string", "int", "int64", "uint", "byte", "rune", "bool", "error", "float64",
-];
-const SH: &[&str] = &[
-    "if", "then", "else", "elif", "fi", "for", "while", "do", "done", "case", "esac", "in", "function", "return", "local", "export", "echo", "cd", "exit", "set",
-    "unset", "source", "alias", "sudo", "cargo", "git", "npm", "npx", "yarn", "pnpm", "brew", "apt", "rustup", "make",
-];
-const SQL: &[&str] = &[
-    "select", "from", "where", "insert", "into", "values", "update", "set", "delete", "create", "table", "drop", "alter", "add", "index", "join", "left", "right",
-    "inner", "outer", "on", "as", "and", "or", "not", "null", "is", "in", "group", "by", "order", "having", "limit", "offset", "primary", "key", "foreign",
-    "references", "distinct", "union", "all", "case", "when", "then", "else", "end", "integer", "text", "varchar", "default",
-];
-const PS: &[&str] = &["function", "param", "if", "else", "elseif", "foreach", "for", "while", "return", "switch", "try", "catch", "finally", "throw", "begin", "process", "end"];
-const CSS: &[&str] = &["important", "media", "import", "keyframes", "from", "to"];
-const NONE: &[&str] = &[];
+const RUST: &str = "as async await break const continue crate dyn else enum extern fn for if impl in let loop match mod move mut pub ref return static struct trait type unsafe use where while yield i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize f32 f64 bool char str";
+const JS: &str = "async await break case catch class const continue debugger default delete do else export extends finally for from function if import in instanceof let new of return static switch throw try typeof var void while with yield interface type enum implements private public protected readonly as declare namespace keyof string number boolean any unknown never";
+const PY: &str = "and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield match case";
+const PY_LIT: &str = "True False None self cls";
+const C: &str = "auto break case char const continue default do double else enum extern float for goto if inline int long register return short signed sizeof static struct switch typedef union unsigned void volatile while class namespace template typename public private protected virtual override new delete using try catch throw bool constexpr noexcept #include #define #if #ifdef #ifndef #endif #else #pragma";
+const JAVA: &str = "abstract boolean break byte case catch char class const continue default do double else enum extends final finally float for if implements import instanceof int interface long native new package private protected public return short static super switch synchronized throw throws try void volatile while var val fun when object string using namespace async await override virtual readonly get set let func guard struct protocol extension init deinit where in is as";
+const GO: &str = "break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var string int int64 uint byte rune bool error float64";
+const SH: &str = "if then else elif fi for while do done case esac in function return local export echo cd exit set unset source alias sudo cargo git npm npx yarn pnpm brew apt rustup make";
+const SQL: &str = "select from where insert into values update set delete create table drop alter add index join left right inner outer on as and or not null is in group by order having limit offset primary key foreign references distinct union all case when then else end integer text varchar default";
+const PS: &str = "function param if else elseif foreach for while return switch try catch finally throw begin process end";
+const CSS: &str = "important media import keyframes from to";
+const NONE: &str = "";
 
 fn lang(name: &str) -> Option<Lang> {
     let l = |keywords, literals, line_comments, block_comment, quotes, caps_types| Lang {
@@ -94,21 +61,21 @@ fn lang(name: &str) -> Option<Lang> {
     Some(match name.to_ascii_lowercase().as_str() {
         "rust" | "rs" => l(RUST, C_LIKE_LIT, &["//"], slash, "\"", true),
         "js" | "javascript" | "jsx" | "ts" | "typescript" | "tsx" | "mjs" | "cjs" => l(JS, C_LIKE_LIT, &["//"], slash, "\"'`", true),
-        "json" | "jsonc" | "json5" => l(NONE, &["true", "false", "null"], &["//"], slash, "\"", false),
+        "json" | "jsonc" | "json5" => l(NONE, "true false null", &["//"], slash, "\"", false),
         "py" | "python" => Lang { hash_comment: true, ..l(PY, PY_LIT, &["#"], None, "\"'", true) },
         "c" | "h" | "cpp" | "c++" | "cc" | "hpp" | "cxx" | "objc" | "objective-c" => l(C, C_LIKE_LIT, &["//"], slash, "\"'", true),
         "java" | "kotlin" | "kt" | "cs" | "csharp" | "c#" | "swift" | "scala" | "dart" => l(JAVA, C_LIKE_LIT, &["//"], slash, "\"'", true),
         "go" | "golang" => l(GO, C_LIKE_LIT, &["//"], slash, "\"'`", true),
         "sh" | "bash" | "shell" | "zsh" | "console" | "fish" => Lang { hash_comment: true, ..l(SH, NONE, &["#"], None, "\"'", false) },
-        "ps" | "ps1" | "powershell" | "pwsh" => Lang { hash_comment: true, ..l(PS, &["$true", "$false", "$null"], &["#"], Some(("<#", "#>")), "\"'", false) },
-        "toml" | "ini" | "cfg" | "conf" => Lang { hash_comment: true, ..l(NONE, &["true", "false"], &["#", ";"], None, "\"'", false) },
-        "yaml" | "yml" => Lang { hash_comment: true, ..l(NONE, &["true", "false", "null", "yes", "no", "~"], &["#"], None, "\"'", false) },
-        "sql" => l(SQL, &["true", "false"], &["--"], slash, "'\"", false),
+        "ps" | "ps1" | "powershell" | "pwsh" => Lang { hash_comment: true, ..l(PS, "$true $false $null", &["#"], Some(("<#", "#>")), "\"'", false) },
+        "toml" | "ini" | "cfg" | "conf" => Lang { hash_comment: true, ..l(NONE, "true false", &["#", ";"], None, "\"'", false) },
+        "yaml" | "yml" => Lang { hash_comment: true, ..l(NONE, "true false null yes no ~", &["#"], None, "\"'", false) },
+        "sql" => l(SQL, "true false", &["--"], slash, "'\"", false),
         "css" | "scss" | "less" => l(CSS, NONE, &["//"], slash, "\"'", false),
-        "lua" => l(&["and", "break", "do", "else", "elseif", "end", "for", "function", "if", "in", "local", "not", "or", "repeat", "return", "then", "until", "while"], &["true", "false", "nil"], &["--"], Some(("--[[", "]]")), "\"'", false),
+        "lua" => l("and break do else elseif end for function if in local not or repeat return then until while", "true false nil", &["--"], Some(("--[[", "]]")), "\"'", false),
         "rb" | "ruby" => Lang {
             hash_comment: true,
-            ..l(&["def", "end", "class", "module", "if", "elsif", "else", "unless", "while", "until", "for", "in", "do", "return", "yield", "begin", "rescue", "ensure", "require", "attr_accessor", "then", "case", "when"], &["true", "false", "nil", "self"], &["#"], None, "\"'", true)
+            ..l("def end class module if elsif else unless while until for in do return yield begin rescue ensure require attr_accessor then case when", "true false nil self", &["#"], None, "\"'", true)
         },
         "html" | "xml" | "svg" | "xhtml" | "vue" | "plist" => return None, // handled by `markup`
         "diff" | "patch" => return None,
@@ -206,9 +173,10 @@ pub fn highlight(lang_name: &str, code: &str) -> Vec<(Range<usize>, Tok)> {
             let word = &code[i..j];
             let lower = word.to_ascii_lowercase();
             let w = if name == "sql" { lower.as_str() } else { word };
-            let tok = if lang.keywords.contains(&w) || (is_css && word.starts_with('@')) {
+            let has = |list: &str| list.split(' ').any(|k| k == w);
+            let tok = if has(lang.keywords) || (is_css && word.starts_with('@')) {
                 Some(Tok::Keyword)
-            } else if lang.literals.contains(&w) {
+            } else if has(lang.literals) {
                 Some(Tok::Literal)
             } else if b.get(j) == Some(&b'!') && name.starts_with("r") {
                 Some(Tok::Function) // macro
@@ -411,5 +379,17 @@ mod tests {
     #[test]
     fn unknown_language_is_plain() {
         assert!(highlight("klingon", "qapla'").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod word_list_tests {
+    /// Keywords match whole words only (the lists are space-separated strings).
+    #[test]
+    fn whole_words() {
+        let t = super::highlight("rust", "format fn inx in");
+        let kinds: Vec<_> = t.iter().map(|(r, k)| (r.start, *k)).collect();
+        assert!(kinds.contains(&(7, super::Tok::Keyword)) && kinds.contains(&(14, super::Tok::Keyword)));
+        assert!(!kinds.iter().any(|&(s, _)| s == 0 || s == 10));
     }
 }
