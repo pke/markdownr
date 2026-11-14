@@ -280,7 +280,9 @@ impl Gfx {
         let hwnd_props = D2D1_HWND_RENDER_TARGET_PROPERTIES {
             hwnd: self.hwnd,
             pixelSize: D2D_SIZE_U { width: width.max(1), height: height.max(1) },
-            presentOptions: D2D1_PRESENT_OPTIONS_NONE,
+            // Do not block EndDraw until the next vertical blank (DWM composes windowed
+            // output anyway): scrolling measured ~47 ms per frame waiting, ~5 ms without.
+            presentOptions: D2D1_PRESENT_OPTIONS_IMMEDIATELY,
         };
         let rt = unsafe { self.d2d.CreateHwndRenderTarget(&props, &hwnd_props)? };
         unsafe { rt.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE) };
