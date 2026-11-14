@@ -17,7 +17,7 @@ pub fn entities() -> &'static str {
     tables()[1]
 }
 
-/// Packed `\n tag name \t char flag \n` lines of LaTeX symbols (math::symbols).
+/// Sorted `\n name \t kind payload \n` lines of LaTeX names (math::symbols).
 pub fn math() -> &'static str {
     tables()[2]
 }
@@ -69,6 +69,6 @@ mod tests {
     fn unpacks() {
         assert!(super::emoji().contains("\nheart_eyes\t😍\n"));
         assert!(super::entities().contains("\nnbsp\t\u{A0}\n"));
-        assert!(super::math().contains("\ncalpha\tαo\n"));
+        assert!(super::math().contains("\nalpha\to𝛼\n"));
     }
 }

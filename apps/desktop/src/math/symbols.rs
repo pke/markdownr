@@ -88,57 +88,62 @@ pub fn class_of(c: char) -> Class {
     }
 }
 
+/// Code points of `A`, `a` and `0` per font (by `Font` discriminant); 0 = no digits.
+const BASES: [[u32; 3]; 9] = [
+    [0x1D434, 0x1D44E, 0],       // Italic
+    [0, 0, 0],                   // Upright (unmapped)
+    [0x1D400, 0x1D41A, 0x1D7CE], // Bold
+    [0x1D468, 0x1D482, 0x1D7CE], // BoldItalic
+    [0x1D538, 0x1D552, 0x1D7D8], // DoubleStruck
+    [0x1D49C, 0x1D4B6, 0],       // Script
+    [0x1D504, 0x1D51E, 0],       // Fraktur
+    [0x1D5A0, 0x1D5BA, 0x1D7E2], // SansSerif
+    [0x1D670, 0x1D68A, 0x1D7F6], // Mono
+];
+
+/// Letters that live in the Letterlike Symbols block instead.
+const HOLES: [(Font, u8, char); 24] = [
+    (Font::Italic, b'h', 'ℎ'),
+    (Font::Script, b'B', 'ℬ'),
+    (Font::Script, b'E', 'ℰ'),
+    (Font::Script, b'F', 'ℱ'),
+    (Font::Script, b'H', 'ℋ'),
+    (Font::Script, b'I', 'ℐ'),
+    (Font::Script, b'L', 'ℒ'),
+    (Font::Script, b'M', 'ℳ'),
+    (Font::Script, b'R', 'ℛ'),
+    (Font::Script, b'e', 'ℯ'),
+    (Font::Script, b'g', 'ℊ'),
+    (Font::Script, b'o', 'ℴ'),
+    (Font::Fraktur, b'C', 'ℭ'),
+    (Font::Fraktur, b'H', 'ℌ'),
+    (Font::Fraktur, b'I', 'ℑ'),
+    (Font::Fraktur, b'R', 'ℜ'),
+    (Font::Fraktur, b'Z', 'ℨ'),
+    (Font::DoubleStruck, b'C', 'ℂ'),
+    (Font::DoubleStruck, b'H', 'ℍ'),
+    (Font::DoubleStruck, b'N', 'ℕ'),
+    (Font::DoubleStruck, b'P', 'ℙ'),
+    (Font::DoubleStruck, b'Q', 'ℚ'),
+    (Font::DoubleStruck, b'R', 'ℝ'),
+    (Font::DoubleStruck, b'Z', 'ℤ'),
+];
+
 /// Map an ASCII letter/digit to a Unicode mathematical alphanumeric symbol.
 pub fn styled(c: char, font: Font) -> char {
-    let (upper, lower, digit): (u32, u32, Option<u32>) = match font {
-        Font::Upright => return c,
-        Font::Italic => (0x1D434, 0x1D44E, None),
-        Font::Bold => (0x1D400, 0x1D41A, Some(0x1D7CE)),
-        Font::BoldItalic => (0x1D468, 0x1D482, Some(0x1D7CE)),
-        Font::Script => (0x1D49C, 0x1D4B6, None),
-        Font::Fraktur => (0x1D504, 0x1D51E, None),
-        Font::DoubleStruck => (0x1D538, 0x1D552, Some(0x1D7D8)),
-        Font::SansSerif => (0x1D5A0, 0x1D5BA, Some(0x1D7E2)),
-        Font::Mono => (0x1D670, 0x1D68A, Some(0x1D7F6)),
-    };
-    // Letters that live in the Letterlike Symbols block instead.
-    let hole = match (font, c) {
-        (Font::Italic, 'h') => Some('ℎ'),
-        (Font::Script, 'B') => Some('ℬ'),
-        (Font::Script, 'E') => Some('ℰ'),
-        (Font::Script, 'F') => Some('ℱ'),
-        (Font::Script, 'H') => Some('ℋ'),
-        (Font::Script, 'I') => Some('ℐ'),
-        (Font::Script, 'L') => Some('ℒ'),
-        (Font::Script, 'M') => Some('ℳ'),
-        (Font::Script, 'R') => Some('ℛ'),
-        (Font::Script, 'e') => Some('ℯ'),
-        (Font::Script, 'g') => Some('ℊ'),
-        (Font::Script, 'o') => Some('ℴ'),
-        (Font::Fraktur, 'C') => Some('ℭ'),
-        (Font::Fraktur, 'H') => Some('ℌ'),
-        (Font::Fraktur, 'I') => Some('ℑ'),
-        (Font::Fraktur, 'R') => Some('ℜ'),
-        (Font::Fraktur, 'Z') => Some('ℨ'),
-        (Font::DoubleStruck, 'C') => Some('ℂ'),
-        (Font::DoubleStruck, 'H') => Some('ℍ'),
-        (Font::DoubleStruck, 'N') => Some('ℕ'),
-        (Font::DoubleStruck, 'P') => Some('ℙ'),
-        (Font::DoubleStruck, 'Q') => Some('ℚ'),
-        (Font::DoubleStruck, 'R') => Some('ℝ'),
-        (Font::DoubleStruck, 'Z') => Some('ℤ'),
-        _ => None,
-    };
-    if let Some(h) = hole {
-        return h;
+    if font == Font::Upright {
+        return c;
     }
+    for &(f, letter, hole) in &HOLES {
+        if f == font && c == letter as char {
+            return hole;
+        }
+    }
+    let [upper, lower, digit] = BASES[font as usize];
     let code = match c {
         'A'..='Z' => upper + (c as u32 - 'A' as u32),
         'a'..='z' => lower + (c as u32 - 'a' as u32),
-        '0'..='9' => match digit {
-            Some(d) => d + (c as u32 - '0' as u32),
-            None => return c,
-        },
+        '0'..='9' if digit != 0 => digit + (c as u32 - '0' as u32),
         _ => return c,
     };
     char::from_u32(code).unwrap_or(c)
