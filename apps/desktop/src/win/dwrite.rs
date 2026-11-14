@@ -269,8 +269,13 @@ impl Gfx {
             self.brushes.clear();
             return Ok(true);
         }
+        // Software rasteriser, not the GPU: creating it takes ~40 ms instead of ~160 ms
+        // (driver init), the first frame comes ~150 ms earlier, it uses ~14 MB less
+        // memory, and particle frames are cheaper (text rasterises on the CPU anyway).
+        // Scroll frames cost more CPU only in large windows (4 MP: ~20 vs ~12 ms).
+        // It is also the rasteriser the PNG snapshots use.
         let props = D2D1_RENDER_TARGET_PROPERTIES {
-            r#type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
+            r#type: D2D1_RENDER_TARGET_TYPE_SOFTWARE,
             pixelFormat: D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_IGNORE },
             dpiX: dpi,
             dpiY: dpi,
