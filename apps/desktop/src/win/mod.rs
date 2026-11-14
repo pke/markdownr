@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 use windows::Win32::Foundation::*;
-use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
+use windows::Win32::Graphics::Dwm::{DWMWA_CAPTION_COLOR, DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -45,6 +45,8 @@ struct App {
     snapshot: Option<PathBuf>,
     exit_after_snapshot: bool,
     snapshot_ready: bool,
+    /// Title bar colour last given to DWM (COLORREF; u32::MAX: none yet).
+    caption: u32,
     settings: Settings,
     settings_path: PathBuf,
     sample: &'static str,
@@ -156,9 +158,21 @@ impl App {
     fn apply_dark(&mut self) {
         let dark = system_dark();
         self.viewer.set_dark(dark);
-        let v = BOOL::from(dark);
+    }
+
+    /// Title bar in the page's background colour (as FileCushion): DWM caption colour, and its
+    /// dark mode (white caption text and buttons) when that colour is dark.
+    fn apply_caption(&mut self) {
+        let [r, g, b, _] = self.viewer.theme.background.0;
+        let color = u32::from_le_bytes([r, g, b, 0]);
+        if color == self.caption {
+            return;
+        }
+        self.caption = color;
+        let dark = BOOL::from(299 * u32::from(r) + 587 * u32::from(g) + 114 * u32::from(b) < 128_000);
         unsafe {
-            DwmSetWindowAttribute(self.hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &v as *const _ as _, 4).ok();
+            DwmSetWindowAttribute(self.hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark as *const _ as _, 4).ok();
+            DwmSetWindowAttribute(self.hwnd, DWMWA_CAPTION_COLOR, &color as *const _ as _, 4).ok();
         }
     }
 
@@ -180,6 +194,7 @@ impl App {
             }
         }
         self.viewer.ensure_layout(&mut self.gfx);
+        self.apply_caption();
         let v = &self.viewer;
         let finds = v.find_highlights();
         let chrome = v.chrome_visible().then_some((&v.chrome, v.chrome_alpha));
@@ -817,6 +832,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             snapshot: std::env::var_os("MARKDOWNR_SNAPSHOT").map(PathBuf::from),
             exit_after_snapshot: std::env::var_os("MARKDOWNR_SNAPSHOT_EXIT").is_some(),
             snapshot_ready: false,
+            caption: u32::MAX,
             settings,
             settings_path,
             sample,
