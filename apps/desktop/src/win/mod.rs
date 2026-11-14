@@ -137,6 +137,53 @@ impl BackgroundDoc {
     }
 }
 
+/// A D3D11 device created on the thread pool at process start, so the GPU driver
+/// is loaded and initialised in parallel with the window, settings and document
+/// parse instead of inside `CreateHwndRenderTarget` (measured ~80 ms earlier first
+/// frame). 0 = not yet created, 1 = no longer wanted, else the device pointer.
+static PREWARM: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+fn prewarm_gpu() {
+    unsafe extern "system" fn work(_: *mut core::ffi::c_void, _: *mut core::ffi::c_void) {
+        use std::sync::atomic::Ordering::AcqRel;
+        type Create = unsafe extern "system" fn(*mut core::ffi::c_void, u32, isize, u32, *const u32, u32, u32, *mut *mut core::ffi::c_void, *mut u32, *mut *mut core::ffi::c_void) -> i32;
+        // SAFETY: D3D11CreateDevice with its documented signature (hardware driver,
+        // BGRA support, SDK version 7); the device is released via IUnknown::Release.
+        unsafe {
+            let Ok(lib) = windows::Win32::System::LibraryLoader::LoadLibraryW(w!("d3d11.dll")) else { return };
+            let Some(f) = windows::Win32::System::LibraryLoader::GetProcAddress(lib, windows::core::s!("D3D11CreateDevice")) else { return };
+            let create: Create = core::mem::transmute(f);
+            let mut device = core::ptr::null_mut();
+            if create(core::ptr::null_mut(), 1, 0, 0x20, core::ptr::null(), 0, 7, &mut device, core::ptr::null_mut(), core::ptr::null_mut()) < 0 || device.is_null() {
+                return;
+            }
+            if PREWARM.compare_exchange(0, device as usize, AcqRel, std::sync::atomic::Ordering::Acquire).is_err() {
+                release_com(device); // the render target exists already
+            }
+        }
+    }
+    // SAFETY: `work` takes no context.
+    unsafe { images::TrySubmitThreadpoolCallback(work, core::ptr::null_mut(), core::ptr::null()) };
+}
+
+/// Drop the warm-up device once the render target holds its own (after the first frame).
+fn end_prewarm() {
+    let device = PREWARM.swap(1, std::sync::atomic::Ordering::AcqRel);
+    if device > 1 {
+        // SAFETY: a device pointer stored by `prewarm_gpu`, released once.
+        unsafe { release_com(device as *mut core::ffi::c_void) };
+    }
+}
+
+/// IUnknown::Release on a raw COM pointer.
+unsafe fn release_com(object: *mut core::ffi::c_void) {
+    unsafe {
+        let vtable = *(object as *const *const usize);
+        let release: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32 = core::mem::transmute(*vtable.add(2));
+        release(object);
+    }
+}
+
 fn mtime(path: &Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
@@ -288,6 +335,8 @@ impl App {
             self.viewer.invalidate();
             self.invalidate();
         }
+        // The render target's own device is surely up after the first frame.
+        end_prewarm();
     }
 
     /// Drive the chrome fade: (re)arm or stop the animation timer.
@@ -837,6 +886,11 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
 
 pub fn run(path: Option<PathBuf>, sample: &'static str) {
     unsafe {
+        // PNG snapshots render offscreen in software; everything else on the GPU.
+        let offscreen = std::env::var("MARKDOWNR_SNAPSHOT").is_ok_and(|p| p.ends_with(".png"));
+        if !offscreen {
+            prewarm_gpu();
+        }
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
         {
@@ -891,7 +945,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         let settings_path = std::env::var_os("MARKDOWNR_SETTINGS").map(PathBuf::from).unwrap_or_else(settings_path);
         let mut settings = Settings::load(&settings_path);
         let mut gfx = Gfx::new(hwnd).expect("Direct2D/DirectWrite");
-        gfx.offscreen_mode = std::env::var("MARKDOWNR_SNAPSHOT").is_ok_and(|p| p.ends_with(".png"));
+        gfx.offscreen_mode = offscreen;
         {
             // The render target (D3D device) takes long to create; do it now, in parallel with the parse.
             let (w, h) = client_size(hwnd);
