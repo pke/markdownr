@@ -471,6 +471,134 @@ mod tests {
         assert!(sup.is_some() && sub.is_some());
     }
 
+    /// Compact, format-stable dump of a tree (independent of `M`'s Debug derive).
+    fn dump(m: &M, o: &mut String) {
+        use std::fmt::Write;
+        let opt = |m: &Option<Box<M>>, o: &mut String| match m {
+            Some(m) => dump(m, o),
+            None => o.push('-'),
+        };
+        match m {
+            M::Row(v) => {
+                o.push('[');
+                for (i, x) in v.iter().enumerate() {
+                    if i > 0 {
+                        o.push(' ');
+                    }
+                    dump(x, o);
+                }
+                o.push(']');
+            }
+            M::Sym(c, k) => write!(o, "{c:?}:{k:?}").unwrap(),
+            M::Text(s, k) => write!(o, "{s:?}:{k:?}").unwrap(),
+            M::Frac { num, den, rule, delims } => {
+                write!(o, "Frac({rule},{delims:?} ").unwrap();
+                dump(num, o);
+                o.push(' ');
+                dump(den, o);
+                o.push(')');
+            }
+            M::Sqrt { degree, body } => {
+                o.push_str("Sqrt(");
+                opt(degree, o);
+                o.push(' ');
+                dump(body, o);
+                o.push(')');
+            }
+            M::Scripts { base, sup, sub } => {
+                o.push_str("Scripts(");
+                dump(base, o);
+                o.push_str(" ^");
+                opt(sup, o);
+                o.push_str(" _");
+                opt(sub, o);
+                o.push(')');
+            }
+            M::BigOp { sym, limits, integral } => write!(o, "BigOp({sym:?},{limits:?},{integral})").unwrap(),
+            M::LimitFunc(s) => write!(o, "LimitFunc({s:?})").unwrap(),
+            M::Delimited { left, right, body } => {
+                write!(o, "Delimited({left:?},{right:?} ").unwrap();
+                dump(body, o);
+                o.push(')');
+            }
+            M::BigDelim(c, f, k) => write!(o, "BigDelim({c:?},{f:?},{k:?})").unwrap(),
+            M::Accent { accent, body, stretchy } => {
+                write!(o, "Accent({accent:?},{stretchy} ").unwrap();
+                dump(body, o);
+                o.push(')');
+            }
+            M::OverLine(b) | M::UnderLine(b) | M::Brace { body: b, .. } | M::Color(_, b) => {
+                match m {
+                    M::OverLine(_) => o.push_str("OverLine("),
+                    M::UnderLine(_) => o.push_str("UnderLine("),
+                    M::Brace { over, .. } => write!(o, "Brace({over} ").unwrap(),
+                    M::Color(c, _) => write!(o, "Color({c:?} ").unwrap(),
+                    _ => unreachable!(),
+                }
+                dump(b, o);
+                o.push(')');
+            }
+            M::Matrix { rows, left, right, align_left, cases } => {
+                write!(o, "Matrix({left:?},{right:?},{align_left},{cases}").unwrap();
+                for r in rows {
+                    o.push_str(" {");
+                    for c in r {
+                        o.push(' ');
+                        dump(c, o);
+                    }
+                    o.push_str(" }");
+                }
+                o.push(')');
+            }
+            M::Space(em) => write!(o, "Space({em:?})").unwrap(),
+            M::Error(s) => write!(o, "Error({s:?})").unwrap(),
+        }
+    }
+
+    const CORPUS: &str = include_str!("../../assets/math-tests/corpus.txt");
+
+    /// Every corpus formula must produce exactly the recorded tree
+    /// (`UPDATE_GOLDEN=1 cargo test golden` rewrites the file).
+    #[test]
+    fn golden_trees() {
+        let mut out = String::new();
+        for line in CORPUS.lines() {
+            out.push_str(line);
+            out.push_str("\n=> ");
+            dump(&parse(line), &mut out);
+            out.push('\n');
+        }
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/math-tests/golden.txt");
+        if std::env::var_os("UPDATE_GOLDEN").is_some() {
+            std::fs::write(path, &out).unwrap();
+        }
+        let want = std::fs::read_to_string(path).unwrap().replace("\r\n", "\n");
+        for (i, (a, b)) in want.lines().zip(out.lines()).enumerate() {
+            assert_eq!(a, b, "golden line {}", i + 1);
+        }
+        assert_eq!(want.lines().count(), out.lines().count());
+    }
+
+    /// `cargo test --release bench_parse -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn bench_parse() {
+        let lines: Vec<&str> = CORPUS.lines().collect();
+        let rounds = 5000 / lines.len() + 1;
+        let mut best = f64::MAX;
+        for _ in 0..20 {
+            let t = std::time::Instant::now();
+            for _ in 0..rounds {
+                for l in &lines {
+                    std::hint::black_box(parse(std::hint::black_box(l)));
+                }
+            }
+            best = best.min(t.elapsed().as_secs_f64());
+        }
+        let n = rounds * lines.len();
+        println!("parsed {n} formulas: best {:.3} ms ({:.2} us/formula)", best * 1e3, best * 1e6 / n as f64);
+    }
+
     #[test]
     fn no_errors_for_common_input() {
         for src in [

@@ -1,0 +1,168 @@
+\frac{a}{b} + \dfrac{1}{2} + \tfrac{x}{y} + \cfrac{1}{1+\cfrac{1}{x}} + \frac12 + \frac a b + {a+b \over c}
+\binom{n}{k} + \dbinom{n}{2} + \tbinom{m}{3} + \frac{\frac{a}{b}}{\frac{c}{d}}
+\sqrt{x} + \sqrt[3]{x+1} + \sqrt[n]{\frac{a}{b}} + \sqrt{\sqrt{y}} + \sqrt 2
+x^2 + x_i^2 + x^{2}_{i} + x'' + f'(x) + a_{i_j} + x'^2 + y_1' + e^{-x^2} + 2^{2^{2}}
+3.14 + 0.5 + 12 \cdot 345.6 + 1{,}000 + . + x.y
+\sum_{k=1}^n k \quad \prod_{i} \quad \coprod \quad \int_0^1 \quad \iint \quad \iiint \quad \oint_C
+\sum\limits_{k} \quad \int\limits_0^1 \quad \sum\nolimits_k \quad \bigcup_i A_i \quad \bigcap \bigvee \bigwedge \bigoplus \bigotimes \bigodot \biguplus \bigsqcup
+\sin x + \cos y + \tan z + \cot \sec \csc \arcsin \arccos \arctan \sinh \cosh \tanh \coth
+\log_2 n + \ln x + \lg \exp \deg \dim \ker \hom \arg \gcd \Pr \det \quad a \bmod b \quad \mod
+\lim_{x \to 0} \frac{\sin x}{x} \quad \liminf_{n} \quad \limsup \quad \max_{i} \min_j \sup \inf \operatorname{argmax}_x \argmax \argmin \operatorname{tr} A
+\lim\limits_{n} a_n \quad \max\nolimits_i \quad \displaystyle\sum \textstyle\sum \scriptstyle x \nonumber \notag
+\left( \frac{a}{b} \right) \left[ \frac{a}{b} \right] \left\{ \frac{a}{b} \right\} \left| \frac{a}{b} \right| \left\| \frac{a}{b} \right\|
+\left\langle \frac{a}{b} \right\rangle \left\lfloor \frac{a}{b} \right\rfloor \left\lceil \frac{a}{b} \right\rceil \left. \frac{a}{b} \right| \left\uparrow \frac{a}{b} \right\downarrow
+\left\lbrace x \right\rbrace \left\lvert x \right\rvert \left\lVert x \right\rVert \left\vert x \right\Vert \left/ x \right\backslash \left( x \right.
+\left( \left[ \left\{ \frac{\frac{1}{2}}{3} \right\} \right] \right) \quad \left\alpha x \right\foo
+\big( \Big[ \bigg\{ \Bigg| \quad \bigl( x \bigr) \Bigl[ y \Bigr] \biggl\{ z \biggr\} \Biggl\langle w \Biggr\rangle \big. \big\|
+\hat x + \widehat{abc} + \tilde y + \widetilde{xyz} + \bar z + \vec v + \dot a + \ddot b
+\acute e + \grave e + \breve u + \check c + \mathring A + \overrightarrow{AB} + \hat{\hat{x}}
+\overline{x+y} + \underline{z} + \overline{\overline{a}} + \overbrace{a+b+c} + \underbrace{c+d}_{n} + \overbrace{x+y}^{k}
+\begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix} \begin{bmatrix} a & b \\ c & d \end{bmatrix} \begin{Bmatrix} x \\ y \end{Bmatrix}
+\begin{vmatrix} a & b \\ c & d \end{vmatrix} \begin{Vmatrix} 1 & 0 \\ 0 & 1 \end{Vmatrix} \begin{matrix} p & q \\ r & s \\ \end{matrix}
+f(x) = \begin{cases} 1 & x > 0 \\ 0 & \text{otherwise} \end{cases}
+\begin{aligned} a &= b + c \\ d &= e \end{aligned} \quad \begin{align*} x &= 1 \end{align*}
+\begin{split} a &= b \\[2pt] &= c \end{split} \quad \begin{gathered} x \\ y \end{gathered} \quad \begin{alignat}{2} a & b \end{alignat}
+\begin{array}{cc} 1 & 2 \\ 3 & 4 \end{array} \quad \begin{pmatrix*} 1 \end{pmatrix*} \quad \begin{foo} a & b \end{foo} \quad \begin{cases*} x \end{cases*}
+\begin{pmatrix} \frac{1}{2} & \sqrt{3} \\ \alpha & \begin{bmatrix} 0 \end{bmatrix} \end{pmatrix} \quad \begin{bmatrix} 1 & 2 }
+\text{if } x > 0 \text{ and } \textrm{rm} \mbox{box} \textnormal{normal} \textup{up} \textbf{bold 12} \textit{italic 3} \text{a {nested} b}
+\mathbb{R} \mathbb{N} \mathbb{Z} \mathbb{Q} \mathbb{C} \mathbb{H} \mathbb{P} \mathbb{1} \mathbb{x} \quad \mathcal{L} \mathcal{B} \mathcal{EFHIMRT} \mathscr{ego} \mathcal{A}
+\mathbf{v} + \mathbf{12} + \bf x \quad \rm{abc} \quad \mathrm{d}x \quad \boldsymbol\alpha \bm{x1} \mathit{xyz} \it h \quad h \hbar
+\mathfrak{g} \mathfrak{CHIRZ} \mathfrak{a} \quad \mathsf{A1b} \quad \mathtt{x1}\quad \mathbf{\alpha \Gamma \le} \mathbf{a^2}
+\color{red}{x} + \textcolor{blue}{y} + \color{#ff8800}{z} + \color{grey} w + \color{gray}{v} + \color{green}{a} \color{orange}{b} \color{purple}{c} \color{violet}{d} \color{magenta}{e} \color{cyan}{f} \color{brown}{g} \color{chartreuse}{h} \color{ red }{i} \color{#12}{j}
+a \not= b \quad x \not\in A \quad \not\subset \not\subseteq \not\le \not\ge \not\sim \not\equiv \not< \not> \not a \not{=} \not\alpha
+\operatorname{span}(v) \quad \operatorname{Hom} \quad \text{} \quad \mathbb{}
+\alpha \beta \gamma \delta \epsilon \varepsilon \zeta \eta \theta \vartheta \iota \kappa \lambda \mu \nu \xi \omicron \pi \varpi \rho \varrho \sigma \varsigma \tau \upsilon \phi \varphi \chi \psi \omega
+\Gamma \Delta \Theta \Lambda \Xi \Pi \Sigma \Upsilon \Phi \Psi \Omega \quad α β ≤ ∞ x²
+a\,b\:c\>d\;e\!f\ g\quad h\qquad i \\ j \{ x \} \| \% \$ \# \& \_
+\pm \mp \times \div \cdot \ast \star \circ \bullet \oplus \ominus \otimes \oslash \odot \cap \cup \wedge \land \vee \lor \setminus \wr \amalg \dagger \ddagger \diamond
+\le \leq \ge \geq \neq \ne \leqslant \geqslant \ll \gg \approx \sim \simeq \cong \equiv \propto \in \notin \ni \subset \supset \subseteq \supseteq \subsetneq \supsetneq
+\mid \parallel \perp \models \vdash \dashv \doteq \prec \succ \preceq \succeq \asymp \coloneqq \therefore \because
+\to \rightarrow \gets \leftarrow \leftrightarrow \Rightarrow \implies \Leftarrow \Leftrightarrow \iff \mapsto \longrightarrow \longleftarrow \Longrightarrow \longmapsto \uparrow \downarrow \hookrightarrow \rightharpoonup \nearrow \searrow
+\infty \partial \nabla \forall \exists \nexists \emptyset \varnothing \neg \lnot \angle \triangle \ell \hbar \Re \Im \aleph \wp \prime \top \bot \degree \checkmark
+\ldots \dots \dotsc \dotso \cdots \dotsb \dotsm \vdots \ddots \colon \lbrace \rbrace \langle \rangle \lfloor \rfloor \lceil \rceil \vert \Vert \lvert \rvert \lVert \rVert \backslash
+\square \blacksquare \Box \clubsuit \heartsuit \spadesuit \diamondsuit \flat \sharp \quad a - b * c / d : e ; f , g ! h ? (x) [y] = < >
+\foo + \frac{a} + \sqrt[ + x
+\left( x \quad y
+a } b ] c ) \right) d
+{ unbalanced
+^2 + _3 + x^ 
+\text{unclosed
+x & y \\ z
+\begin{pmatrix} 1 & 2
+\end{pmatrix} x
+\over 2 + a \over b \over c + \overx
+\\ \\ \frac\\x \sqrt\\ \overline \hat
+\α + \é + \1 + \@ + \^ + \' 
+x \
+x^2 + y_i
+\frac{a}{b}
+\sum_{k=1}^n k
+\int_0^1 f
+\lim_{x\to 0}
+\sqrt{2}
+a \over b
+\frac{a}{b} + \dfrac{1}{2} + \tfrac{x}{y} + \cfrac{1}{1+\cfrac{1}{x}} + \frac12 + \frac a b + {a+b \over c}
+\binom{n}{k} + \dbinom{n}{2} + \tbinom{m}{3} + \frac{\frac{a}{b}}{\frac{c}{d}}
+\sqrt{x} + \sqrt[3]{x+1} + \sqrt[n]{\frac{a}{b}} + \sqrt{\sqrt{y}} + \sqrt 2
+x^2 + x_i^2 + x^{2}_{i} + x'' + f'(x) + a_{i_j} + x'^2 + y_1' + e^{-x^2} + 2^{2^{2}}
+3.14 + 0.5 + 12 \cdot 345.6 + 1{,}000 + . + x.y
+\sum_{k=1}^n k \quad \prod_{i} \quad \coprod \quad \int_0^1 \quad \iint \quad \iiint \quad \oint_C
+\sum\limits_{k} \quad \int\limits_0^1 \quad \sum\nolimits_k \quad \bigcup_i A_i \quad \bigcap \bigvee \bigwedge \bigoplus \bigotimes \bigodot \biguplus \bigsqcup
+\sin x + \cos y + \tan z + \cot \sec \csc \arcsin \arccos \arctan \sinh \cosh \tanh \coth
+\log_2 n + \ln x + \lg \exp \deg \dim \ker \hom \arg \gcd \Pr \det \quad a \bmod b \quad \mod
+\lim_{x \to 0} \frac{\sin x}{x} \quad \liminf_{n} \quad \limsup \quad \max_{i} \min_j \sup \inf \operatorname{argmax}_x \argmax \argmin \operatorname{tr} A
+\lim\limits_{n} a_n \quad \max\nolimits_i \quad \displaystyle\sum \textstyle\sum \scriptstyle x \nonumber \notag
+\foo + \frac{a} + \sqrt[ + x
+\left( x \quad y
+a } b ] c ) \right) d
+{ unbalanced
+^2 + _3 + x^ 
+\text{unclosed
+x & y \\ z
+\begin{pmatrix} 1 & 2
+\end{pmatrix} x
+\over 2 + a \over b \over c + \overx
+\\ \\ \frac\\x \sqrt\\ \overline \hat
+\α + \é + \1 + \@ + \^ + \' 
+x \
+\undefined
+\frac
+\left(
+\begin
+x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+e^{i\pi} + 1 = 0
+\sum_{k=1}^{n} k = \frac{n(n+1)}{2}
+\int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+f(x) = \sum_{n=0}^{\infty} \frac{f^{(n)}(a)}{n!} (x-a)^n
+\nabla \times \mathbf{E} = -\frac{\partial \mathbf{B}}{\partial t}
+\det(A - \lambda I) = 0
+\left\| \mathbf{x} \right\|_2 = \sqrt{\sum_{i=1}^n x_i^2}
+P(A \mid B) = \frac{P(B \mid A)\,P(A)}{P(B)}
+\hat{x} \cdot \vec{v} \leq \|v\|
+\mathbb{R}^n \subseteq \mathcal{H}
+\sqrt[3]{\alpha^2 + \beta_i'}
+\lim_{x \to 0} \frac{\sin x}{x} = 1
+\binom{n}{k} = \frac{n!}{k!(n-k)!}
+\oint_{\partial \Sigma} \mathbf{B} \cdot d\mathbf{l} = \mu_0 \iint_\Sigma \mathbf{J} \cdot d\mathbf{S}
+A = \begin{bmatrix} a_{11} & a_{12} \ a_{21} & a_{22} \end{bmatrix}
+|x| = \begin{cases} x & x \ge 0 \ -x & x < 0 \end{cases}
+\zeta(s) = \prod_{p \text{ prime}} \frac{1}{1 - p^{-s}}
+\Gamma(z) = \int_0^\infty t^{z-1} e^{-t}\,dt
+\color{red}{a^2} + \color{blue}{b^2} = c^2
+\alpha{x} \beta{x} \gamma{x} \delta{x} \epsilon{x} \varepsilon{x} \zeta{x} \eta{x} \theta{x} \vartheta{x} \iota{x} \kappa{x}
+\lambda{x} \mu{x} \nu{x} \xi{x} \omicron{x} \pi{x} \varpi{x} \rho{x} \varrho{x} \sigma{x} \varsigma{x} \tau{x}
+\upsilon{x} \phi{x} \varphi{x} \chi{x} \psi{x} \omega{x} \Gamma{x} \Delta{x} \Theta{x} \Lambda{x} \Xi{x} \Pi{x}
+\Sigma{x} \Upsilon{x} \Phi{x} \Psi{x} \Omega{x} \pm{x} \mp{x} \times{x} \div{x} \cdot{x} \ast{x} \star{x}
+\circ{x} \bullet{x} \oplus{x} \ominus{x} \otimes{x} \oslash{x} \odot{x} \cap{x} \cup{x} \wedge{x} \land{x} \vee{x}
+\lor{x} \setminus{x} \wr{x} \amalg{x} \dagger{x} \ddagger{x} \le{x} \leq{x} \ge{x} \geq{x} \neq{x} \ne{x}
+\leqslant{x} \geqslant{x} \ll{x} \gg{x} \approx{x} \sim{x} \simeq{x} \cong{x} \equiv{x} \propto{x} \in{x} \notin{x}
+\ni{x} \subset{x} \supset{x} \subseteq{x} \supseteq{x} \subsetneq{x} \supsetneq{x} \mid{x} \parallel{x} \perp{x} \models{x} \vdash{x}
+\dashv{x} \doteq{x} \prec{x} \succ{x} \preceq{x} \succeq{x} \asymp{x} \coloneqq{x} \to{x} \rightarrow{x} \gets{x} \leftarrow{x}
+\leftrightarrow{x} \Rightarrow{x} \implies{x} \Leftarrow{x} \Leftrightarrow{x} \iff{x} \mapsto{x} \longrightarrow{x} \longleftarrow{x} \Longrightarrow{x} \longmapsto{x} \uparrow{x}
+\downarrow{x} \hookrightarrow{x} \rightharpoonup{x} \nearrow{x} \searrow{x} \infty{x} \partial{x} \nabla{x} \forall{x} \exists{x} \nexists{x} \emptyset{x}
+\varnothing{x} \neg{x} \lnot{x} \angle{x} \triangle{x} \ell{x} \hbar{x} \Re{x} \Im{x} \aleph{x} \wp{x} \prime{x}
+\top{x} \bot{x} \degree{x} \checkmark{x} \ldots{x} \dots{x} \dotsc{x} \dotso{x} \cdots{x} \dotsb{x} \dotsm{x} \vdots{x}
+\ddots{x} \colon{x} \lbrace{x} \rbrace{x} \langle{x} \rangle{x} \lfloor{x} \rfloor{x} \lceil{x} \rceil{x} \vert{x} \Vert{x}
+\lvert{x} \rvert{x} \lVert{x} \rVert{x} \backslash{x} \square{x} \blacksquare{x} \Box{x} \diamond{x} \clubsuit{x} \heartsuit{x} \spadesuit{x}
+\diamondsuit{x} \flat{x} \sharp{x} \therefore{x} \because{x} \sum{x} \prod{x} \coprod{x} \int{x} \iint{x} \iiint{x} \oint{x}
+\bigcup{x} \bigcap{x} \bigvee{x} \bigwedge{x} \bigoplus{x} \bigotimes{x} \bigodot{x} \biguplus{x} \bigsqcup{x} \hat{x} \widehat{x} \tilde{x}
+\widetilde{x} \bar{x} \vec{x} \dot{x} \ddot{x} \acute{x} \grave{x} \breve{x} \check{x} \mathring{x} \overrightarrow{x}
+\left\{ x \right\{ \Big\{ \left\lbrace x \right\lbrace \Big\lbrace \left\} x \right\} \Big\} \left\rbrace x \right\rbrace \Big\rbrace \left\| x \right\| \Big\|
+\left\Vert x \right\Vert \Big\Vert \left\lVert x \right\lVert \Big\lVert \left\rVert x \right\rVert \Big\rVert \left\vert x \right\vert \Big\vert \left\lvert x \right\lvert \Big\lvert
+\left\rvert x \right\rvert \Big\rvert \left\langle x \right\langle \Big\langle \left\rangle x \right\rangle \Big\rangle \left\lfloor x \right\lfloor \Big\lfloor \left\rfloor x \right\rfloor \Big\rfloor
+\left\lceil x \right\lceil \Big\lceil \left\rceil x \right\rceil \Big\rceil \left\backslash x \right\backslash \Big\backslash \left\uparrow x \right\uparrow \Big\uparrow \left\downarrow x \right\downarrow \Big\downarrow
+
+\frac{Ab1}{c2 d} \frac \dfrac{Ab1}{c2 d} \dfrac \tfrac{Ab1}{c2 d} \tfrac \cfrac{Ab1}{c2 d} \cfrac \binom{Ab1}{c2 d} \binom \dbinom{Ab1}{c2 d} \dbinom \tbinom{Ab1}{c2 d} \tbinom \sqrt{Ab1}{c2 d} \sqrt 
+\text{Ab1}{c2 d} \text \textrm{Ab1}{c2 d} \textrm \mbox{Ab1}{c2 d} \mbox \textnormal{Ab1}{c2 d} \textnormal \textup{Ab1}{c2 d} \textup \textbf{Ab1}{c2 d} \textbf \textit{Ab1}{c2 d} \textit 
+\operatorname{Ab1}{c2 d} \operatorname \mathrm{Ab1}{c2 d} \mathrm \rm{Ab1}{c2 d} \rm \mathbf{Ab1}{c2 d} \mathbf \bf{Ab1}{c2 d} \bf \boldsymbol{Ab1}{c2 d} \boldsymbol \bm{Ab1}{c2 d} \bm 
+\mathit{Ab1}{c2 d} \mathit \it{Ab1}{c2 d} \it \mathbb{Ab1}{c2 d} \mathbb \mathcal{Ab1}{c2 d} \mathcal \mathscr{Ab1}{c2 d} \mathscr \mathfrak{Ab1}{c2 d} \mathfrak \mathsf{Ab1}{c2 d} \mathsf 
+\mathtt{Ab1}{c2 d} \mathtt \big{Ab1}{c2 d} \big \Big{Ab1}{c2 d} \Big \bigg{Ab1}{c2 d} \bigg \Bigg{Ab1}{c2 d} \Bigg \bigl{Ab1}{c2 d} \bigl \bigr{Ab1}{c2 d} \bigr \Bigl{Ab1}{c2 d} \Bigl \Bigr{Ab1}{c2 
+d} \Bigr \biggl{Ab1}{c2 d} \biggl \biggr{Ab1}{c2 d} \biggr \Biggl{Ab1}{c2 d} \Biggl \Biggr{Ab1}{c2 d} \Biggr \overline{Ab1}{c2 d} \overline \underline{Ab1}{c2 d} \underline \overbrace{Ab1}{c2 d} 
+\overbrace \underbrace{Ab1}{c2 d} \underbrace \limits{Ab1}{c2 d} \limits \nolimits{Ab1}{c2 d} \nolimits \displaystyle{Ab1}{c2 d} \displaystyle \textstyle{Ab1}{c2 d} \textstyle \scriptstyle{Ab1}{c2 d} 
+\scriptstyle \nonumber{Ab1}{c2 d} \nonumber \notag{Ab1}{c2 d} \notag \color{Ab1}{c2 d} \color \textcolor{Ab1}{c2 d} \textcolor \not{Ab1}{c2 d} \not \lim{Ab1}{c2 d} \lim \liminf{Ab1}{c2 d} \liminf 
+\limsup{Ab1}{c2 d} \limsup \max{Ab1}{c2 d} \max \min{Ab1}{c2 d} \min \sup{Ab1}{c2 d} \sup \inf{Ab1}{c2 d} \inf \argmax{Ab1}{c2 d} \argmax \argmin{Ab1}{c2 d} \argmin \sin{Ab1}{c2 d} \sin \cos{Ab1}{c2 
+d} \cos \tan{Ab1}{c2 d} \tan \cot{Ab1}{c2 d} \cot \sec{Ab1}{c2 d} \sec \csc{Ab1}{c2 d} \csc \arcsin{Ab1}{c2 d} \arcsin \arccos{Ab1}{c2 d} \arccos \arctan{Ab1}{c2 d} \arctan \sinh{Ab1}{c2 d} \sinh 
+\cosh{Ab1}{c2 d} \cosh \tanh{Ab1}{c2 d} \tanh \coth{Ab1}{c2 d} \coth \log{Ab1}{c2 d} \log \ln{Ab1}{c2 d} \ln \lg{Ab1}{c2 d} \lg \exp{Ab1}{c2 d} \exp \deg{Ab1}{c2 d} \deg \dim{Ab1}{c2 d} \dim 
+\ker{Ab1}{c2 d} \ker \hom{Ab1}{c2 d} \hom \arg{Ab1}{c2 d} \arg \gcd{Ab1}{c2 d} \gcd \Pr{Ab1}{c2 d} \Pr \det{Ab1}{c2 d} \det \mod{Ab1}{c2 d} \mod \bmod{Ab1}{c2 d} \bmod 
+\mathbf{\alpha} \mathbf{\le} \bf \alpha \it 2.5 \mathrm{3.14} \mathbb{2} .5 1.2.3 \textbf{a b} \textit{Z 9 é}
+\color{red}x \color{#00ff00}{y} \color{#}{z} \color{#+12}{w} \color{#123456789}{v} \color{}{u} \color
+\begin{matrix} \end{matrix} \begin{array}{c|c} a & b \end{array} \begin{align} a \right) b \end{align} \begin{cases} a \\ \\ \end{cases}
+\begin{pmatrix} a \\[3pt] b \\ \end{pmatrix*} \begin{frac} x \end{frac} \begin{red} y \end{red} \begin{Bmatrix**} z \end{Bmatrix**} \begin x \end y
+x^{a}^{b}_{c}_{d} x__ ^^ 'x'' x^2' {}^{14}C a_{b}' x_1'' \sum'_k
+\sqrt[\frac12]{x} \sqrt[] \sqrt[ \frac{\left(}{x}
+a b c\ \  x\ y\
+\left\{ \middle| \right\} \left\ \right \left
+x \\ y & z } ] \right. \end{x} \over
+\text{a\}b\{c} \text{\\} \text x \text \textbf{\} \text{é} \operatorname*{arg}
+\red \cases \pmatrix \gray \limitsx \sum\limitsx \int\nolimits\limits \sum \limits
+\frac\alpha\beta \frac{}{} \frac1 \sqrt\sqrt x \hat\hat x \not\not= \not \color{blue}\color{red}x
+\{ \} \| \% \$ \# \& \_ \, \: \> \; \! \quad \qquad \\
+\big \Big. \bigg\| \Bigg\langle \bigl\{ \Biggr\rVert \big\alpha \big]
+12.34.56 0.0 . .. 1,000 3x 2^10 10^{-3} \mathbb 123 \mathit{12}
+\mathcal{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789}
+\mathfrak{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789}
+\mathbb{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789}
+\mathsf{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789} \mathtt{ABCxyz019} \bm{Ab9} \mathbf{Zz09}
+ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 + - * / = < > : ; , . ! ? ( ) [ ] | @ " ~ `
+∑ ∫ α ∈ → ≤ é 中 😀 \😀 𝑥
+a b c \  x \	x	 rac  {1} {2} \ xy

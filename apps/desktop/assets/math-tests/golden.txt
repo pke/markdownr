@@ -1,0 +1,336 @@
+\frac{a}{b} + \dfrac{1}{2} + \tfrac{x}{y} + \cfrac{1}{1+\cfrac{1}{x}} + \frac12 + \frac a b + {a+b \over c}
+=> [Frac(true,None ['𝑎':Ord] ['𝑏':Ord]) '+':Bin Frac(true,None ["1":Ord] ["2":Ord]) '+':Bin Frac(true,None ['𝑥':Ord] ['𝑦':Ord]) '+':Bin Frac(true,None ["1":Ord] ["1":Ord '+':Bin Frac(true,None ["1":Ord] ['𝑥':Ord])]) '+':Bin Frac(true,None "1":Ord "2":Ord) '+':Bin Frac(true,None '𝑎':Ord '𝑏':Ord) '+':Bin [Frac(true,None ['𝑎':Ord '+':Bin '𝑏':Ord] ['𝑐':Ord])]]
+\binom{n}{k} + \dbinom{n}{2} + \tbinom{m}{3} + \frac{\frac{a}{b}}{\frac{c}{d}}
+=> [Frac(false,Some(('(', ')')) ['𝑛':Ord] ['𝑘':Ord]) '+':Bin Frac(false,Some(('(', ')')) ['𝑛':Ord] ["2":Ord]) '+':Bin Frac(false,Some(('(', ')')) ['𝑚':Ord] ["3":Ord]) '+':Bin Frac(true,None [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])] [Frac(true,None ['𝑐':Ord] ['𝑑':Ord])])]
+\sqrt{x} + \sqrt[3]{x+1} + \sqrt[n]{\frac{a}{b}} + \sqrt{\sqrt{y}} + \sqrt 2
+=> [Sqrt(- ['𝑥':Ord]) '+':Bin Sqrt(["3":Ord] ['𝑥':Ord '+':Bin "1":Ord]) '+':Bin Sqrt(['𝑛':Ord] [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])]) '+':Bin Sqrt(- [Sqrt(- ['𝑦':Ord])]) '+':Bin Sqrt(- "2":Ord)]
+x^2 + x_i^2 + x^{2}_{i} + x'' + f'(x) + a_{i_j} + x'^2 + y_1' + e^{-x^2} + 2^{2^{2}}
+=> [Scripts('𝑥':Ord ^"2":Ord _-) '+':Bin Scripts('𝑥':Ord ^"2":Ord _'𝑖':Ord) '+':Bin Scripts('𝑥':Ord ^["2":Ord] _['𝑖':Ord]) '+':Bin Scripts('𝑥':Ord ^['′':Ord '′':Ord] _-) '+':Bin Scripts('𝑓':Ord ^'′':Ord _-) '(':Open '𝑥':Ord ')':Close '+':Bin Scripts('𝑎':Ord ^- _[Scripts('𝑖':Ord ^- _'𝑗':Ord)]) '+':Bin Scripts('𝑥':Ord ^"2":Ord _-) '+':Bin Scripts('𝑦':Ord ^'′':Ord _"1":Ord) '+':Bin Scripts('𝑒':Ord ^['−':Bin Scripts('𝑥':Ord ^"2":Ord _-)] _-) '+':Bin Scripts("2":Ord ^[Scripts("2":Ord ^["2":Ord] _-)] _-)]
+3.14 + 0.5 + 12 \cdot 345.6 + 1{,}000 + . + x.y
+=> ["3.14":Ord '+':Bin "0.5":Ord '+':Bin "12":Ord '⋅':Bin "345.6":Ord '+':Bin "1":Ord [',':Punct] "000":Ord '+':Bin '.':Punct '+':Bin '𝑥':Ord '.':Punct '𝑦':Ord]
+\sum_{k=1}^n k \quad \prod_{i} \quad \coprod \quad \int_0^1 \quad \iint \quad \iiint \quad \oint_C
+=> [Scripts(BigOp('∑',None,false) ^'𝑛':Ord _['𝑘':Ord '=':Rel "1":Ord]) '𝑘':Ord Space(1.0) Scripts(BigOp('∏',None,false) ^- _['𝑖':Ord]) Space(1.0) BigOp('∐',None,false) Space(1.0) Scripts(BigOp('∫',None,true) ^"1":Ord _"0":Ord) Space(1.0) BigOp('∬',None,true) Space(1.0) BigOp('∭',None,true) Space(1.0) Scripts(BigOp('∮',None,true) ^- _'𝐶':Ord)]
+\sum\limits_{k} \quad \int\limits_0^1 \quad \sum\nolimits_k \quad \bigcup_i A_i \quad \bigcap \bigvee \bigwedge \bigoplus \bigotimes \bigodot \biguplus \bigsqcup
+=> [Scripts(BigOp('∑',Some(true),false) ^- _['𝑘':Ord]) Space(1.0) Scripts(BigOp('∫',Some(true),true) ^"1":Ord _"0":Ord) Space(1.0) Scripts(BigOp('∑',Some(false),false) ^- _'𝑘':Ord) Space(1.0) Scripts(BigOp('⋃',None,false) ^- _'𝑖':Ord) Scripts('𝐴':Ord ^- _'𝑖':Ord) Space(1.0) BigOp('⋂',None,false) BigOp('⋁',None,false) BigOp('⋀',None,false) BigOp('⨁',None,false) BigOp('⨂',None,false) BigOp('⨀',None,false) BigOp('⨄',None,false) BigOp('⨆',None,false)]
+\sin x + \cos y + \tan z + \cot \sec \csc \arcsin \arccos \arctan \sinh \cosh \tanh \coth
+=> ["sin":Op '𝑥':Ord '+':Bin "cos":Op '𝑦':Ord '+':Bin "tan":Op '𝑧':Ord '+':Bin "cot":Op "sec":Op "csc":Op "arcsin":Op "arccos":Op "arctan":Op "sinh":Op "cosh":Op "tanh":Op "coth":Op]
+\log_2 n + \ln x + \lg \exp \deg \dim \ker \hom \arg \gcd \Pr \det \quad a \bmod b \quad \mod
+=> [Scripts("log":Op ^- _"2":Ord) '𝑛':Ord '+':Bin "ln":Op '𝑥':Ord '+':Bin "lg":Op "exp":Op "deg":Op "dim":Op "ker":Op "hom":Op "arg":Op "gcd":Op "Pr":Op "det":Op Space(1.0) '𝑎':Ord "bmod":Op '𝑏':Ord Space(1.0) "mod":Op]
+\lim_{x \to 0} \frac{\sin x}{x} \quad \liminf_{n} \quad \limsup \quad \max_{i} \min_j \sup \inf \operatorname{argmax}_x \argmax \argmin \operatorname{tr} A
+=> [Scripts(LimitFunc("lim") ^- _['𝑥':Ord '→':Rel "0":Ord]) Frac(true,None ["sin":Op '𝑥':Ord] ['𝑥':Ord]) Space(1.0) Scripts(LimitFunc("liminf") ^- _['𝑛':Ord]) Space(1.0) LimitFunc("limsup") Space(1.0) Scripts(LimitFunc("max") ^- _['𝑖':Ord]) Scripts(LimitFunc("min") ^- _'𝑗':Ord) LimitFunc("sup") LimitFunc("inf") Scripts("argmax":Op ^- _'𝑥':Ord) LimitFunc("argmax") LimitFunc("argmin") "tr":Op '𝐴':Ord]
+\lim\limits_{n} a_n \quad \max\nolimits_i \quad \displaystyle\sum \textstyle\sum \scriptstyle x \nonumber \notag
+=> [LimitFunc("lim") Scripts([] ^- _['𝑛':Ord]) Scripts('𝑎':Ord ^- _'𝑛':Ord) Space(1.0) LimitFunc("max") Scripts([] ^- _'𝑖':Ord) Space(1.0) [] BigOp('∑',None,false) [] BigOp('∑',None,false) [] '𝑥':Ord [] []]
+\left( \frac{a}{b} \right) \left[ \frac{a}{b} \right] \left\{ \frac{a}{b} \right\} \left| \frac{a}{b} \right| \left\| \frac{a}{b} \right\|
+=> [Delimited(Some('('),Some(')') [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])]) Delimited(Some('['),Some(']') [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])]) Delimited(Some('{'),Some('}') [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])]) Delimited(Some('|'),Some('|') [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])]) Delimited(Some('‖'),Some('‖') [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])])]
+\left\langle \frac{a}{b} \right\rangle \left\lfloor \frac{a}{b} \right\rfloor \left\lceil \frac{a}{b} \right\rceil \left. \frac{a}{b} \right| \left\uparrow \frac{a}{b} \right\downarrow
+=> [Delimited(Some('⟨'),Some('⟩') [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])]) Delimited(Some('⌊'),Some('⌋') [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])]) Delimited(Some('⌈'),Some('⌉') [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])]) Delimited(None,Some('|') [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])]) Delimited(Some('↑'),Some('↓') [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])])]
+\left\lbrace x \right\rbrace \left\lvert x \right\rvert \left\lVert x \right\rVert \left\vert x \right\Vert \left/ x \right\backslash \left( x \right.
+=> [Delimited(Some('{'),Some('}') ['𝑥':Ord]) Delimited(Some('|'),Some('|') ['𝑥':Ord]) Delimited(Some('‖'),Some('‖') ['𝑥':Ord]) Delimited(Some('|'),Some('‖') ['𝑥':Ord]) Delimited(Some('/'),Some('∖') ['𝑥':Ord]) Delimited(Some('('),None ['𝑥':Ord])]
+\left( \left[ \left\{ \frac{\frac{1}{2}}{3} \right\} \right] \right) \quad \left\alpha x \right\foo
+=> [Delimited(Some('('),Some(')') [Delimited(Some('['),Some(']') [Delimited(Some('{'),Some('}') [Frac(true,None [Frac(true,None ["1":Ord] ["2":Ord])] ["3":Ord])])])]) Space(1.0) Delimited(None,None ['𝑥':Ord])]
+\big( \Big[ \bigg\{ \Bigg| \quad \bigl( x \bigr) \Bigl[ y \Bigr] \biggl\{ z \biggr\} \Biggl\langle w \Biggr\rangle \big. \big\|
+=> [BigDelim('(',1.2,Ord) BigDelim('[',1.8,Ord) BigDelim('{',2.4,Ord) BigDelim('|',3.0,Ord) Space(1.0) BigDelim('(',1.2,Open) '𝑥':Ord BigDelim(')',1.2,Close) BigDelim('[',1.8,Open) '𝑦':Ord BigDelim(']',1.8,Close) BigDelim('{',2.4,Open) '𝑧':Ord BigDelim('}',2.4,Close) BigDelim('⟨',3.0,Open) '𝑤':Ord BigDelim('⟩',3.0,Close) BigDelim('.',1.2,Ord) BigDelim('‖',1.2,Ord)]
+\hat x + \widehat{abc} + \tilde y + \widetilde{xyz} + \bar z + \vec v + \dot a + \ddot b
+=> [Accent('\u{302}',false '𝑥':Ord) '+':Bin Accent('\u{302}',true ['𝑎':Ord '𝑏':Ord '𝑐':Ord]) '+':Bin Accent('\u{303}',false '𝑦':Ord) '+':Bin Accent('\u{303}',true ['𝑥':Ord '𝑦':Ord '𝑧':Ord]) '+':Bin Accent('\u{304}',false '𝑧':Ord) '+':Bin Accent('\u{20d7}',false '𝑣':Ord) '+':Bin Accent('\u{307}',false '𝑎':Ord) '+':Bin Accent('\u{308}',false '𝑏':Ord)]
+\acute e + \grave e + \breve u + \check c + \mathring A + \overrightarrow{AB} + \hat{\hat{x}}
+=> [Accent('\u{301}',false '𝑒':Ord) '+':Bin Accent('\u{300}',false '𝑒':Ord) '+':Bin Accent('\u{306}',false '𝑢':Ord) '+':Bin Accent('\u{30c}',false '𝑐':Ord) '+':Bin Accent('\u{30a}',false '𝐴':Ord) '+':Bin Accent('\u{20d7}',true ['𝐴':Ord '𝐵':Ord]) '+':Bin Accent('\u{302}',false [Accent('\u{302}',false ['𝑥':Ord])])]
+\overline{x+y} + \underline{z} + \overline{\overline{a}} + \overbrace{a+b+c} + \underbrace{c+d}_{n} + \overbrace{x+y}^{k}
+=> [OverLine(['𝑥':Ord '+':Bin '𝑦':Ord]) '+':Bin UnderLine(['𝑧':Ord]) '+':Bin OverLine([OverLine(['𝑎':Ord])]) '+':Bin Brace(true ['𝑎':Ord '+':Bin '𝑏':Ord '+':Bin '𝑐':Ord]) '+':Bin Scripts(Brace(false ['𝑐':Ord '+':Bin '𝑑':Ord]) ^- _['𝑛':Ord]) '+':Bin Scripts(Brace(true ['𝑥':Ord '+':Bin '𝑦':Ord]) ^['𝑘':Ord] _-)]
+\begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix} \begin{bmatrix} a & b \\ c & d \end{bmatrix} \begin{Bmatrix} x \\ y \end{Bmatrix}
+=> [Matrix(Some('('),Some(')'),false,false { ["1":Ord] ["2":Ord] } { ["3":Ord] ["4":Ord] }) Matrix(Some('['),Some(']'),false,false { ['𝑎':Ord] ['𝑏':Ord] } { ['𝑐':Ord] ['𝑑':Ord] }) Matrix(Some('{'),Some('}'),false,false { ['𝑥':Ord] } { ['𝑦':Ord] })]
+\begin{vmatrix} a & b \\ c & d \end{vmatrix} \begin{Vmatrix} 1 & 0 \\ 0 & 1 \end{Vmatrix} \begin{matrix} p & q \\ r & s \\ \end{matrix}
+=> [Matrix(Some('|'),Some('|'),false,false { ['𝑎':Ord] ['𝑏':Ord] } { ['𝑐':Ord] ['𝑑':Ord] }) Matrix(Some('‖'),Some('‖'),false,false { ["1":Ord] ["0":Ord] } { ["0":Ord] ["1":Ord] }) Matrix(None,None,false,false { ['𝑝':Ord] ['𝑞':Ord] } { ['𝑟':Ord] ['𝑠':Ord] })]
+f(x) = \begin{cases} 1 & x > 0 \\ 0 & \text{otherwise} \end{cases}
+=> ['𝑓':Ord '(':Open '𝑥':Ord ')':Close '=':Rel Matrix(Some('{'),None,true,true { ["1":Ord] ['𝑥':Ord '>':Rel "0":Ord] } { ["0":Ord] ["otherwise":Ord] })]
+\begin{aligned} a &= b + c \\ d &= e \end{aligned} \quad \begin{align*} x &= 1 \end{align*}
+=> [Matrix(None,None,true,false { ['𝑎':Ord] ['=':Rel '𝑏':Ord '+':Bin '𝑐':Ord] } { ['𝑑':Ord] ['=':Rel '𝑒':Ord] }) Space(1.0) Matrix(None,None,true,false { ['𝑥':Ord] ['=':Rel "1":Ord] })]
+\begin{split} a &= b \\[2pt] &= c \end{split} \quad \begin{gathered} x \\ y \end{gathered} \quad \begin{alignat}{2} a & b \end{alignat}
+=> [Matrix(None,None,true,false { ['𝑎':Ord] ['=':Rel '𝑏':Ord] } { [] ['=':Rel '𝑐':Ord] }) Space(1.0) Matrix(None,None,false,false { ['𝑥':Ord] } { ['𝑦':Ord] }) Space(1.0) Matrix(None,None,true,false { [["2":Ord] '𝑎':Ord] ['𝑏':Ord] })]
+\begin{array}{cc} 1 & 2 \\ 3 & 4 \end{array} \quad \begin{pmatrix*} 1 \end{pmatrix*} \quad \begin{foo} a & b \end{foo} \quad \begin{cases*} x \end{cases*}
+=> [Matrix(None,None,false,false { ["1":Ord] ["2":Ord] } { ["3":Ord] ["4":Ord] }) Space(1.0) Matrix(Some('('),Some(')'),false,false { ["1":Ord] }) Space(1.0) Matrix(None,None,false,false { ['𝑎':Ord] ['𝑏':Ord] }) Space(1.0) Matrix(Some('{'),None,true,true { ['𝑥':Ord] })]
+\begin{pmatrix} \frac{1}{2} & \sqrt{3} \\ \alpha & \begin{bmatrix} 0 \end{bmatrix} \end{pmatrix} \quad \begin{bmatrix} 1 & 2 }
+=> [Matrix(Some('('),Some(')'),false,false { [Frac(true,None ["1":Ord] ["2":Ord])] [Sqrt(- ["3":Ord])] } { ['𝛼':Ord] [Matrix(Some('['),Some(']'),false,false { ["0":Ord] })] }) Space(1.0) Matrix(Some('['),Some(']'),false,false { ["1":Ord] ["2":Ord] })]
+\text{if } x > 0 \text{ and } \textrm{rm} \mbox{box} \textnormal{normal} \textup{up} \textbf{bold 12} \textit{italic 3} \text{a {nested} b}
+=> ["if ":Ord '𝑥':Ord '>':Rel "0":Ord " and ":Ord "rm":Ord "box":Ord "normal":Ord "up":Ord "𝐛𝐨𝐥𝐝 𝟏𝟐":Ord "𝑖𝑡𝑎𝑙𝑖𝑐 3":Ord "a {nested} b":Ord]
+\mathbb{R} \mathbb{N} \mathbb{Z} \mathbb{Q} \mathbb{C} \mathbb{H} \mathbb{P} \mathbb{1} \mathbb{x} \quad \mathcal{L} \mathcal{B} \mathcal{EFHIMRT} \mathscr{ego} \mathcal{A}
+=> [['ℝ':Ord] ['ℕ':Ord] ['ℤ':Ord] ['ℚ':Ord] ['ℂ':Ord] ['ℍ':Ord] ['ℙ':Ord] ['𝟙':Ord] ['𝕩':Ord] Space(1.0) ['ℒ':Ord] ['ℬ':Ord] ['ℰ':Ord 'ℱ':Ord 'ℋ':Ord 'ℐ':Ord 'ℳ':Ord 'ℛ':Ord '𝒯':Ord] ['ℯ':Ord 'ℊ':Ord 'ℴ':Ord] ['𝒜':Ord]]
+\mathbf{v} + \mathbf{12} + \bf x \quad \rm{abc} \quad \mathrm{d}x \quad \boldsymbol\alpha \bm{x1} \mathit{xyz} \it h \quad h \hbar
+=> [['𝐯':Ord] '+':Bin ['𝟏':Ord '𝟐':Ord] '+':Bin '𝐱':Ord Space(1.0) ['a':Ord 'b':Ord 'c':Ord] Space(1.0) ['d':Ord] '𝑥':Ord Space(1.0) '𝛼':Ord ['𝒙':Ord '𝟏':Ord] ['𝑥':Ord '𝑦':Ord '𝑧':Ord] 'ℎ':Ord Space(1.0) 'ℎ':Ord 'ℏ':Ord]
+\mathfrak{g} \mathfrak{CHIRZ} \mathfrak{a} \quad \mathsf{A1b} \quad \mathtt{x1}\quad \mathbf{\alpha \Gamma \le} \mathbf{a^2}
+=> [['𝔤':Ord] ['ℭ':Ord 'ℌ':Ord 'ℑ':Ord 'ℜ':Ord 'ℨ':Ord] ['𝔞':Ord] Space(1.0) ['𝖠':Ord '𝟣':Ord '𝖻':Ord] Space(1.0) ['𝚡':Ord '𝟷':Ord] Space(1.0) ['𝛼':Ord 'Γ':Ord '≤':Rel] [Scripts('𝐚':Ord ^"2":Ord _-)]]
+\color{red}{x} + \textcolor{blue}{y} + \color{#ff8800}{z} + \color{grey} w + \color{gray}{v} + \color{green}{a} \color{orange}{b} \color{purple}{c} \color{violet}{d} \color{magenta}{e} \color{cyan}{f} \color{brown}{g} \color{chartreuse}{h} \color{ red }{i} \color{#12}{j}
+=> [Color([209, 36, 47] ['𝑥':Ord]) '+':Bin Color([9, 105, 218] ['𝑦':Ord]) '+':Bin Color([255, 136, 0] ['𝑧':Ord]) '+':Bin Color([110, 119, 129] '𝑤':Ord) '+':Bin Color([110, 119, 129] ['𝑣':Ord]) '+':Bin Color([26, 127, 55] ['𝑎':Ord]) Color([217, 123, 0] ['𝑏':Ord]) Color([130, 80, 223] ['𝑐':Ord]) Color([130, 80, 223] ['𝑑':Ord]) Color([191, 57, 137] ['𝑒':Ord]) Color([27, 154, 170] ['𝑓':Ord]) Color([139, 75, 31] ['𝑔':Ord]) Color([128, 128, 128] ['ℎ':Ord]) Color([209, 36, 47] ['𝑖':Ord]) Color([0, 0, 18] ['𝑗':Ord])]
+a \not= b \quad x \not\in A \quad \not\subset \not\subseteq \not\le \not\ge \not\sim \not\equiv \not< \not> \not a \not{=} \not\alpha
+=> ['𝑎':Ord '≠':Rel '𝑏':Ord Space(1.0) '𝑥':Ord '∉':Rel '𝐴':Ord Space(1.0) '⊄':Rel '⊈':Rel '≰':Rel '≱':Rel '≁':Rel '≢':Rel '≮':Rel '≯':Rel '𝑎':Ord ['=':Rel] '𝛼':Ord]
+\operatorname{span}(v) \quad \operatorname{Hom} \quad \text{} \quad \mathbb{}
+=> ["span":Op '(':Open '𝑣':Ord ')':Close Space(1.0) "Hom":Op Space(1.0) "":Ord Space(1.0) []]
+\alpha \beta \gamma \delta \epsilon \varepsilon \zeta \eta \theta \vartheta \iota \kappa \lambda \mu \nu \xi \omicron \pi \varpi \rho \varrho \sigma \varsigma \tau \upsilon \phi \varphi \chi \psi \omega
+=> ['𝛼':Ord '𝛽':Ord '𝛾':Ord '𝛿':Ord '𝜖':Ord '𝜀':Ord '𝜁':Ord '𝜂':Ord '𝜃':Ord '𝜗':Ord '𝜄':Ord '𝜅':Ord '𝜆':Ord '𝜇':Ord '𝜈':Ord '𝜉':Ord '𝜊':Ord '𝜋':Ord '𝜛':Ord '𝜌':Ord '𝜚':Ord '𝜎':Ord '𝜍':Ord '𝜏':Ord '𝜐':Ord '𝜙':Ord '𝜑':Ord '𝜒':Ord '𝜓':Ord '𝜔':Ord]
+\Gamma \Delta \Theta \Lambda \Xi \Pi \Sigma \Upsilon \Phi \Psi \Omega \quad α β ≤ ∞ x²
+=> ['Γ':Ord 'Δ':Ord 'Θ':Ord 'Λ':Ord 'Ξ':Ord 'Π':Ord 'Σ':Ord 'Υ':Ord 'Φ':Ord 'Ψ':Ord 'Ω':Ord Space(1.0) 'α':Ord 'β':Ord '≤':Ord '∞':Ord '𝑥':Ord '²':Ord]
+a\,b\:c\>d\;e\!f\ g\quad h\qquad i \\ j \{ x \} \| \% \$ \# \& \_
+=> ['𝑎':Ord Space(0.16666667) '𝑏':Ord Space(0.22222222) '𝑐':Ord Space(0.22222222) '𝑑':Ord Space(0.2777778) '𝑒':Ord Space(-0.16666667) '𝑓':Ord Space(0.25) '𝑔':Ord Space(1.0) 'ℎ':Ord Space(2.0) '𝑖':Ord]
+\pm \mp \times \div \cdot \ast \star \circ \bullet \oplus \ominus \otimes \oslash \odot \cap \cup \wedge \land \vee \lor \setminus \wr \amalg \dagger \ddagger \diamond
+=> ['±':Bin '∓':Bin '×':Bin '÷':Bin '⋅':Bin '∗':Bin '⋆':Bin '∘':Bin '∙':Bin '⊕':Bin '⊖':Bin '⊗':Bin '⊘':Bin '⊙':Bin '∩':Bin '∪':Bin '∧':Bin '∧':Bin '∨':Bin '∨':Bin '∖':Bin '≀':Bin '⨿':Bin '†':Bin '‡':Bin '⋄':Bin]
+\le \leq \ge \geq \neq \ne \leqslant \geqslant \ll \gg \approx \sim \simeq \cong \equiv \propto \in \notin \ni \subset \supset \subseteq \supseteq \subsetneq \supsetneq
+=> ['≤':Rel '≤':Rel '≥':Rel '≥':Rel '≠':Rel '≠':Rel '⩽':Rel '⩾':Rel '≪':Rel '≫':Rel '≈':Rel '∼':Rel '≃':Rel '≅':Rel '≡':Rel '∝':Rel '∈':Rel '∉':Rel '∋':Rel '⊂':Rel '⊃':Rel '⊆':Rel '⊇':Rel '⊊':Rel '⊋':Rel]
+\mid \parallel \perp \models \vdash \dashv \doteq \prec \succ \preceq \succeq \asymp \coloneqq \therefore \because
+=> ['∣':Rel '∥':Rel '⊥':Rel '⊨':Rel '⊢':Rel '⊣':Rel '≐':Rel '≺':Rel '≻':Rel '⪯':Rel '⪰':Rel '≍':Rel '≔':Rel '∴':Rel '∵':Rel]
+\to \rightarrow \gets \leftarrow \leftrightarrow \Rightarrow \implies \Leftarrow \Leftrightarrow \iff \mapsto \longrightarrow \longleftarrow \Longrightarrow \longmapsto \uparrow \downarrow \hookrightarrow \rightharpoonup \nearrow \searrow
+=> ['→':Rel]
+\infty \partial \nabla \forall \exists \nexists \emptyset \varnothing \neg \lnot \angle \triangle \ell \hbar \Re \Im \aleph \wp \prime \top \bot \degree \checkmark
+=> ['∞':Ord '∂':Ord '∇':Ord '∀':Ord '∃':Ord '∄':Ord '∅':Ord '∅':Ord '¬':Ord '¬':Ord '∠':Ord '△':Ord 'ℓ':Ord 'ℏ':Ord 'ℜ':Ord 'ℑ':Ord 'ℵ':Ord '℘':Ord '′':Ord '⊤':Ord '⊥':Ord '°':Ord '✓':Ord]
+\ldots \dots \dotsc \dotso \cdots \dotsb \dotsm \vdots \ddots \colon \lbrace \rbrace \langle \rangle \lfloor \rfloor \lceil \rceil \vert \Vert \lvert \rvert \lVert \rVert \backslash
+=> ['…':Inner '…':Inner '…':Inner '…':Inner '⋯':Inner '⋯':Inner '⋯':Inner '⋮':Ord '⋱':Inner ':':Punct '{':Open '}':Close '⟨':Open '⟩':Close '⌊':Open '⌋':Close '⌈':Open '⌉':Close '|':Ord '‖':Ord '|':Open '|':Close '‖':Open '‖':Close '∖':Ord]
+\square \blacksquare \Box \clubsuit \heartsuit \spadesuit \diamondsuit \flat \sharp \quad a - b * c / d : e ; f , g ! h ? (x) [y] = < >
+=> ['□':Ord '■':Ord '□':Ord '♣':Ord '♡':Ord '♠':Ord '♢':Ord '♭':Ord '♯':Ord Space(1.0) '𝑎':Ord '−':Bin '𝑏':Ord '∗':Bin '𝑐':Ord '/':Ord '𝑑':Ord ':':Rel '𝑒':Ord ';':Punct '𝑓':Ord ',':Punct '𝑔':Ord '!':Close 'ℎ':Ord '?':Close '(':Open '𝑥':Ord ')':Close '[':Open '𝑦':Ord ']':Close '=':Rel '<':Rel '>':Rel]
+\foo + \frac{a} + \sqrt[ + x
+=> [Error("\\foo") '+':Bin Frac(true,None ['𝑎':Ord] '+':Bin) Sqrt(['+':Bin '𝑥':Ord] [])]
+\left( x \quad y
+=> [Delimited(Some('('),None ['𝑥':Ord Space(1.0) '𝑦':Ord])]
+a } b ] c ) \right) d
+=> ['𝑎':Ord '𝑏':Ord ']':Close '𝑐':Ord ')':Close]
+{ unbalanced
+=> [['𝑢':Ord '𝑛':Ord '𝑏':Ord '𝑎':Ord '𝑙':Ord '𝑎':Ord '𝑛':Ord '𝑐':Ord '𝑒':Ord '𝑑':Ord]]
+^2 + _3 + x^ 
+=> [Scripts([] ^"2":Ord _-) Scripts('+':Bin ^- _"3":Ord) '+':Bin Scripts('𝑥':Ord ^[] _-)]
+\text{unclosed
+=> ["unclosed":Ord]
+x & y \\ z
+=> ['𝑥':Ord]
+\begin{pmatrix} 1 & 2
+=> [Matrix(Some('('),Some(')'),false,false { ["1":Ord] ["2":Ord] })]
+\end{pmatrix} x
+=> []
+\over 2 + a \over b \over c + \overx
+=> [Frac(true,None [] [Frac(true,None ["2":Ord '+':Bin '𝑎':Ord] [Frac(true,None ['𝑏':Ord] ['𝑐':Ord '+':Bin Error("\\overx")])])])]
+\\ \\ \frac\\x \sqrt\\ \overline \hat
+=> []
+\α + \é + \1 + \@ + \^ + \' 
+=> [Error("\\α") '+':Bin Error("\\é") '+':Bin Error("\\1") '+':Bin Error("\\@") '+':Bin Error("\\^") '+':Bin Error("\\'")]
+x \
+=> ['𝑥':Ord Error("\\")]
+x^2 + y_i
+=> [Scripts('𝑥':Ord ^"2":Ord _-) '+':Bin Scripts('𝑦':Ord ^- _'𝑖':Ord)]
+\frac{a}{b}
+=> [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])]
+\sum_{k=1}^n k
+=> [Scripts(BigOp('∑',None,false) ^'𝑛':Ord _['𝑘':Ord '=':Rel "1":Ord]) '𝑘':Ord]
+\int_0^1 f
+=> [Scripts(BigOp('∫',None,true) ^"1":Ord _"0":Ord) '𝑓':Ord]
+\lim_{x\to 0}
+=> [Scripts(LimitFunc("lim") ^- _['𝑥':Ord '→':Rel "0":Ord])]
+\sqrt{2}
+=> [Sqrt(- ["2":Ord])]
+a \over b
+=> [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])]
+\frac{a}{b} + \dfrac{1}{2} + \tfrac{x}{y} + \cfrac{1}{1+\cfrac{1}{x}} + \frac12 + \frac a b + {a+b \over c}
+=> [Frac(true,None ['𝑎':Ord] ['𝑏':Ord]) '+':Bin Frac(true,None ["1":Ord] ["2":Ord]) '+':Bin Frac(true,None ['𝑥':Ord] ['𝑦':Ord]) '+':Bin Frac(true,None ["1":Ord] ["1":Ord '+':Bin Frac(true,None ["1":Ord] ['𝑥':Ord])]) '+':Bin Frac(true,None "1":Ord "2":Ord) '+':Bin Frac(true,None '𝑎':Ord '𝑏':Ord) '+':Bin [Frac(true,None ['𝑎':Ord '+':Bin '𝑏':Ord] ['𝑐':Ord])]]
+\binom{n}{k} + \dbinom{n}{2} + \tbinom{m}{3} + \frac{\frac{a}{b}}{\frac{c}{d}}
+=> [Frac(false,Some(('(', ')')) ['𝑛':Ord] ['𝑘':Ord]) '+':Bin Frac(false,Some(('(', ')')) ['𝑛':Ord] ["2":Ord]) '+':Bin Frac(false,Some(('(', ')')) ['𝑚':Ord] ["3":Ord]) '+':Bin Frac(true,None [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])] [Frac(true,None ['𝑐':Ord] ['𝑑':Ord])])]
+\sqrt{x} + \sqrt[3]{x+1} + \sqrt[n]{\frac{a}{b}} + \sqrt{\sqrt{y}} + \sqrt 2
+=> [Sqrt(- ['𝑥':Ord]) '+':Bin Sqrt(["3":Ord] ['𝑥':Ord '+':Bin "1":Ord]) '+':Bin Sqrt(['𝑛':Ord] [Frac(true,None ['𝑎':Ord] ['𝑏':Ord])]) '+':Bin Sqrt(- [Sqrt(- ['𝑦':Ord])]) '+':Bin Sqrt(- "2":Ord)]
+x^2 + x_i^2 + x^{2}_{i} + x'' + f'(x) + a_{i_j} + x'^2 + y_1' + e^{-x^2} + 2^{2^{2}}
+=> [Scripts('𝑥':Ord ^"2":Ord _-) '+':Bin Scripts('𝑥':Ord ^"2":Ord _'𝑖':Ord) '+':Bin Scripts('𝑥':Ord ^["2":Ord] _['𝑖':Ord]) '+':Bin Scripts('𝑥':Ord ^['′':Ord '′':Ord] _-) '+':Bin Scripts('𝑓':Ord ^'′':Ord _-) '(':Open '𝑥':Ord ')':Close '+':Bin Scripts('𝑎':Ord ^- _[Scripts('𝑖':Ord ^- _'𝑗':Ord)]) '+':Bin Scripts('𝑥':Ord ^"2":Ord _-) '+':Bin Scripts('𝑦':Ord ^'′':Ord _"1":Ord) '+':Bin Scripts('𝑒':Ord ^['−':Bin Scripts('𝑥':Ord ^"2":Ord _-)] _-) '+':Bin Scripts("2":Ord ^[Scripts("2":Ord ^["2":Ord] _-)] _-)]
+3.14 + 0.5 + 12 \cdot 345.6 + 1{,}000 + . + x.y
+=> ["3.14":Ord '+':Bin "0.5":Ord '+':Bin "12":Ord '⋅':Bin "345.6":Ord '+':Bin "1":Ord [',':Punct] "000":Ord '+':Bin '.':Punct '+':Bin '𝑥':Ord '.':Punct '𝑦':Ord]
+\sum_{k=1}^n k \quad \prod_{i} \quad \coprod \quad \int_0^1 \quad \iint \quad \iiint \quad \oint_C
+=> [Scripts(BigOp('∑',None,false) ^'𝑛':Ord _['𝑘':Ord '=':Rel "1":Ord]) '𝑘':Ord Space(1.0) Scripts(BigOp('∏',None,false) ^- _['𝑖':Ord]) Space(1.0) BigOp('∐',None,false) Space(1.0) Scripts(BigOp('∫',None,true) ^"1":Ord _"0":Ord) Space(1.0) BigOp('∬',None,true) Space(1.0) BigOp('∭',None,true) Space(1.0) Scripts(BigOp('∮',None,true) ^- _'𝐶':Ord)]
+\sum\limits_{k} \quad \int\limits_0^1 \quad \sum\nolimits_k \quad \bigcup_i A_i \quad \bigcap \bigvee \bigwedge \bigoplus \bigotimes \bigodot \biguplus \bigsqcup
+=> [Scripts(BigOp('∑',Some(true),false) ^- _['𝑘':Ord]) Space(1.0) Scripts(BigOp('∫',Some(true),true) ^"1":Ord _"0":Ord) Space(1.0) Scripts(BigOp('∑',Some(false),false) ^- _'𝑘':Ord) Space(1.0) Scripts(BigOp('⋃',None,false) ^- _'𝑖':Ord) Scripts('𝐴':Ord ^- _'𝑖':Ord) Space(1.0) BigOp('⋂',None,false) BigOp('⋁',None,false) BigOp('⋀',None,false) BigOp('⨁',None,false) BigOp('⨂',None,false) BigOp('⨀',None,false) BigOp('⨄',None,false) BigOp('⨆',None,false)]
+\sin x + \cos y + \tan z + \cot \sec \csc \arcsin \arccos \arctan \sinh \cosh \tanh \coth
+=> ["sin":Op '𝑥':Ord '+':Bin "cos":Op '𝑦':Ord '+':Bin "tan":Op '𝑧':Ord '+':Bin "cot":Op "sec":Op "csc":Op "arcsin":Op "arccos":Op "arctan":Op "sinh":Op "cosh":Op "tanh":Op "coth":Op]
+\log_2 n + \ln x + \lg \exp \deg \dim \ker \hom \arg \gcd \Pr \det \quad a \bmod b \quad \mod
+=> [Scripts("log":Op ^- _"2":Ord) '𝑛':Ord '+':Bin "ln":Op '𝑥':Ord '+':Bin "lg":Op "exp":Op "deg":Op "dim":Op "ker":Op "hom":Op "arg":Op "gcd":Op "Pr":Op "det":Op Space(1.0) '𝑎':Ord "bmod":Op '𝑏':Ord Space(1.0) "mod":Op]
+\lim_{x \to 0} \frac{\sin x}{x} \quad \liminf_{n} \quad \limsup \quad \max_{i} \min_j \sup \inf \operatorname{argmax}_x \argmax \argmin \operatorname{tr} A
+=> [Scripts(LimitFunc("lim") ^- _['𝑥':Ord '→':Rel "0":Ord]) Frac(true,None ["sin":Op '𝑥':Ord] ['𝑥':Ord]) Space(1.0) Scripts(LimitFunc("liminf") ^- _['𝑛':Ord]) Space(1.0) LimitFunc("limsup") Space(1.0) Scripts(LimitFunc("max") ^- _['𝑖':Ord]) Scripts(LimitFunc("min") ^- _'𝑗':Ord) LimitFunc("sup") LimitFunc("inf") Scripts("argmax":Op ^- _'𝑥':Ord) LimitFunc("argmax") LimitFunc("argmin") "tr":Op '𝐴':Ord]
+\lim\limits_{n} a_n \quad \max\nolimits_i \quad \displaystyle\sum \textstyle\sum \scriptstyle x \nonumber \notag
+=> [LimitFunc("lim") Scripts([] ^- _['𝑛':Ord]) Scripts('𝑎':Ord ^- _'𝑛':Ord) Space(1.0) LimitFunc("max") Scripts([] ^- _'𝑖':Ord) Space(1.0) [] BigOp('∑',None,false) [] BigOp('∑',None,false) [] '𝑥':Ord [] []]
+\foo + \frac{a} + \sqrt[ + x
+=> [Error("\\foo") '+':Bin Frac(true,None ['𝑎':Ord] '+':Bin) Sqrt(['+':Bin '𝑥':Ord] [])]
+\left( x \quad y
+=> [Delimited(Some('('),None ['𝑥':Ord Space(1.0) '𝑦':Ord])]
+a } b ] c ) \right) d
+=> ['𝑎':Ord '𝑏':Ord ']':Close '𝑐':Ord ')':Close]
+{ unbalanced
+=> [['𝑢':Ord '𝑛':Ord '𝑏':Ord '𝑎':Ord '𝑙':Ord '𝑎':Ord '𝑛':Ord '𝑐':Ord '𝑒':Ord '𝑑':Ord]]
+^2 + _3 + x^ 
+=> [Scripts([] ^"2":Ord _-) Scripts('+':Bin ^- _"3":Ord) '+':Bin Scripts('𝑥':Ord ^[] _-)]
+\text{unclosed
+=> ["unclosed":Ord]
+x & y \\ z
+=> ['𝑥':Ord]
+\begin{pmatrix} 1 & 2
+=> [Matrix(Some('('),Some(')'),false,false { ["1":Ord] ["2":Ord] })]
+\end{pmatrix} x
+=> []
+\over 2 + a \over b \over c + \overx
+=> [Frac(true,None [] [Frac(true,None ["2":Ord '+':Bin '𝑎':Ord] [Frac(true,None ['𝑏':Ord] ['𝑐':Ord '+':Bin Error("\\overx")])])])]
+\\ \\ \frac\\x \sqrt\\ \overline \hat
+=> []
+\α + \é + \1 + \@ + \^ + \' 
+=> [Error("\\α") '+':Bin Error("\\é") '+':Bin Error("\\1") '+':Bin Error("\\@") '+':Bin Error("\\^") '+':Bin Error("\\'")]
+x \
+=> ['𝑥':Ord Error("\\")]
+\undefined
+=> [Error("\\undefined")]
+\frac
+=> [Frac(true,None [] [])]
+\left(
+=> [Delimited(Some('('),None [])]
+\begin
+=> [Matrix(None,None,false,false { [] })]
+x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+=> ['𝑥':Ord '=':Rel Frac(true,None ['−':Bin '𝑏':Ord '±':Bin Sqrt(- [Scripts('𝑏':Ord ^"2":Ord _-) '−':Bin "4":Ord '𝑎':Ord '𝑐':Ord])] ["2":Ord '𝑎':Ord])]
+e^{i\pi} + 1 = 0
+=> [Scripts('𝑒':Ord ^['𝑖':Ord '𝜋':Ord] _-) '+':Bin "1":Ord '=':Rel "0":Ord]
+\sum_{k=1}^{n} k = \frac{n(n+1)}{2}
+=> [Scripts(BigOp('∑',None,false) ^['𝑛':Ord] _['𝑘':Ord '=':Rel "1":Ord]) '𝑘':Ord '=':Rel Frac(true,None ['𝑛':Ord '(':Open '𝑛':Ord '+':Bin "1":Ord ')':Close] ["2":Ord])]
+\int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+=> [Scripts(BigOp('∫',None,true) ^['∞':Ord] _['−':Bin '∞':Ord]) Scripts('𝑒':Ord ^['−':Bin Scripts('𝑥':Ord ^"2":Ord _-)] _-) Space(0.16666667) '𝑑':Ord '𝑥':Ord '=':Rel Sqrt(- ['𝜋':Ord])]
+f(x) = \sum_{n=0}^{\infty} \frac{f^{(n)}(a)}{n!} (x-a)^n
+=> ['𝑓':Ord '(':Open '𝑥':Ord ')':Close '=':Rel Scripts(BigOp('∑',None,false) ^['∞':Ord] _['𝑛':Ord '=':Rel "0":Ord]) Frac(true,None [Scripts('𝑓':Ord ^['(':Open '𝑛':Ord ')':Close] _-) '(':Open '𝑎':Ord ')':Close] ['𝑛':Ord '!':Close]) '(':Open '𝑥':Ord '−':Bin '𝑎':Ord Scripts(')':Close ^'𝑛':Ord _-)]
+\nabla \times \mathbf{E} = -\frac{\partial \mathbf{B}}{\partial t}
+=> ['∇':Ord '×':Bin ['𝐄':Ord] '=':Rel '−':Bin Frac(true,None ['∂':Ord ['𝐁':Ord]] ['∂':Ord '𝑡':Ord])]
+\det(A - \lambda I) = 0
+=> ["det":Op '(':Open '𝐴':Ord '−':Bin '𝜆':Ord '𝐼':Ord ')':Close '=':Rel "0":Ord]
+\left\| \mathbf{x} \right\|_2 = \sqrt{\sum_{i=1}^n x_i^2}
+=> [Scripts(Delimited(Some('‖'),Some('‖') [['𝐱':Ord]]) ^- _"2":Ord) '=':Rel Sqrt(- [Scripts(BigOp('∑',None,false) ^'𝑛':Ord _['𝑖':Ord '=':Rel "1":Ord]) Scripts('𝑥':Ord ^"2":Ord _'𝑖':Ord)])]
+P(A \mid B) = \frac{P(B \mid A)\,P(A)}{P(B)}
+=> ['𝑃':Ord '(':Open '𝐴':Ord '∣':Rel '𝐵':Ord ')':Close '=':Rel Frac(true,None ['𝑃':Ord '(':Open '𝐵':Ord '∣':Rel '𝐴':Ord ')':Close Space(0.16666667) '𝑃':Ord '(':Open '𝐴':Ord ')':Close] ['𝑃':Ord '(':Open '𝐵':Ord ')':Close])]
+\hat{x} \cdot \vec{v} \leq \|v\|
+=> [Accent('\u{302}',false ['𝑥':Ord]) '⋅':Bin Accent('\u{20d7}',false ['𝑣':Ord]) '≤':Rel '‖':Ord '𝑣':Ord '‖':Ord]
+\mathbb{R}^n \subseteq \mathcal{H}
+=> [Scripts(['ℝ':Ord] ^'𝑛':Ord _-) '⊆':Rel ['ℋ':Ord]]
+\sqrt[3]{\alpha^2 + \beta_i'}
+=> [Sqrt(["3":Ord] [Scripts('𝛼':Ord ^"2":Ord _-) '+':Bin Scripts('𝛽':Ord ^'′':Ord _'𝑖':Ord)])]
+\lim_{x \to 0} \frac{\sin x}{x} = 1
+=> [Scripts(LimitFunc("lim") ^- _['𝑥':Ord '→':Rel "0":Ord]) Frac(true,None ["sin":Op '𝑥':Ord] ['𝑥':Ord]) '=':Rel "1":Ord]
+\binom{n}{k} = \frac{n!}{k!(n-k)!}
+=> [Frac(false,Some(('(', ')')) ['𝑛':Ord] ['𝑘':Ord]) '=':Rel Frac(true,None ['𝑛':Ord '!':Close] ['𝑘':Ord '!':Close '(':Open '𝑛':Ord '−':Bin '𝑘':Ord ')':Close '!':Close])]
+\oint_{\partial \Sigma} \mathbf{B} \cdot d\mathbf{l} = \mu_0 \iint_\Sigma \mathbf{J} \cdot d\mathbf{S}
+=> [Scripts(BigOp('∮',None,true) ^- _['∂':Ord 'Σ':Ord]) ['𝐁':Ord] '⋅':Bin '𝑑':Ord ['𝐥':Ord] '=':Rel Scripts('𝜇':Ord ^- _"0":Ord) Scripts(BigOp('∬',None,true) ^- _'Σ':Ord) ['𝐉':Ord] '⋅':Bin '𝑑':Ord ['𝐒':Ord]]
+A = \begin{bmatrix} a_{11} & a_{12} \ a_{21} & a_{22} \end{bmatrix}
+=> ['𝐴':Ord '=':Rel Matrix(Some('['),Some(']'),false,false { [Scripts('𝑎':Ord ^- _["11":Ord])] [Scripts('𝑎':Ord ^- _["12":Ord]) Space(0.25) Scripts('𝑎':Ord ^- _["21":Ord])] [Scripts('𝑎':Ord ^- _["22":Ord])] })]
+|x| = \begin{cases} x & x \ge 0 \ -x & x < 0 \end{cases}
+=> ['|':Ord '𝑥':Ord '|':Ord '=':Rel Matrix(Some('{'),None,true,true { ['𝑥':Ord] ['𝑥':Ord '≥':Rel "0":Ord Space(0.25) '−':Bin '𝑥':Ord] ['𝑥':Ord '<':Rel "0":Ord] })]
+\zeta(s) = \prod_{p \text{ prime}} \frac{1}{1 - p^{-s}}
+=> ['𝜁':Ord '(':Open '𝑠':Ord ')':Close '=':Rel Scripts(BigOp('∏',None,false) ^- _['𝑝':Ord " prime":Ord]) Frac(true,None ["1":Ord] ["1":Ord '−':Bin Scripts('𝑝':Ord ^['−':Bin '𝑠':Ord] _-)])]
+\Gamma(z) = \int_0^\infty t^{z-1} e^{-t}\,dt
+=> ['Γ':Ord '(':Open '𝑧':Ord ')':Close '=':Rel Scripts(BigOp('∫',None,true) ^'∞':Ord _"0":Ord) Scripts('𝑡':Ord ^['𝑧':Ord '−':Bin "1":Ord] _-) Scripts('𝑒':Ord ^['−':Bin '𝑡':Ord] _-) Space(0.16666667) '𝑑':Ord '𝑡':Ord]
+\color{red}{a^2} + \color{blue}{b^2} = c^2
+=> [Color([209, 36, 47] [Scripts('𝑎':Ord ^"2":Ord _-)]) '+':Bin Color([9, 105, 218] [Scripts('𝑏':Ord ^"2":Ord _-)]) '=':Rel Scripts('𝑐':Ord ^"2":Ord _-)]
+\alpha{x} \beta{x} \gamma{x} \delta{x} \epsilon{x} \varepsilon{x} \zeta{x} \eta{x} \theta{x} \vartheta{x} \iota{x} \kappa{x}
+=> ['𝛼':Ord ['𝑥':Ord] '𝛽':Ord ['𝑥':Ord] '𝛾':Ord ['𝑥':Ord] '𝛿':Ord ['𝑥':Ord] '𝜖':Ord ['𝑥':Ord] '𝜀':Ord ['𝑥':Ord] '𝜁':Ord ['𝑥':Ord] '𝜂':Ord ['𝑥':Ord] '𝜃':Ord ['𝑥':Ord] '𝜗':Ord ['𝑥':Ord] '𝜄':Ord ['𝑥':Ord] '𝜅':Ord ['𝑥':Ord]]
+\lambda{x} \mu{x} \nu{x} \xi{x} \omicron{x} \pi{x} \varpi{x} \rho{x} \varrho{x} \sigma{x} \varsigma{x} \tau{x}
+=> ['𝜆':Ord ['𝑥':Ord] '𝜇':Ord ['𝑥':Ord] '𝜈':Ord ['𝑥':Ord] '𝜉':Ord ['𝑥':Ord] '𝜊':Ord ['𝑥':Ord] '𝜋':Ord ['𝑥':Ord] '𝜛':Ord ['𝑥':Ord] '𝜌':Ord ['𝑥':Ord] '𝜚':Ord ['𝑥':Ord] '𝜎':Ord ['𝑥':Ord] '𝜍':Ord ['𝑥':Ord] '𝜏':Ord ['𝑥':Ord]]
+\upsilon{x} \phi{x} \varphi{x} \chi{x} \psi{x} \omega{x} \Gamma{x} \Delta{x} \Theta{x} \Lambda{x} \Xi{x} \Pi{x}
+=> ['𝜐':Ord ['𝑥':Ord] '𝜙':Ord ['𝑥':Ord] '𝜑':Ord ['𝑥':Ord] '𝜒':Ord ['𝑥':Ord] '𝜓':Ord ['𝑥':Ord] '𝜔':Ord ['𝑥':Ord] 'Γ':Ord ['𝑥':Ord] 'Δ':Ord ['𝑥':Ord] 'Θ':Ord ['𝑥':Ord] 'Λ':Ord ['𝑥':Ord] 'Ξ':Ord ['𝑥':Ord] 'Π':Ord ['𝑥':Ord]]
+\Sigma{x} \Upsilon{x} \Phi{x} \Psi{x} \Omega{x} \pm{x} \mp{x} \times{x} \div{x} \cdot{x} \ast{x} \star{x}
+=> ['Σ':Ord ['𝑥':Ord] 'Υ':Ord ['𝑥':Ord] 'Φ':Ord ['𝑥':Ord] 'Ψ':Ord ['𝑥':Ord] 'Ω':Ord ['𝑥':Ord] '±':Bin ['𝑥':Ord] '∓':Bin ['𝑥':Ord] '×':Bin ['𝑥':Ord] '÷':Bin ['𝑥':Ord] '⋅':Bin ['𝑥':Ord] '∗':Bin ['𝑥':Ord] '⋆':Bin ['𝑥':Ord]]
+\circ{x} \bullet{x} \oplus{x} \ominus{x} \otimes{x} \oslash{x} \odot{x} \cap{x} \cup{x} \wedge{x} \land{x} \vee{x}
+=> ['∘':Bin ['𝑥':Ord] '∙':Bin ['𝑥':Ord] '⊕':Bin ['𝑥':Ord] '⊖':Bin ['𝑥':Ord] '⊗':Bin ['𝑥':Ord] '⊘':Bin ['𝑥':Ord] '⊙':Bin ['𝑥':Ord] '∩':Bin ['𝑥':Ord] '∪':Bin ['𝑥':Ord] '∧':Bin ['𝑥':Ord] '∧':Bin ['𝑥':Ord] '∨':Bin ['𝑥':Ord]]
+\lor{x} \setminus{x} \wr{x} \amalg{x} \dagger{x} \ddagger{x} \le{x} \leq{x} \ge{x} \geq{x} \neq{x} \ne{x}
+=> ['∨':Bin ['𝑥':Ord] '∖':Bin ['𝑥':Ord] '≀':Bin ['𝑥':Ord] '⨿':Bin ['𝑥':Ord] '†':Bin ['𝑥':Ord] '‡':Bin ['𝑥':Ord] '≤':Rel ['𝑥':Ord] '≤':Rel ['𝑥':Ord] '≥':Rel ['𝑥':Ord] '≥':Rel ['𝑥':Ord] '≠':Rel ['𝑥':Ord] '≠':Rel ['𝑥':Ord]]
+\leqslant{x} \geqslant{x} \ll{x} \gg{x} \approx{x} \sim{x} \simeq{x} \cong{x} \equiv{x} \propto{x} \in{x} \notin{x}
+=> ['⩽':Rel ['𝑥':Ord] '⩾':Rel ['𝑥':Ord] '≪':Rel ['𝑥':Ord] '≫':Rel ['𝑥':Ord] '≈':Rel ['𝑥':Ord] '∼':Rel ['𝑥':Ord] '≃':Rel ['𝑥':Ord] '≅':Rel ['𝑥':Ord] '≡':Rel ['𝑥':Ord] '∝':Rel ['𝑥':Ord] '∈':Rel ['𝑥':Ord] '∉':Rel ['𝑥':Ord]]
+\ni{x} \subset{x} \supset{x} \subseteq{x} \supseteq{x} \subsetneq{x} \supsetneq{x} \mid{x} \parallel{x} \perp{x} \models{x} \vdash{x}
+=> ['∋':Rel ['𝑥':Ord] '⊂':Rel ['𝑥':Ord] '⊃':Rel ['𝑥':Ord] '⊆':Rel ['𝑥':Ord] '⊇':Rel ['𝑥':Ord] '⊊':Rel ['𝑥':Ord] '⊋':Rel ['𝑥':Ord] '∣':Rel ['𝑥':Ord] '∥':Rel ['𝑥':Ord] '⊥':Rel ['𝑥':Ord] '⊨':Rel ['𝑥':Ord] '⊢':Rel ['𝑥':Ord]]
+\dashv{x} \doteq{x} \prec{x} \succ{x} \preceq{x} \succeq{x} \asymp{x} \coloneqq{x} \to{x} \rightarrow{x} \gets{x} \leftarrow{x}
+=> ['⊣':Rel ['𝑥':Ord] '≐':Rel ['𝑥':Ord] '≺':Rel ['𝑥':Ord] '≻':Rel ['𝑥':Ord] '⪯':Rel ['𝑥':Ord] '⪰':Rel ['𝑥':Ord] '≍':Rel ['𝑥':Ord] '≔':Rel ['𝑥':Ord] '→':Rel ['𝑥':Ord]]
+\leftrightarrow{x} \Rightarrow{x} \implies{x} \Leftarrow{x} \Leftrightarrow{x} \iff{x} \mapsto{x} \longrightarrow{x} \longleftarrow{x} \Longrightarrow{x} \longmapsto{x} \uparrow{x}
+=> ['↔':Rel ['𝑥':Ord] '⇒':Rel ['𝑥':Ord] '⇒':Rel ['𝑥':Ord] '⇐':Rel ['𝑥':Ord] '⇔':Rel ['𝑥':Ord] '⇔':Rel ['𝑥':Ord] '↦':Rel ['𝑥':Ord] '⟶':Rel ['𝑥':Ord] '⟵':Rel ['𝑥':Ord] '⟹':Rel ['𝑥':Ord] '⟼':Rel ['𝑥':Ord] '↑':Rel ['𝑥':Ord]]
+\downarrow{x} \hookrightarrow{x} \rightharpoonup{x} \nearrow{x} \searrow{x} \infty{x} \partial{x} \nabla{x} \forall{x} \exists{x} \nexists{x} \emptyset{x}
+=> ['↓':Rel ['𝑥':Ord] '↪':Rel ['𝑥':Ord]]
+\varnothing{x} \neg{x} \lnot{x} \angle{x} \triangle{x} \ell{x} \hbar{x} \Re{x} \Im{x} \aleph{x} \wp{x} \prime{x}
+=> ['∅':Ord ['𝑥':Ord] '¬':Ord ['𝑥':Ord] '¬':Ord ['𝑥':Ord] '∠':Ord ['𝑥':Ord] '△':Ord ['𝑥':Ord] 'ℓ':Ord ['𝑥':Ord] 'ℏ':Ord ['𝑥':Ord] 'ℜ':Ord ['𝑥':Ord] 'ℑ':Ord ['𝑥':Ord] 'ℵ':Ord ['𝑥':Ord] '℘':Ord ['𝑥':Ord] '′':Ord ['𝑥':Ord]]
+\top{x} \bot{x} \degree{x} \checkmark{x} \ldots{x} \dots{x} \dotsc{x} \dotso{x} \cdots{x} \dotsb{x} \dotsm{x} \vdots{x}
+=> ['⊤':Ord ['𝑥':Ord] '⊥':Ord ['𝑥':Ord] '°':Ord ['𝑥':Ord] '✓':Ord ['𝑥':Ord] '…':Inner ['𝑥':Ord] '…':Inner ['𝑥':Ord] '…':Inner ['𝑥':Ord] '…':Inner ['𝑥':Ord] '⋯':Inner ['𝑥':Ord] '⋯':Inner ['𝑥':Ord] '⋯':Inner ['𝑥':Ord] '⋮':Ord ['𝑥':Ord]]
+\ddots{x} \colon{x} \lbrace{x} \rbrace{x} \langle{x} \rangle{x} \lfloor{x} \rfloor{x} \lceil{x} \rceil{x} \vert{x} \Vert{x}
+=> ['⋱':Inner ['𝑥':Ord] ':':Punct ['𝑥':Ord] '{':Open ['𝑥':Ord] '}':Close ['𝑥':Ord] '⟨':Open ['𝑥':Ord] '⟩':Close ['𝑥':Ord] '⌊':Open ['𝑥':Ord] '⌋':Close ['𝑥':Ord] '⌈':Open ['𝑥':Ord] '⌉':Close ['𝑥':Ord] '|':Ord ['𝑥':Ord] '‖':Ord ['𝑥':Ord]]
+\lvert{x} \rvert{x} \lVert{x} \rVert{x} \backslash{x} \square{x} \blacksquare{x} \Box{x} \diamond{x} \clubsuit{x} \heartsuit{x} \spadesuit{x}
+=> ['|':Open ['𝑥':Ord] '|':Close ['𝑥':Ord] '‖':Open ['𝑥':Ord] '‖':Close ['𝑥':Ord] '∖':Ord ['𝑥':Ord] '□':Ord ['𝑥':Ord] '■':Ord ['𝑥':Ord] '□':Ord ['𝑥':Ord] '⋄':Bin ['𝑥':Ord] '♣':Ord ['𝑥':Ord] '♡':Ord ['𝑥':Ord] '♠':Ord ['𝑥':Ord]]
+\diamondsuit{x} \flat{x} \sharp{x} \therefore{x} \because{x} \sum{x} \prod{x} \coprod{x} \int{x} \iint{x} \iiint{x} \oint{x}
+=> ['♢':Ord ['𝑥':Ord] '♭':Ord ['𝑥':Ord] '♯':Ord ['𝑥':Ord] '∴':Rel ['𝑥':Ord] '∵':Rel ['𝑥':Ord] BigOp('∑',None,false) ['𝑥':Ord] BigOp('∏',None,false) ['𝑥':Ord] BigOp('∐',None,false) ['𝑥':Ord] BigOp('∫',None,true) ['𝑥':Ord] BigOp('∬',None,true) ['𝑥':Ord] BigOp('∭',None,true) ['𝑥':Ord] BigOp('∮',None,true) ['𝑥':Ord]]
+\bigcup{x} \bigcap{x} \bigvee{x} \bigwedge{x} \bigoplus{x} \bigotimes{x} \bigodot{x} \biguplus{x} \bigsqcup{x} \hat{x} \widehat{x} \tilde{x}
+=> [BigOp('⋃',None,false) ['𝑥':Ord] BigOp('⋂',None,false) ['𝑥':Ord] BigOp('⋁',None,false) ['𝑥':Ord] BigOp('⋀',None,false) ['𝑥':Ord] BigOp('⨁',None,false) ['𝑥':Ord] BigOp('⨂',None,false) ['𝑥':Ord] BigOp('⨀',None,false) ['𝑥':Ord] BigOp('⨄',None,false) ['𝑥':Ord] BigOp('⨆',None,false) ['𝑥':Ord] Accent('\u{302}',false ['𝑥':Ord]) Accent('\u{302}',true ['𝑥':Ord]) Accent('\u{303}',false ['𝑥':Ord])]
+\widetilde{x} \bar{x} \vec{x} \dot{x} \ddot{x} \acute{x} \grave{x} \breve{x} \check{x} \mathring{x} \overrightarrow{x}
+=> [Accent('\u{303}',true ['𝑥':Ord]) Accent('\u{304}',false ['𝑥':Ord]) Accent('\u{20d7}',false ['𝑥':Ord]) Accent('\u{307}',false ['𝑥':Ord]) Accent('\u{308}',false ['𝑥':Ord]) Accent('\u{301}',false ['𝑥':Ord]) Accent('\u{300}',false ['𝑥':Ord]) Accent('\u{306}',false ['𝑥':Ord]) Accent('\u{30c}',false ['𝑥':Ord]) Accent('\u{30a}',false ['𝑥':Ord]) Accent('\u{20d7}',true ['𝑥':Ord])]
+\left\{ x \right\{ \Big\{ \left\lbrace x \right\lbrace \Big\lbrace \left\} x \right\} \Big\} \left\rbrace x \right\rbrace \Big\rbrace \left\| x \right\| \Big\|
+=> [Delimited(Some('{'),Some('{') ['𝑥':Ord]) BigDelim('{',1.8,Ord) Delimited(Some('{'),Some('{') ['𝑥':Ord]) BigDelim('{',1.8,Ord) Delimited(Some('}'),Some('}') ['𝑥':Ord]) BigDelim('}',1.8,Ord) Delimited(Some('}'),Some('}') ['𝑥':Ord]) BigDelim('}',1.8,Ord) Delimited(Some('‖'),Some('‖') ['𝑥':Ord]) BigDelim('‖',1.8,Ord)]
+\left\Vert x \right\Vert \Big\Vert \left\lVert x \right\lVert \Big\lVert \left\rVert x \right\rVert \Big\rVert \left\vert x \right\vert \Big\vert \left\lvert x \right\lvert \Big\lvert
+=> [Delimited(Some('‖'),Some('‖') ['𝑥':Ord]) BigDelim('‖',1.8,Ord) Delimited(Some('‖'),Some('‖') ['𝑥':Ord]) BigDelim('‖',1.8,Ord) Delimited(Some('‖'),Some('‖') ['𝑥':Ord]) BigDelim('‖',1.8,Ord) Delimited(Some('|'),Some('|') ['𝑥':Ord]) BigDelim('|',1.8,Ord) Delimited(Some('|'),Some('|') ['𝑥':Ord]) BigDelim('|',1.8,Ord)]
+\left\rvert x \right\rvert \Big\rvert \left\langle x \right\langle \Big\langle \left\rangle x \right\rangle \Big\rangle \left\lfloor x \right\lfloor \Big\lfloor \left\rfloor x \right\rfloor \Big\rfloor
+=> [Delimited(Some('|'),Some('|') ['𝑥':Ord]) BigDelim('|',1.8,Ord) Delimited(Some('⟨'),Some('⟨') ['𝑥':Ord]) BigDelim('⟨',1.8,Ord) Delimited(Some('⟩'),Some('⟩') ['𝑥':Ord]) BigDelim('⟩',1.8,Ord) Delimited(Some('⌊'),Some('⌊') ['𝑥':Ord]) BigDelim('⌊',1.8,Ord) Delimited(Some('⌋'),Some('⌋') ['𝑥':Ord]) BigDelim('⌋',1.8,Ord)]
+\left\lceil x \right\lceil \Big\lceil \left\rceil x \right\rceil \Big\rceil \left\backslash x \right\backslash \Big\backslash \left\uparrow x \right\uparrow \Big\uparrow \left\downarrow x \right\downarrow \Big\downarrow
+=> [Delimited(Some('⌈'),Some('⌈') ['𝑥':Ord]) BigDelim('⌈',1.8,Ord) Delimited(Some('⌉'),Some('⌉') ['𝑥':Ord]) BigDelim('⌉',1.8,Ord) Delimited(Some('∖'),Some('∖') ['𝑥':Ord]) BigDelim('∖',1.8,Ord) Delimited(Some('↑'),Some('↑') ['𝑥':Ord]) BigDelim('↑',1.8,Ord) Delimited(Some('↓'),Some('↓') ['𝑥':Ord]) BigDelim('↓',1.8,Ord)]
+
+=> []
+\frac{Ab1}{c2 d} \frac \dfrac{Ab1}{c2 d} \dfrac \tfrac{Ab1}{c2 d} \tfrac \cfrac{Ab1}{c2 d} \cfrac \binom{Ab1}{c2 d} \binom \dbinom{Ab1}{c2 d} \dbinom \tbinom{Ab1}{c2 d} \tbinom \sqrt{Ab1}{c2 d} \sqrt 
+=> [Frac(true,None ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord]) Frac(true,None Frac(true,None ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord]) Frac(true,None Frac(true,None ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord]) Frac(true,None Frac(true,None ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord]) Frac(true,None Frac(false,Some(('(', ')')) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord]) Frac(false,Some(('(', ')')) Frac(false,Some(('(', ')')) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord]) Frac(false,Some(('(', ')')) Frac(false,Some(('(', ')')) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord]) Frac(false,Some(('(', ')')) Sqrt(- ['𝐴':Ord '𝑏':Ord "1":Ord]) ['𝑐':Ord "2":Ord '𝑑':Ord]))))))) Sqrt(- [])]
+\text{Ab1}{c2 d} \text \textrm{Ab1}{c2 d} \textrm \mbox{Ab1}{c2 d} \mbox \textnormal{Ab1}{c2 d} \textnormal \textup{Ab1}{c2 d} \textup \textbf{Ab1}{c2 d} \textbf \textit{Ab1}{c2 d} \textit 
+=> ["Ab1":Ord ['𝑐':Ord "2":Ord '𝑑':Ord] "\\":Ord '𝑡':Ord '𝑒':Ord '𝑥':Ord '𝑡':Ord '𝑟':Ord '𝑚':Ord ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "\\":Ord '𝑚':Ord '𝑏':Ord '𝑜':Ord '𝑥':Ord ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "\\":Ord '𝑡':Ord '𝑒':Ord '𝑥':Ord '𝑡':Ord '𝑛':Ord '𝑜':Ord '𝑟':Ord '𝑚':Ord '𝑎':Ord '𝑙':Ord ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "\\":Ord '𝑡':Ord '𝑒':Ord '𝑥':Ord '𝑡':Ord '𝑢':Ord '𝑝':Ord ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "\\":Ord '𝑡':Ord '𝑒':Ord '𝑥':Ord '𝑡':Ord '𝑏':Ord '𝑓':Ord ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "\\":Ord '𝑡':Ord '𝑒':Ord '𝑥':Ord '𝑡':Ord '𝑖':Ord '𝑡':Ord ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "":Ord]
+\operatorname{Ab1}{c2 d} \operatorname \mathrm{Ab1}{c2 d} \mathrm \rm{Ab1}{c2 d} \rm \mathbf{Ab1}{c2 d} \mathbf \bf{Ab1}{c2 d} \bf \boldsymbol{Ab1}{c2 d} \boldsymbol \bm{Ab1}{c2 d} \bm 
+=> ["Ab1":Op ['𝑐':Ord "2":Ord '𝑑':Ord] "\\":Op '𝑚':Ord '𝑎':Ord '𝑡':Ord 'ℎ':Ord '𝑟':Ord '𝑚':Ord ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] ['A':Ord 'b':Ord '1':Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] ['𝐀':Ord '𝐛':Ord '𝟏':Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] ['𝐀':Ord '𝐛':Ord '𝟏':Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] ['𝑨':Ord '𝒃':Ord '𝟏':Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] ['𝑨':Ord '𝒃':Ord '𝟏':Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] []]
+\mathit{Ab1}{c2 d} \mathit \it{Ab1}{c2 d} \it \mathbb{Ab1}{c2 d} \mathbb \mathcal{Ab1}{c2 d} \mathcal \mathscr{Ab1}{c2 d} \mathscr \mathfrak{Ab1}{c2 d} \mathfrak \mathsf{Ab1}{c2 d} \mathsf 
+=> [['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] ['𝔸':Ord '𝕓':Ord '𝟙':Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] ['𝒜':Ord '𝒷':Ord '1':Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] ['𝒜':Ord '𝒷':Ord '1':Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] ['𝔄':Ord '𝔟':Ord '1':Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] ['𝖠':Ord '𝖻':Ord '𝟣':Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] []]
+\mathtt{Ab1}{c2 d} \mathtt \big{Ab1}{c2 d} \big \Big{Ab1}{c2 d} \Big \bigg{Ab1}{c2 d} \bigg \Bigg{Ab1}{c2 d} \Bigg \bigl{Ab1}{c2 d} \bigl \bigr{Ab1}{c2 d} \bigr \Bigl{Ab1}{c2 d} \Bigl \Bigr{Ab1}{c2 
+=> [['𝙰':Ord '𝚋':Ord '𝟷':Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] BigDelim('{',1.2,Ord) '𝐴':Ord '𝑏':Ord "1":Ord ['𝑐':Ord "2":Ord '𝑑':Ord] BigDelim('.',1.2,Ord) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] BigDelim('.',1.8,Ord) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] BigDelim('.',2.4,Ord) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] BigDelim('.',3.0,Ord) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] BigDelim('.',1.2,Open) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] BigDelim('.',1.2,Close) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] BigDelim('.',1.8,Open) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord]]
+d} \Bigr \biggl{Ab1}{c2 d} \biggl \biggr{Ab1}{c2 d} \biggr \Biggl{Ab1}{c2 d} \Biggl \Biggr{Ab1}{c2 d} \Biggr \overline{Ab1}{c2 d} \overline \underline{Ab1}{c2 d} \underline \overbrace{Ab1}{c2 d} 
+=> ['𝑑':Ord BigDelim('.',1.8,Close) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] BigDelim('.',2.4,Open) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] BigDelim('.',2.4,Close) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] BigDelim('.',3.0,Open) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] BigDelim('.',3.0,Close) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] OverLine(UnderLine(['𝐴':Ord '𝑏':Ord "1":Ord])) ['𝑐':Ord "2":Ord '𝑑':Ord] UnderLine(Brace(true ['𝐴':Ord '𝑏':Ord "1":Ord])) ['𝑐':Ord "2":Ord '𝑑':Ord]]
+\overbrace \underbrace{Ab1}{c2 d} \underbrace \limits{Ab1}{c2 d} \limits \nolimits{Ab1}{c2 d} \nolimits \displaystyle{Ab1}{c2 d} \displaystyle \textstyle{Ab1}{c2 d} \textstyle \scriptstyle{Ab1}{c2 d} 
+=> [Brace(true Brace(false ['𝐴':Ord '𝑏':Ord "1":Ord])) ['𝑐':Ord "2":Ord '𝑑':Ord] Brace(false []) ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] [] [] ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] [] [] ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] [] [] ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] [] [] ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord]]
+\scriptstyle \nonumber{Ab1}{c2 d} \nonumber \notag{Ab1}{c2 d} \notag \color{Ab1}{c2 d} \color \textcolor{Ab1}{c2 d} \textcolor \not{Ab1}{c2 d} \not \lim{Ab1}{c2 d} \lim \liminf{Ab1}{c2 d} \liminf 
+=> [[] [] ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] [] [] ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] [] Color([128, 128, 128] ['𝑐':Ord "2":Ord '𝑑':Ord]) Color([128, 128, 128] '𝑡':Ord) '𝑒':Ord '𝑥':Ord '𝑡':Ord '𝑐':Ord '𝑜':Ord '𝑙':Ord '𝑜':Ord '𝑟':Ord ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] Color([128, 128, 128] '𝑛':Ord) '𝑜':Ord '𝑡':Ord ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] LimitFunc("lim") ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] LimitFunc("lim") LimitFunc("liminf") ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] LimitFunc("liminf")]
+\limsup{Ab1}{c2 d} \limsup \max{Ab1}{c2 d} \max \min{Ab1}{c2 d} \min \sup{Ab1}{c2 d} \sup \inf{Ab1}{c2 d} \inf \argmax{Ab1}{c2 d} \argmax \argmin{Ab1}{c2 d} \argmin \sin{Ab1}{c2 d} \sin \cos{Ab1}{c2 
+=> [LimitFunc("limsup") ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] LimitFunc("limsup") LimitFunc("max") ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] LimitFunc("max") LimitFunc("min") ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] LimitFunc("min") LimitFunc("sup") ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] LimitFunc("sup") LimitFunc("inf") ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] LimitFunc("inf") LimitFunc("argmax") ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] LimitFunc("argmax") LimitFunc("argmin") ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] LimitFunc("argmin") "sin":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "sin":Op "cos":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord]]
+d} \cos \tan{Ab1}{c2 d} \tan \cot{Ab1}{c2 d} \cot \sec{Ab1}{c2 d} \sec \csc{Ab1}{c2 d} \csc \arcsin{Ab1}{c2 d} \arcsin \arccos{Ab1}{c2 d} \arccos \arctan{Ab1}{c2 d} \arctan \sinh{Ab1}{c2 d} \sinh 
+=> ['𝑑':Ord "cos":Op "tan":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "tan":Op "cot":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "cot":Op "sec":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "sec":Op "csc":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "csc":Op "arcsin":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "arcsin":Op "arccos":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "arccos":Op "arctan":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "arctan":Op "sinh":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "sinh":Op]
+\cosh{Ab1}{c2 d} \cosh \tanh{Ab1}{c2 d} \tanh \coth{Ab1}{c2 d} \coth \log{Ab1}{c2 d} \log \ln{Ab1}{c2 d} \ln \lg{Ab1}{c2 d} \lg \exp{Ab1}{c2 d} \exp \deg{Ab1}{c2 d} \deg \dim{Ab1}{c2 d} \dim 
+=> ["cosh":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "cosh":Op "tanh":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "tanh":Op "coth":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "coth":Op "log":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "log":Op "ln":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "ln":Op "lg":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "lg":Op "exp":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "exp":Op "deg":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "deg":Op "dim":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "dim":Op]
+\ker{Ab1}{c2 d} \ker \hom{Ab1}{c2 d} \hom \arg{Ab1}{c2 d} \arg \gcd{Ab1}{c2 d} \gcd \Pr{Ab1}{c2 d} \Pr \det{Ab1}{c2 d} \det \mod{Ab1}{c2 d} \mod \bmod{Ab1}{c2 d} \bmod 
+=> ["ker":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "ker":Op "hom":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "hom":Op "arg":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "arg":Op "gcd":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "gcd":Op "Pr":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "Pr":Op "det":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "det":Op "mod":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "mod":Op "bmod":Op ['𝐴':Ord '𝑏':Ord "1":Ord] ['𝑐':Ord "2":Ord '𝑑':Ord] "bmod":Op]
+\mathbf{\alpha} \mathbf{\le} \bf \alpha \it 2.5 \mathrm{3.14} \mathbb{2} .5 1.2.3 \textbf{a b} \textit{Z 9 é}
+=> [['𝛼':Ord] ['≤':Rel] '𝛼':Ord "2":Ord ".5":Ord ['3':Ord '.':Ord '1':Ord '4':Ord] ['𝟚':Ord] ".5":Ord "1.2.3":Ord "𝐚 𝐛":Ord "𝑍 9 é":Ord]
+\color{red}x \color{#00ff00}{y} \color{#}{z} \color{#+12}{w} \color{#123456789}{v} \color{}{u} \color
+=> [Color([209, 36, 47] '𝑥':Ord) Color([0, 255, 0] ['𝑦':Ord]) Color([128, 128, 128] ['𝑧':Ord]) Color([0, 0, 18] ['𝑤':Ord]) Color([128, 128, 128] ['𝑣':Ord]) Color([128, 128, 128] ['𝑢':Ord]) Color([128, 128, 128] [])]
+\begin{matrix} \end{matrix} \begin{array}{c|c} a & b \end{array} \begin{align} a \right) b \end{align} \begin{cases} a \\ \\ \end{cases}
+=> [Matrix(None,None,false,false { [] }) Matrix(None,None,false,false { ['𝑎':Ord] ['𝑏':Ord] }) Matrix(None,None,true,false { ['𝑎':Ord] ['𝑟':Ord '𝑖':Ord '𝑔':Ord 'ℎ':Ord '𝑡':Ord ')':Close '𝑏':Ord] }) Matrix(Some('{'),None,true,true { ['𝑎':Ord] } { [] })]
+\begin{pmatrix} a \\[3pt] b \\ \end{pmatrix*} \begin{frac} x \end{frac} \begin{red} y \end{red} \begin{Bmatrix**} z \end{Bmatrix**} \begin x \end y
+=> [Matrix(Some('('),Some(')'),false,false { ['𝑎':Ord] } { ['𝑏':Ord] }) Matrix(None,None,false,false { ['𝑥':Ord] }) Matrix(None,None,false,false { ['𝑦':Ord] }) Matrix(Some('{'),Some('}'),false,false { ['𝑧':Ord] }) Matrix(None,None,false,false { [] })]
+x^{a}^{b}_{c}_{d} x__ ^^ 'x'' x^2' {}^{14}C a_{b}' x_1'' \sum'_k
+=> [Scripts('𝑥':Ord ^['𝑏':Ord] _['𝑑':Ord]) Scripts('𝑥':Ord ^['^':Ord '′':Ord] _'_':Ord) Scripts('𝑥':Ord ^['′':Ord '′':Ord] _-) Scripts('𝑥':Ord ^["2":Ord '′':Ord] _-) Scripts([] ^["14":Ord] _-) '𝐶':Ord Scripts('𝑎':Ord ^'′':Ord _['𝑏':Ord]) Scripts('𝑥':Ord ^['′':Ord '′':Ord] _"1":Ord) Scripts(BigOp('∑',None,false) ^'′':Ord _'𝑘':Ord)]
+\sqrt[\frac12]{x} \sqrt[] \sqrt[ \frac{\left(}{x}
+=> [Sqrt([Frac(true,None "1":Ord "2":Ord)] ['𝑥':Ord]) Sqrt([] Sqrt([Frac(true,None [Delimited(Some('('),None [['𝑥':Ord]])] [])] []))]
+a b c\ \  x\ y\
+=> ['𝑎':Ord '𝑏':Ord '𝑐':Ord Space(0.25) Space(0.25) '𝑥':Ord Space(0.25) '𝑦':Ord Error("\\")]
+\left\{ \middle| \right\} \left\ \right \left
+=> [Delimited(Some('{'),Some('}') [Error("\\middle") '|':Ord]) Delimited(None,None [])]
+x \\ y & z } ] \right. \end{x} \over
+=> ['𝑥':Ord]
+\text{a\}b\{c} \text{\\} \text x \text \textbf{\} \text{é} \operatorname*{arg}
+=> ["a\\}b\\{c":Ord "\\\\":Ord "x":Ord "\\":Ord '𝑡':Ord '𝑒':Ord '𝑥':Ord '𝑡':Ord '𝑏':Ord '𝑓':Ord ['}':Close "é":Ord "*":Op ['𝑎':Ord '𝑟':Ord '𝑔':Ord]]]
+\red \cases \pmatrix \gray \limitsx \sum\limitsx \int\nolimits\limits \sum \limits
+=> [Error("\\red") Error("\\cases") Error("\\pmatrix") Error("\\gray") Error("\\limitsx") BigOp('∑',Some(true),false) '𝑥':Ord BigOp('∫',Some(false),true) [] BigOp('∑',Some(true),false)]
+\frac\alpha\beta \frac{}{} \frac1 \sqrt\sqrt x \hat\hat x \not\not= \not \color{blue}\color{red}x
+=> [Frac(true,None '𝛼':Ord '𝛽':Ord) Frac(true,None [] []) Frac(true,None "1":Ord Sqrt(- Sqrt(- '𝑥':Ord))) Accent('\u{302}',false Accent('\u{302}',false '𝑥':Ord)) '≠':Rel Color([9, 105, 218] Color([209, 36, 47] '𝑥':Ord))]
+\{ \} \| \% \$ \# \& \_ \, \: \> \; \! \quad \qquad \\
+=> ['{':Open '}':Close '‖':Ord '%':Ord '$':Ord '#':Ord '&':Ord '_':Ord Space(0.16666667) Space(0.22222222) Space(0.22222222) Space(0.2777778) Space(-0.16666667) Space(1.0) Space(2.0)]
+\big \Big. \bigg\| \Bigg\langle \bigl\{ \Biggr\rVert \big\alpha \big]
+=> [BigDelim('.',1.2,Ord) '.':Punct BigDelim('‖',2.4,Ord) BigDelim('⟨',3.0,Ord) BigDelim('{',1.2,Open) BigDelim('‖',3.0,Close) BigDelim('.',1.2,Ord) BigDelim(']',1.2,Ord)]
+12.34.56 0.0 . .. 1,000 3x 2^10 10^{-3} \mathbb 123 \mathit{12}
+=> ["12.34.56":Ord "0.0":Ord '.':Punct "..":Ord "1":Ord ',':Punct "000":Ord "3":Ord '𝑥':Ord Scripts("2":Ord ^"1":Ord _-) "0":Ord Scripts("10":Ord ^['−':Bin "3":Ord] _-) "1":Ord "23":Ord ["12":Ord]]
+\mathcal{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789}
+=> [['𝒜':Ord 'ℬ':Ord '𝒞':Ord '𝒟':Ord 'ℰ':Ord 'ℱ':Ord '𝒢':Ord 'ℋ':Ord 'ℐ':Ord '𝒥':Ord '𝒦':Ord 'ℒ':Ord 'ℳ':Ord '𝒩':Ord '𝒪':Ord '𝒫':Ord '𝒬':Ord 'ℛ':Ord '𝒮':Ord '𝒯':Ord '𝒰':Ord '𝒱':Ord '𝒲':Ord '𝒳':Ord '𝒴':Ord '𝒵':Ord '𝒶':Ord '𝒷':Ord '𝒸':Ord '𝒹':Ord 'ℯ':Ord '𝒻':Ord 'ℊ':Ord '𝒽':Ord '𝒾':Ord '𝒿':Ord '𝓀':Ord '𝓁':Ord '𝓂':Ord '𝓃':Ord 'ℴ':Ord '𝓅':Ord '𝓆':Ord '𝓇':Ord '𝓈':Ord '𝓉':Ord '𝓊':Ord '𝓋':Ord '𝓌':Ord '𝓍':Ord '𝓎':Ord '𝓏':Ord '0':Ord '1':Ord '2':Ord '3':Ord '4':Ord '5':Ord '6':Ord '7':Ord '8':Ord '9':Ord]]
+\mathfrak{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789}
+=> [['𝔄':Ord '𝔅':Ord 'ℭ':Ord '𝔇':Ord '𝔈':Ord '𝔉':Ord '𝔊':Ord 'ℌ':Ord 'ℑ':Ord '𝔍':Ord '𝔎':Ord '𝔏':Ord '𝔐':Ord '𝔑':Ord '𝔒':Ord '𝔓':Ord '𝔔':Ord 'ℜ':Ord '𝔖':Ord '𝔗':Ord '𝔘':Ord '𝔙':Ord '𝔚':Ord '𝔛':Ord '𝔜':Ord 'ℨ':Ord '𝔞':Ord '𝔟':Ord '𝔠':Ord '𝔡':Ord '𝔢':Ord '𝔣':Ord '𝔤':Ord '𝔥':Ord '𝔦':Ord '𝔧':Ord '𝔨':Ord '𝔩':Ord '𝔪':Ord '𝔫':Ord '𝔬':Ord '𝔭':Ord '𝔮':Ord '𝔯':Ord '𝔰':Ord '𝔱':Ord '𝔲':Ord '𝔳':Ord '𝔴':Ord '𝔵':Ord '𝔶':Ord '𝔷':Ord '0':Ord '1':Ord '2':Ord '3':Ord '4':Ord '5':Ord '6':Ord '7':Ord '8':Ord '9':Ord]]
+\mathbb{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789}
+=> [['𝔸':Ord '𝔹':Ord 'ℂ':Ord '𝔻':Ord '𝔼':Ord '𝔽':Ord '𝔾':Ord 'ℍ':Ord '𝕀':Ord '𝕁':Ord '𝕂':Ord '𝕃':Ord '𝕄':Ord 'ℕ':Ord '𝕆':Ord 'ℙ':Ord 'ℚ':Ord 'ℝ':Ord '𝕊':Ord '𝕋':Ord '𝕌':Ord '𝕍':Ord '𝕎':Ord '𝕏':Ord '𝕐':Ord 'ℤ':Ord '𝕒':Ord '𝕓':Ord '𝕔':Ord '𝕕':Ord '𝕖':Ord '𝕗':Ord '𝕘':Ord '𝕙':Ord '𝕚':Ord '𝕛':Ord '𝕜':Ord '𝕝':Ord '𝕞':Ord '𝕟':Ord '𝕠':Ord '𝕡':Ord '𝕢':Ord '𝕣':Ord '𝕤':Ord '𝕥':Ord '𝕦':Ord '𝕧':Ord '𝕨':Ord '𝕩':Ord '𝕪':Ord '𝕫':Ord '𝟘':Ord '𝟙':Ord '𝟚':Ord '𝟛':Ord '𝟜':Ord '𝟝':Ord '𝟞':Ord '𝟟':Ord '𝟠':Ord '𝟡':Ord]]
+\mathsf{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789} \mathtt{ABCxyz019} \bm{Ab9} \mathbf{Zz09}
+=> [['𝖠':Ord '𝖡':Ord '𝖢':Ord '𝖣':Ord '𝖤':Ord '𝖥':Ord '𝖦':Ord '𝖧':Ord '𝖨':Ord '𝖩':Ord '𝖪':Ord '𝖫':Ord '𝖬':Ord '𝖭':Ord '𝖮':Ord '𝖯':Ord '𝖰':Ord '𝖱':Ord '𝖲':Ord '𝖳':Ord '𝖴':Ord '𝖵':Ord '𝖶':Ord '𝖷':Ord '𝖸':Ord '𝖹':Ord '𝖺':Ord '𝖻':Ord '𝖼':Ord '𝖽':Ord '𝖾':Ord '𝖿':Ord '𝗀':Ord '𝗁':Ord '𝗂':Ord '𝗃':Ord '𝗄':Ord '𝗅':Ord '𝗆':Ord '𝗇':Ord '𝗈':Ord '𝗉':Ord '𝗊':Ord '𝗋':Ord '𝗌':Ord '𝗍':Ord '𝗎':Ord '𝗏':Ord '𝗐':Ord '𝗑':Ord '𝗒':Ord '𝗓':Ord '𝟢':Ord '𝟣':Ord '𝟤':Ord '𝟥':Ord '𝟦':Ord '𝟧':Ord '𝟨':Ord '𝟩':Ord '𝟪':Ord '𝟫':Ord] ['𝙰':Ord '𝙱':Ord '𝙲':Ord '𝚡':Ord '𝚢':Ord '𝚣':Ord '𝟶':Ord '𝟷':Ord '𝟿':Ord] ['𝑨':Ord '𝒃':Ord '𝟗':Ord] ['𝐙':Ord '𝐳':Ord '𝟎':Ord '𝟗':Ord]]
+ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 + - * / = < > : ; , . ! ? ( ) [ ] | @ " ~ `
+=> ['𝐴':Ord '𝐵':Ord '𝐶':Ord '𝐷':Ord '𝐸':Ord '𝐹':Ord '𝐺':Ord '𝐻':Ord '𝐼':Ord '𝐽':Ord '𝐾':Ord '𝐿':Ord '𝑀':Ord '𝑁':Ord '𝑂':Ord '𝑃':Ord '𝑄':Ord '𝑅':Ord '𝑆':Ord '𝑇':Ord '𝑈':Ord '𝑉':Ord '𝑊':Ord '𝑋':Ord '𝑌':Ord '𝑍':Ord '𝑎':Ord '𝑏':Ord '𝑐':Ord '𝑑':Ord '𝑒':Ord '𝑓':Ord '𝑔':Ord 'ℎ':Ord '𝑖':Ord '𝑗':Ord '𝑘':Ord '𝑙':Ord '𝑚':Ord '𝑛':Ord '𝑜':Ord '𝑝':Ord '𝑞':Ord '𝑟':Ord '𝑠':Ord '𝑡':Ord '𝑢':Ord '𝑣':Ord '𝑤':Ord '𝑥':Ord '𝑦':Ord '𝑧':Ord "0123456789":Ord '+':Bin '−':Bin '∗':Bin '/':Ord '=':Rel '<':Rel '>':Rel ':':Rel ';':Punct ',':Punct '.':Punct '!':Close '?':Close '(':Open ')':Close '[':Open ']':Close '|':Ord '@':Ord '"':Ord '~':Ord '`':Ord]
+∑ ∫ α ∈ → ≤ é 中 😀 \😀 𝑥
+=> ['∑':Ord '∫':Ord 'α':Ord '∈':Ord '→':Ord '≤':Ord 'é':Ord '中':Ord '😀':Ord Error("\\😀") '𝑥':Ord]
+a b c \  x \	x	 rac  {1} {2} \ xy
+=> ['𝑎':Ord '𝑏':Ord '𝑐':Ord Error("\\\u{a0}") '𝑥':Ord Error("\\\t") '𝑥':Ord '𝑟':Ord '𝑎':Ord '𝑐':Ord ["1":Ord] ["2":Ord] Error("\\\u{b}") '𝑥':Ord '\u{1c}':Ord '𝑦':Ord]
