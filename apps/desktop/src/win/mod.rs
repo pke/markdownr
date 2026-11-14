@@ -28,6 +28,8 @@ use windows::core::{BOOL, HSTRING, PCWSTR, PWSTR, w};
 
 const TIMER_CHROME: usize = 1;
 const TIMER_WATCH: usize = 2;
+/// Idle-time slices of a partial document layout.
+const TIMER_LAYOUT: usize = 4;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 
 struct App {
@@ -151,6 +153,20 @@ impl App {
         unsafe { InvalidateRect(Some(self.hwnd), None, false).ok().ok() };
     }
 
+    /// Complete a partial layout before input that may need all of it (selection
+    /// end, links and anchors, find, TOC, copy). Scrolling extends it as needed.
+    fn settle(&mut self) {
+        self.viewer.finish_layout(&mut self.gfx);
+    }
+
+    /// One idle slice of a partial layout; repaint once it is complete.
+    fn continue_layout(&mut self) {
+        if self.viewer.continue_layout(&mut self.gfx, Duration::from_millis(30)) || !self.viewer.layout_pending() {
+            unsafe { KillTimer(Some(self.hwnd), TIMER_LAYOUT).ok() };
+            self.invalidate();
+        }
+    }
+
     fn set_title(&self) {
         // "First heading | Markdownr", or just "Markdownr" when the document has no heading.
         let title = match self.viewer.first_heading() {
@@ -199,6 +215,12 @@ impl App {
             }
         }
         self.viewer.ensure_layout(&mut self.gfx);
+        if self.snapshot_ready && self.snapshot.is_some() {
+            self.viewer.finish_layout(&mut self.gfx); // snapshots show the final layout
+        }
+        if self.viewer.layout_pending() {
+            unsafe { SetTimer(Some(self.hwnd), TIMER_LAYOUT, 1, None) };
+        }
         self.apply_caption();
         let v = &self.viewer;
         let finds = v.find_highlights();
@@ -598,6 +620,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 with_app(|a| match wp.0 {
                     TIMER_CHROME => a.schedule(),
                     TIMER_WATCH => a.watch(),
+                    TIMER_LAYOUT => a.continue_layout(),
                     3 => {
                         KillTimer(Some(hwnd), 3).ok();
                         a.snapshot_ready = true;
@@ -653,6 +676,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 let (x, y) = lparam_point(lp);
                 let tap = from_touch();
                 let effect = with_app(|a| {
+                    a.settle();
                     let s = dpi_scale(hwnd);
                     let e = a.viewer.release(x as f32 / s, y as f32 / s, tap, Instant::now());
                     a.schedule();
@@ -711,6 +735,9 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             WM_KEYDOWN | WM_SYSKEYDOWN => {
                 let Some(key) = key_from_vk(wp.0 as u16) else { return DefWindowProcW(hwnd, msg, wp, lp) };
                 let effect = with_app(|a| {
+                    if !matches!(key, Key::PageDown | Key::PageUp | Key::Space | Key::Down | Key::Up | Key::Left | Key::Right | Key::Home | Key::End) {
+                        a.settle();
+                    }
                     let e = a.viewer.key(key, mods(), Instant::now());
                     a.schedule();
                     a.invalidate();
@@ -725,6 +752,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             WM_CHAR => {
                 if let Some(c) = char::from_u32(wp.0 as u32) {
                     with_app(|a| {
+                        a.settle();
                         if a.viewer.text_input(c) {
                             a.invalidate();
                         }

@@ -7,7 +7,7 @@
 //! typesetter as the document, in window coordinates.
 
 use crate::ast::{Kind, Node};
-use crate::layout::{BaseStyle, DocLayout, DocSelection, Join, Layouter, Paragraph, Rect, RectF, TextBlock, Typesetter};
+use crate::layout::{BaseStyle, DocLayout, DocSelection, Join, Layouter, Paragraph, Rect, RectF, Resume, TextBlock, Typesetter};
 use crate::particles::{Particles, Sprite};
 use crate::util::num;
 use crate::theme::{Ink, Theme, ThemeChoice, front_matter_pairs, seasonal_theme};
@@ -175,6 +175,8 @@ pub struct Viewer<P> {
     pressed_chrome: bool,
     last_click: Option<(Instant, (f32, f32), u8)>,
     pub last_layout_time: Duration,
+    /// Where a partial document layout continues (None when complete).
+    resume: Option<Resume>,
 }
 
 fn front_matter_of(doc: &Node) -> Vec<(String, String)> {
@@ -229,6 +231,7 @@ impl<P: Paragraph> Viewer<P> {
             pressed_chrome: false,
             last_click: None,
             last_layout_time: Duration::ZERO,
+            resume: None,
         };
         v.title = v.display_title(title);
         v
@@ -324,7 +327,15 @@ impl<P: Paragraph> Viewer<P> {
                 self.source_doc = Some(Node { kind: Kind::Document, text: String::new(), children: vec![code] });
             }
             let doc = if self.show_source { self.source_doc.as_ref().unwrap() } else { &self.doc };
-            self.layout = Layouter { ts, theme: &self.theme, base: self.font_size }.layout(doc, x, column, self.font_size * 1.5);
+            // From the top only the first screens are laid out now; the rest follows
+            // in idle time (`continue_layout`) or on demand. Keeping a relative scroll
+            // position, searching and the TOC need the whole document at once.
+            let whole = ratio > 0.0 || self.find.is_some() || self.toc_open;
+            let until = if whole { f32::INFINITY } else { self.view_h * 2.0 };
+            let mut at = Resume { next: 0, y: self.font_size * 1.5, x, width: column };
+            self.layout = DocLayout::default();
+            let done = Layouter { ts, theme: &self.theme, base: self.font_size }.layout_more(doc, &mut at, &mut self.layout, until, None);
+            self.resume = (!done).then_some(at);
             self.last_layout_time = started.elapsed();
             self.selection = None;
             self.scroll = ratio * self.layout.height;
@@ -332,14 +343,54 @@ impl<P: Paragraph> Viewer<P> {
             self.refind(false);
             self.chrome_dirty = true;
         }
+        // Scrolled past the laid-out part (wheel, End key): extend to cover the view.
+        if self.resume.is_some_and(|at| at.y <= self.scroll + self.view_h) {
+            self.extend_layout(ts, self.scroll + self.view_h * 2.0, None);
+        }
         if self.chrome_dirty {
             self.chrome_dirty = false;
             self.build_chrome(ts);
         }
     }
 
+    /// Lay out more of a partially laid-out document; finishing it settles the
+    /// scroll position, search matches and chrome as a full layout would.
+    fn extend_layout<T: Typesetter<Para = P>>(&mut self, ts: &mut T, until_y: f32, deadline: Option<Instant>) {
+        let Some(mut at) = self.resume else { return };
+        if self.dirty {
+            return; // a fresh layout replaces it at the next paint
+        }
+        let doc = if self.show_source { self.source_doc.as_ref().unwrap() } else { &self.doc };
+        let done = Layouter { ts, theme: &self.theme, base: self.font_size }.layout_more(doc, &mut at, &mut self.layout, until_y, deadline);
+        if done {
+            self.resume = None;
+            self.clamp_scroll();
+            self.refind(false);
+            self.chrome_dirty = true;
+        } else {
+            self.resume = Some(at);
+        }
+    }
+
+    /// Whether part of the document still waits for `continue_layout`.
+    pub fn layout_pending(&self) -> bool {
+        self.resume.is_some() && !self.dirty
+    }
+
+    /// Idle-time slice of a pending layout; returns true once it is complete.
+    pub fn continue_layout<T: Typesetter<Para = P>>(&mut self, ts: &mut T, budget: Duration) -> bool {
+        self.extend_layout(ts, f32::INFINITY, Some(Instant::now() + budget));
+        self.resume.is_none()
+    }
+
+    /// Complete a pending layout now (before input that may need all of it).
+    pub fn finish_layout<T: Typesetter<Para = P>>(&mut self, ts: &mut T) {
+        self.extend_layout(ts, f32::INFINITY, None);
+    }
+
     fn clamp_scroll(&mut self) {
-        let max = (self.layout.height - self.view_h).max(0.0);
+        // While the layout is incomplete the end is not known yet.
+        let max = if self.resume.is_some() { f32::INFINITY } else { (self.layout.height - self.view_h).max(0.0) };
         self.scroll = self.scroll.clamp(0.0, max);
     }
 

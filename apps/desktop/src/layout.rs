@@ -9,6 +9,7 @@ use crate::ast::{AlertKind, Align, Kind, Node};
 use crate::math::{MathBox, MathFont};
 use crate::theme::{Ink, Theme};
 use std::ops::Range;
+use std::time::Instant;
 
 // ---------------------------------------------------------------------------
 // Platform interface
@@ -202,6 +203,15 @@ impl Inline {
     }
 }
 
+/// Where an incremental layout continues: next top-level block, running y, column.
+#[derive(Debug, Clone, Copy)]
+pub struct Resume {
+    pub next: usize,
+    pub y: f32,
+    pub x: f32,
+    pub width: f32,
+}
+
 pub struct Layouter<'a, T: Typesetter> {
     pub ts: &'a mut T,
     pub theme: &'a Theme,
@@ -212,17 +222,43 @@ pub struct Layouter<'a, T: Typesetter> {
 impl<T: Typesetter> Layouter<'_, T> {
     pub fn layout(&mut self, doc: &Node, x: f32, width: f32, top: f32) -> DocLayout<T::Para> {
         let mut out = DocLayout::default();
+        let mut at = Resume { next: 0, y: top, x, width };
+        self.layout_more(doc, &mut at, &mut out, f32::INFINITY, None);
+        out
+    }
+
+    /// Lay out the document's top-level blocks from `at` on, appending to `out`,
+    /// until the running y passes `until_y` or `deadline` is reached (both checked
+    /// before each top-level block) or the document ends. Returns true when done;
+    /// only then is `out.height` final. Stopping and resuming at top-level blocks
+    /// gives exactly the same layout as one full pass.
+    pub fn layout_more(&mut self, doc: &Node, at: &mut Resume, out: &mut DocLayout<T::Para>, until_y: f32, deadline: Option<Instant>) -> bool {
         let ctx = Ctx {
-            x,
-            width,
+            x: at.x,
+            width: at.width,
             style: BaseStyle { size: self.base, color: self.theme.text, mono: false, bold: false, italic: false, line_height: 1.6 },
             gap: self.base,
             depth: 0,
         };
-        let mut y = top;
-        self.blocks(&doc.children, &ctx, &mut y, &mut out, Join::Paragraph);
-        out.height = y + self.base * 2.0;
-        out
+        // Same grouping as `blocks` (top level always joins as paragraphs).
+        let nodes = &doc.children;
+        while at.next < nodes.len() {
+            if at.y > until_y || deadline.is_some_and(|d| Instant::now() >= d) {
+                out.height = at.y + self.base * 2.0;
+                return false;
+            }
+            let i = at.next;
+            if nodes[i].kind.is_inline() {
+                let j = nodes[i..].iter().position(|n| !n.kind.is_inline()).map_or(nodes.len(), |p| i + p);
+                self.paragraph(&nodes[i..j], &ctx, &mut at.y, out, Join::Paragraph);
+                at.next = j;
+            } else {
+                self.block(&nodes[i], &ctx, &mut at.y, out, Join::Paragraph);
+                at.next = i + 1;
+            }
+        }
+        out.height = at.y + self.base * 2.0;
+        true
     }
 
     fn blocks(&mut self, nodes: &[Node], ctx: &Ctx, y: &mut f32, out: &mut DocLayout<T::Para>, first_join: Join) {
@@ -873,6 +909,52 @@ mod tests {
         let l = lay("aaa\n\nbbb");
         let p = l.hit(15.0, l.blocks[1].y + 5.0).unwrap();
         assert_eq!(p, DocPos { block: 1, byte: 2 });
+    }
+
+    /// Everything a layout produces, for comparisons.
+    fn summary(l: &DocLayout<FakePara>) -> String {
+        let mut s = String::new();
+        for b in &l.blocks {
+            s += &format!("B {:?} {} {} {} {} {} {:?} {:?} {:?}\n", b.para.0, b.x, b.y, b.w, b.h, b.selectable, b.join, b.links, b.object_sources);
+        }
+        for r in &l.rects {
+            s += &format!("R {r:?}\n");
+        }
+        for m in &l.math {
+            s += &format!("M {} {} {:?}\n", m.x, m.y, m.mbox);
+        }
+        s += &format!("I {:?}\nH {:?}\nA {:?}\nC {:?}\nT {:?}\nF {:?}\nh {}\n", l.images.iter().map(|i| (&i.url, i.r)).collect::<Vec<_>>(), l.hats, l.anchors, l.cycles, l.toc, l.front_matter, l.height);
+        s
+    }
+
+    #[test]
+    fn incremental_layout_matches_full() {
+        let src = [
+            include_str!("../assets/sample.md"),
+            include_str!("../assets/extensions.md"),
+            include_str!("../assets/transform-tests/transforms.md"),
+        ]
+        .concat();
+        let mut doc = crate::ast::parse(&crate::transforms::preprocess_html(&src));
+        crate::transforms::compose(&mut doc, &crate::transforms::default_pipeline());
+        let theme = Theme::light();
+        let full = Layouter { ts: &mut Fake, theme: &theme, base: 16.0 }.layout(&doc, 12.0, 600.0, 24.0);
+        let want = summary(&full);
+        // Stop after every possible top-level block, then resume to the end.
+        for stop in [0.0, 1.0, 30.0, 100.0, 500.0, 1000.0, 2500.0] {
+            let mut l = Layouter { ts: &mut Fake, theme: &theme, base: 16.0 };
+            let mut out = DocLayout::default();
+            let mut at = Resume { next: 0, y: 24.0, x: 12.0, width: 600.0 };
+            assert!(!l.layout_more(&doc, &mut at, &mut out, stop, None) || stop > full.height);
+            // Then in one-block steps.
+            loop {
+                let y = at.y;
+                if l.layout_more(&doc, &mut at, &mut out, y, None) {
+                    break;
+                }
+            }
+            assert_eq!(summary(&out), want, "stopped at y {stop}");
+        }
     }
 
     #[test]
