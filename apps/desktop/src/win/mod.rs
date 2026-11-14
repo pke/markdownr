@@ -44,6 +44,9 @@ struct App {
     pan: Option<(i32, i32, i32, i32)>, // last x, y; start x, y (pixels)
     zoom: Option<u64>,
     chrome_timer: bool,
+    /// While the window is being resized (until 150 ms after the last WM_SIZE or the
+    /// end of the drag) the idle layout waits: each size step would discard it.
+    sizing_until: Option<Instant>,
     snapshot: Option<PathBuf>,
     exit_after_snapshot: bool,
     snapshot_ready: bool,
@@ -215,8 +218,20 @@ impl App {
         self.viewer.finish_layout(&mut self.gfx);
     }
 
+    /// Arm the idle layout: at once, or once a resize has come to rest.
+    fn arm_layout(&mut self) {
+        let wait = self.sizing_until.map_or(0, |t| t.saturating_duration_since(Instant::now()).as_millis() as u32);
+        if wait == 0 {
+            self.sizing_until = None;
+        }
+        unsafe { SetTimer(Some(self.hwnd), TIMER_LAYOUT, wait.max(1), None) };
+    }
+
     /// One idle slice of a partial layout; repaint once it is complete.
     fn continue_layout(&mut self) {
+        if self.sizing_until.is_some_and(|t| t > Instant::now()) {
+            return self.arm_layout();
+        }
         if self.viewer.continue_layout(&mut self.gfx, Duration::from_millis(30)) || !self.viewer.layout_pending() {
             unsafe { KillTimer(Some(self.hwnd), TIMER_LAYOUT).ok() };
             self.invalidate();
@@ -275,7 +290,7 @@ impl App {
             self.viewer.finish_layout(&mut self.gfx); // snapshots show the final layout
         }
         if self.viewer.layout_pending() {
-            unsafe { SetTimer(Some(self.hwnd), TIMER_LAYOUT, 1, None) };
+            self.arm_layout();
         }
         self.apply_caption();
         let v = &self.viewer;
@@ -655,8 +670,18 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             WM_ERASEBKGND => LRESULT(1),
             WM_SIZE => {
                 with_app(|a| {
+                    a.sizing_until = Some(Instant::now() + Duration::from_millis(150));
                     a.update_size();
                     a.invalidate();
+                });
+                LRESULT(0)
+            }
+            WM_EXITSIZEMOVE => {
+                with_app(|a| {
+                    a.sizing_until = None;
+                    if a.viewer.layout_pending() {
+                        a.arm_layout();
+                    }
                 });
                 LRESULT(0)
             }
@@ -930,6 +955,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             pan: None,
             zoom: None,
             chrome_timer: false,
+            sizing_until: None,
             snapshot: std::env::var_os("MARKDOWNR_SNAPSHOT").map(PathBuf::from),
             exit_after_snapshot: std::env::var_os("MARKDOWNR_SNAPSHOT_EXIT").is_some(),
             snapshot_ready: false,
