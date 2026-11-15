@@ -665,9 +665,10 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             None,
         )
         .expect("create window");
-        // Initial size: 980 × 820 DIPs.
+        // Initial size: 980 × 820 DIPs. NOACTIVATE: whether the window takes the foreground is up to
+        // ShowWindow below (the starter's wish), not to this resize.
         let s = dpi_scale(hwnd);
-        SetWindowPos(hwnd, None, 0, 0, (980.0 * s) as i32, (820.0 * s) as i32, SWP_NOMOVE | SWP_NOZORDER).ok();
+        SetWindowPos(hwnd, None, 0, 0, (980.0 * s) as i32, (820.0 * s) as i32, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE).ok();
         DragAcceptFiles(hwnd, true);
         // Touch: one-finger pan in both directions (with inertia) and pinch zoom.
         let configs = [
@@ -706,7 +707,9 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         SetTimer(Some(hwnd), TIMER_WATCH, 1000, None);
         // Cloaked until the first frame is drawn (Win::uncloak): no white client area.
         cloak(hwnd, true);
-        let _ = ShowWindow(hwnd, SW_SHOW);
+        // SW_SHOWDEFAULT: the show state the starter asked for (STARTUPINFO), e.g. a shortcut set to
+        // minimized, or SW_SHOWNOACTIVATE from tools/mdr-shot.ps1 so the window never steals focus.
+        let _ = ShowWindow(hwnd, SW_SHOWDEFAULT);
         if start_fullscreen {
             toggle_fullscreen(hwnd, Some(true));
         }

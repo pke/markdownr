@@ -58,6 +58,30 @@ public static class MdrShot {
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
     [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool LockSetForegroundWindow(uint code);
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct STARTUPINFO { public int cb; public string reserved, desktop, title; public int x, y, w, h, xChars, yChars, fill, flags; public short show, reserved2; public IntPtr reserved3, stdIn, stdOut, stdErr; }
+    [StructLayout(LayoutKind.Sequential)] struct PROCINFO { public IntPtr process, thread; public uint pid, tid; }
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool CreateProcessW(string app, StringBuilder cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string dir, ref STARTUPINFO si, out PROCINFO pi);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+
+    // Starts the app with this process's environment, shown without activation: the first ShowWindow
+    // (SW_SHOWDEFAULT) takes STARTUPINFO's SW_SHOWNOACTIVATE, so the window never takes the foreground and
+    // keyboard focus from whatever the user is typing in.
+    public static uint StartInactive(string exe, string args) {
+        var si = new STARTUPINFO();
+        si.cb = Marshal.SizeOf(typeof(STARTUPINFO));
+        si.flags = 0x1;   // STARTF_USESHOWWINDOW
+        si.show = 4;      // SW_SHOWNOACTIVATE
+        PROCINFO pi;
+        if (!CreateProcessW(exe, new StringBuilder("\"" + exe + "\" " + args), IntPtr.Zero, IntPtr.Zero, false, 0, IntPtr.Zero, null, ref si, out pi))
+            throw new System.ComponentModel.Win32Exception();
+        CloseHandle(pi.thread);
+        CloseHandle(pi.process);
+        return pi.pid;
+    }
     [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr h);
     [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr h, IntPtr dc);
     [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr dc);
@@ -176,16 +200,25 @@ public static class MdrShot {
 $vkNames = @{ F1 = 0x70; F3 = 0x72; F5 = 0x74; F11 = 0x7A; Esc = 0x1B; Enter = 0x0D; Home = 0x24; End = 0x23
     PageDown = 0x22; PageUp = 0x21; Up = 0x26; Down = 0x28; Left = 0x25; Right = 0x27; Space = 0x20 }
 
-$psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = (Resolve-Path $Exe).Path
-if ($Doc) { $psi.Arguments = '"' + (Resolve-Path $Doc).Path + '"' }
-$psi.UseShellExecute = $false
-foreach ($v in 'MARKDOWNR_SETTINGS', 'MARKDOWNR_LOCALE', 'MARKDOWNR_LANGUAGE', 'MARKDOWNR_TIME_MS') { [void]$psi.EnvironmentVariables.Remove($v) }
-if ($Settings) { $psi.EnvironmentVariables['MARKDOWNR_SETTINGS'] = (Resolve-Path $Settings).Path }
-if ($Locale) { $psi.EnvironmentVariables['MARKDOWNR_LOCALE'] = $Locale }
-if ($Language) { $psi.EnvironmentVariables['MARKDOWNR_LANGUAGE'] = $Language }
-if ($null -ne $TimeMs) { $psi.EnvironmentVariables['MARKDOWNR_TIME_MS'] = [string]$TimeMs }
-$proc = [System.Diagnostics.Process]::Start($psi)
+# The app inherits this process's environment (restored afterwards: the script may run in a session).
+$envVars = @{ MARKDOWNR_SETTINGS = $null; MARKDOWNR_LOCALE = $Locale; MARKDOWNR_LANGUAGE = $Language; MARKDOWNR_TIME_MS = $null }
+if ($Settings) { $envVars.MARKDOWNR_SETTINGS = (Resolve-Path $Settings).Path }
+if ($null -ne $TimeMs) { $envVars.MARKDOWNR_TIME_MS = [string]$TimeMs }
+$savedEnv = @{}
+foreach ($v in @($envVars.Keys)) {
+    $savedEnv[$v] = [Environment]::GetEnvironmentVariable($v)
+    [Environment]::SetEnvironmentVariable($v, $(if ($envVars[$v]) { $envVars[$v] } else { $null }))
+}
+try {
+    $args0 = if ($Doc) { '"' + (Resolve-Path $Doc).Path + '"' } else { '' }
+    # Builds before SW_SHOWDEFAULT show with SW_SHOW, which activates: lock foreground changes as far
+    # as Windows lets us (user input or the foreground lock time-out lifts it; the shot then warns).
+    $locked = [MdrShot]::LockSetForegroundWindow(1)   # LSFW_LOCK
+    $procId = [MdrShot]::StartInactive((Resolve-Path $Exe).Path, $args0)
+} finally {
+    foreach ($v in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($v, $savedEnv[$v]) }
+}
+$proc = [System.Diagnostics.Process]::GetProcessById([int]$procId)
 try {
     $deadline = [DateTime]::Now.AddMilliseconds($TimeoutMs)
     $h = [IntPtr]::Zero
@@ -234,10 +267,11 @@ try {
     if ([MdrShot]::Blank($last)) { throw "blank capture (display off or window not painted); nothing saved" }
     $outPath = if ([System.IO.Path]::IsPathRooted($Out)) { $Out } else { [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Out)) }
     [MdrShot]::SavePng($last, $w, $ht, $outPath)
-    "shot: $outPath ($w x $ht)$(if ($same -lt 2) { ', still changing' })"
+    "shot: $outPath ($w x $ht)$(if ($same -lt 2) { ', still changing' })$(if ([MdrShot]::GetForegroundWindow() -eq $h) { ', WARNING: the window took the foreground' })"
 } finally {
     if (-not $proc.HasExited) {
         if ($h -ne [IntPtr]::Zero) { [void][MdrShot]::PostMessageW($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) }   # WM_CLOSE
         if (-not $proc.WaitForExit(3000)) { $proc.Kill() }
     }
+    if ($locked) { [void][MdrShot]::LockSetForegroundWindow(2) }   # LSFW_UNLOCK
 }
