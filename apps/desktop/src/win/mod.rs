@@ -56,9 +56,6 @@ struct App {
     caption: Option<(u32, u32)>,
     /// Still hidden from the screen until the first frame (see `uncloak`).
     cloaked: bool,
-    snapshot: Option<PathBuf>,
-    exit_after_snapshot: bool,
-    snapshot_ready: bool,
     settings: Settings,
     settings_path: PathBuf,
     sample: &'static str,
@@ -318,9 +315,6 @@ impl App {
             }
         }
         self.viewer.ensure_layout(&mut self.gfx);
-        if self.snapshot_ready && self.snapshot.is_some() {
-            self.viewer.finish_layout(&mut self.gfx); // snapshots show the final layout
-        }
         if self.viewer.layout_pending() {
             self.arm_layout();
         }
@@ -345,10 +339,10 @@ impl App {
     }
 
     /// From the second frame on, particles move on a compositor overlay (no frames of
-    /// ours); PNG snapshots, and a window whose overlay failed, draw them into the frame.
+    /// ours); a window whose overlay failed draws them into the frame.
     fn particle_overlay(&mut self) {
         let v = &self.viewer;
-        let wanted = self.painted && !self.gfx.offscreen_mode && !self.overlay_failed && v.particles.is_some() && !v.reduce_motion;
+        let wanted = self.painted && !self.overlay_failed && v.particles.is_some() && !v.reduce_motion;
         if wanted && self.overlay.is_none() {
             match comp::Overlay::new(self.hwnd) {
                 Ok(o) => self.overlay = Some(o),
@@ -507,14 +501,6 @@ fn apply(hwnd: HWND, effect: Effect) {
         Effect::Copy(text) => copy_to_clipboard(hwnd, &text),
         Effect::ToggleFullscreen => toggle_fullscreen(hwnd, None),
         Effect::ExitFullscreen => toggle_fullscreen(hwnd, Some(false)),
-        Effect::Snapshot => {
-            let path = crate::util::path::join(&std::env::temp_dir(), Path::new("markdownr-snapshot.bmp"));
-            if snapshot(hwnd, &path) {
-                crate::util::log(&["snapshot: ", &path.to_string_lossy()]);
-            } else {
-                crate::util::log(&["snapshot failed"]);
-            }
-        }
         Effect::OpenUrl(url) => {
             with_app(|a| a.open_url(&url));
         }
@@ -585,52 +571,6 @@ fn copy_to_clipboard(hwnd: HWND, text: &str) {
     }
 }
 
-/// Window-only screenshot (PrintWindow of our own window) written as a 32-bit BMP.
-fn snapshot(hwnd: HWND, path: &Path) -> bool {
-    let (w, h) = client_size(hwnd);
-    let (w, h) = (w as i32, h as i32);
-    let mut pixels = vec![0u8; (w * h * 4) as usize];
-    unsafe {
-        let screen = GetDC(None);
-        let mem = CreateCompatibleDC(Some(screen));
-        let bmp = CreateCompatibleBitmap(screen, w, h);
-        let old = SelectObject(mem, bmp.into());
-        // PW_CLIENTONLY | PW_RENDERFULLCONTENT
-        let _ = windows::Win32::Storage::Xps::PrintWindow(hwnd, mem, windows::Win32::Storage::Xps::PRINT_WINDOW_FLAGS(1 | 2));
-        let mut bi = BITMAPINFO {
-            bmiHeader: BITMAPINFOHEADER {
-                biSize: size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: w,
-                biHeight: -h,
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: BI_RGB.0,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        GetDIBits(mem, bmp, 0, h as u32, Some(pixels.as_mut_ptr() as *mut _), &mut bi, DIB_RGB_COLORS);
-        SelectObject(mem, old);
-        DeleteObject(bmp.into()).ok().ok();
-        DeleteDC(mem).ok().ok();
-        ReleaseDC(None, screen);
-    }
-    let mut file = Vec::with_capacity(54 + pixels.len());
-    let size = 54 + pixels.len() as u32;
-    file.extend_from_slice(b"BM");
-    file.extend_from_slice(&size.to_le_bytes());
-    file.extend_from_slice(&0u32.to_le_bytes());
-    file.extend_from_slice(&54u32.to_le_bytes());
-    file.extend_from_slice(&40u32.to_le_bytes());
-    file.extend_from_slice(&w.to_le_bytes());
-    file.extend_from_slice(&(-h).to_le_bytes());
-    file.extend_from_slice(&1u16.to_le_bytes());
-    file.extend_from_slice(&32u16.to_le_bytes());
-    file.extend_from_slice(&[0u8; 24]);
-    file.extend_from_slice(&pixels);
-    crate::util::fs::write(path, &file)
-}
-
 fn key_from_vk(vk: u16) -> Option<Key> {
     Some(match VIRTUAL_KEY(vk) {
         VK_NEXT => Key::PageDown,
@@ -646,7 +586,6 @@ fn key_from_vk(vk: u16) -> Option<Key> {
         VK_F3 => Key::F3,
         VK_F5 => Key::F5,
         VK_F11 => Key::F11,
-        VK_F12 => Key::F12,
         VK_ESCAPE => Key::Escape,
         VK_RETURN => Key::Enter,
         VK_BACK => Key::Backspace,
@@ -714,24 +653,11 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             WM_PAINT => {
                 let mut ps = PAINTSTRUCT::default();
                 BeginPaint(hwnd, &mut ps);
-                let snap = with_app(|a| {
+                with_app(|a| {
                     a.paint();
                     a.uncloak();
-                    if a.snapshot_ready { a.snapshot.take().map(|p| (p, a.exit_after_snapshot)) } else { None }
-                })
-                .flatten();
+                });
                 let _ = EndPaint(hwnd, &ps);
-                if let Some((path, exit)) = snap {
-                    let ok = if crate::util::path::extension(&path) == "png" { with_app(|a| a.gfx.save_png(&path).is_ok()).unwrap_or(true) } else { snapshot(hwnd, &path) };
-                    if ok {
-                        crate::util::log(&["snapshot: ", &path.to_string_lossy()]);
-                    } else {
-                        crate::util::log(&["snapshot failed"]);
-                    }
-                    if exit {
-                        DestroyWindow(hwnd).ok();
-                    }
-                }
                 LRESULT(0)
             }
             WM_ERASEBKGND => LRESULT(1),
@@ -772,11 +698,6 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                         a.watch()
                     }
                     TIMER_LAYOUT => a.continue_layout(),
-                    3 => {
-                        KillTimer(Some(hwnd), 3).ok();
-                        a.snapshot_ready = true;
-                        a.invalidate();
-                    }
                     _ => {}
                 });
                 LRESULT(0)
@@ -932,8 +853,6 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
 
 pub fn run(path: Option<PathBuf>, sample: &'static str) {
     unsafe {
-        // PNG snapshots render into an offscreen bitmap (same software rasteriser as the window).
-        let offscreen = std::env::var("MARKDOWNR_SNAPSHOT").is_ok_and(|p| p.ends_with(".png"));
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
         if let Ok(locale) = std::env::var("MARKDOWNR_LOCALE") {
@@ -990,7 +909,6 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         let settings_path = std::env::var_os("MARKDOWNR_SETTINGS").map(PathBuf::from).unwrap_or_else(settings_path);
         let mut settings = Settings::load(&settings_path);
         let mut gfx = Gfx::new(hwnd).expect("Direct2D/DirectWrite");
-        gfx.offscreen_mode = offscreen;
         {
             // Create the render target now, in parallel with the parse.
             let (w, h) = client_size(hwnd);
@@ -1033,30 +951,10 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             painted: false,
             caption: None,
             cloaked: true,
-            snapshot: std::env::var_os("MARKDOWNR_SNAPSHOT").map(PathBuf::from),
-            exit_after_snapshot: std::env::var_os("MARKDOWNR_SNAPSHOT_EXIT").is_some(),
-            snapshot_ready: false,
             settings,
             settings_path,
             sample,
         };
-        // Test hooks for snapshots: open the TOC / run a search at start.
-        if std::env::var_os("MARKDOWNR_TOC").is_some() {
-            app.viewer.key(Key::Char('T'), Mods { ctrl: true, shift: false }, Instant::now());
-        }
-        if let Ok(q) = std::env::var("MARKDOWNR_FIND") {
-            app.viewer.key(Key::Char('F'), Mods { ctrl: true, shift: false }, Instant::now());
-            q.chars().for_each(|c| {
-                app.viewer.text_input(c);
-            });
-        }
-        if std::env::var_os("MARKDOWNR_HELP").is_some() {
-            app.viewer.key(Key::F1, Mods::default(), Instant::now());
-        }
-        if std::env::var_os("MARKDOWNR_CHROME").is_some() {
-            app.viewer.chrome_alpha = 1.0;
-            app.viewer.show_chrome(Instant::now() + Duration::from_secs(3600));
-        }
         {
             let st = windows::Win32::System::SystemInformation::GetLocalTime();
             app.viewer.today = (st.wYear as i32, st.wMonth as u32, st.wDay as u32);
@@ -1072,21 +970,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         app.update_size();
         APP.with(|c| *c.borrow_mut() = Some(app));
         with_app(|a| a.schedule());
-        if let Some(px) = std::env::var("MARKDOWNR_SCROLL").ok().and_then(|s| crate::util::parse_f32(&s)) {
-            // Layout must exist before scrolling can be clamped: lay out once now.
-            with_app(|a| {
-                let (w, h) = client_size(a.hwnd);
-                let dpi = dpi_scale(a.hwnd) * 96.0;
-                if a.gfx.ensure_target(w, h, dpi).is_ok() {
-                    a.viewer.ensure_layout(&mut a.gfx);
-                    a.viewer.scroll_by(px);
-                }
-            });
-        }
         SetTimer(Some(hwnd), TIMER_WATCH, 1000, None);
-        if std::env::var_os("MARKDOWNR_SNAPSHOT").is_some() {
-            SetTimer(Some(hwnd), 3, 1500, None); // snapshot after 1.5 s (images, fades)
-        }
         // Cloaked until the first frame is drawn (App::uncloak): no white client area.
         cloak(hwnd, true);
         let _ = ShowWindow(hwnd, SW_SHOW);

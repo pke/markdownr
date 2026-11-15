@@ -25,11 +25,8 @@ Schrift größer / kleiner
 Schriftgröße
 Schriftgröße zurücksetzen
 Vollbild an / aus
-Bildschirmfoto nach %TEMP%
 Diese Hilfe
 Umgebungsvariablen
 Einstellungen aus dieser Datei statt %APPDATA%\Markdownr\settings.ini
 Ohne Datei das Beispieldokument zeigen
 Anführungszeichen dieser Sprache statt der Systemsprache
-Die Seite als PNG speichern
-… und danach beenden

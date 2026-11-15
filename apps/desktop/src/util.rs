@@ -46,26 +46,6 @@ mod tests {
     }
 }
 
-/// Writes the parts plus a newline to stderr without going through core::fmt (on Windows
-/// with one WriteFile, not std's locked, buffered stdio).
-pub fn log(parts: &[&str]) {
-    let mut line = parts.concat();
-    line.push('\n');
-    #[cfg(windows)]
-    unsafe {
-        use windows::Win32::Storage::FileSystem::WriteFile;
-        use windows::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE};
-        if let Ok(h) = GetStdHandle(STD_ERROR_HANDLE) {
-            let _ = WriteFile(h, Some(line.as_bytes()), None, None);
-        }
-    }
-    #[cfg(not(windows))]
-    {
-        use std::io::Write;
-        let _ = std::io::stderr().write_all(line.as_bytes());
-    }
-}
-
 /// A map on a `Vec` with linear lookups and the few `HashMap` methods the app uses: its
 /// maps hold a handful of keys (brushes, text formats, glyph sprites, image URLs,
 /// heading slugs), and dropping std's `HashMap` (hashing, random seed, table code) from

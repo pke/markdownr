@@ -29,8 +29,8 @@ const HELP: &[(usize, &[&str])] = &[
     (0, &["Strg+F   F3", "Enter   ⇧ Enter", "Esc"]),
     (0, &["Strg+O", "F5   Strg+R", "Strg+Q   Strg+W"]),
     (0, &["markdownr Datei.md", "markdownr"]),
-    (1, &["Strg+T", "Strg+U", "Strg+D", "Strg++   Strg+−", "Strg+Mausrad", "Strg+0", "F11   Esc", "F12", "F1"]),
-    (1, &["MARKDOWNR_SETTINGS=Datei", "MARKDOWNR_SAMPLE=1", "MARKDOWNR_LOCALE=de-DE", "MARKDOWNR_SNAPSHOT=Bild.png", "MARKDOWNR_SNAPSHOT_EXIT=1"]),
+    (1, &["Strg+T", "Strg+U", "Strg+D", "Strg++   Strg+−", "Strg+Mausrad", "Strg+0", "F11   Esc", "F1"]),
+    (1, &["MARKDOWNR_SETTINGS=Datei", "MARKDOWNR_SAMPLE=1", "MARKDOWNR_LOCALE=de-DE"]),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,7 +48,6 @@ pub enum Key {
     F3,
     F5,
     F11,
-    F12,
     Escape,
     Enter,
     Backspace,
@@ -66,7 +65,6 @@ pub enum Effect {
     Copy(String),
     ToggleFullscreen,
     ExitFullscreen,
-    Snapshot,
     OpenUrl(String),
     OpenDialog,
     Reload,
@@ -959,7 +957,6 @@ impl<P: Paragraph> Viewer<P> {
             }
             Key::F5 => return Some(Effect::Reload),
             Key::F11 => return Some(Effect::ToggleFullscreen),
-            Key::F12 => return Some(Effect::Snapshot),
             Key::Escape if self.toc_open => {
                 self.toc_open = false;
                 self.chrome_dirty = true;

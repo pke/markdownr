@@ -159,9 +159,6 @@ pub struct Gfx {
     dw: IDWriteFactory,
     rt: Option<ID2D1RenderTarget>,
     hwnd_rt: Option<ID2D1HwndRenderTarget>,
-    /// Offscreen WIC target (snapshots): (factory, bitmap, size).
-    offscreen: Option<(windows::Win32::Graphics::Imaging::IWICImagingFactory, windows::Win32::Graphics::Imaging::IWICBitmap, u32, u32)>,
-    pub offscreen_mode: bool,
     brushes: VecMap<Ink, ID2D1SolidColorBrush>,
     body: HSTRING,
     mono: HSTRING,
@@ -226,8 +223,6 @@ impl Gfx {
                 dw,
                 rt: None,
                 hwnd_rt: None,
-                offscreen: None,
-                offscreen_mode: false,
                 brushes: VecMap::new(),
                 body,
                 mono,
@@ -240,42 +235,14 @@ impl Gfx {
     /// Create the render target if needed. Returns true if it was (re)created, in
     /// which case all layouts must be rebuilt (their brushes belong to the old target).
     pub fn ensure_target(&mut self, width: u32, height: u32, dpi: f32) -> Result<bool> {
-        if self.offscreen_mode && self.offscreen.as_ref().is_some_and(|o| (o.2, o.3) != (width, height)) {
-            self.rt = None;
-        }
         if let Some(rt) = &self.rt {
             unsafe { rt.SetDpi(dpi, dpi) };
             return Ok(false);
-        }
-        if self.offscreen_mode {
-            use windows::Win32::Graphics::Imaging::*;
-            use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
-            unsafe {
-                let wic: IWICImagingFactory = CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)?;
-                let bmp = wic.CreateBitmap(width.max(1), height.max(1), &GUID_WICPixelFormat32bppBGR, WICBitmapCacheOnLoad)?;
-                let props = D2D1_RENDER_TARGET_PROPERTIES {
-                    r#type: D2D1_RENDER_TARGET_TYPE_SOFTWARE,
-                    pixelFormat: D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_IGNORE },
-                    dpiX: dpi,
-                    dpiY: dpi,
-                    usage: D2D1_RENDER_TARGET_USAGE_NONE,
-                    minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
-                };
-                let rt = self.d2d.CreateWicBitmapRenderTarget(&bmp, &props)?;
-                rt.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
-                self.rt = Some(rt);
-                self.offscreen = Some((wic, bmp, width, height));
-            }
-            self.images.reset_device();
-            self.brushes.clear();
-            self.sprites.clear();
-            return Ok(true);
         }
         // Software rasteriser, not the GPU: creating it takes ~40 ms instead of ~160 ms
         // (driver init), the first frame comes ~150 ms earlier, it uses ~14 MB less
         // memory, and particle frames are cheaper (text rasterises on the CPU anyway).
         // Scroll frames cost more CPU only in large windows (4 MP: ~20 vs ~12 ms).
-        // It is also the rasteriser the PNG snapshots use.
         let props = D2D1_RENDER_TARGET_PROPERTIES {
             r#type: D2D1_RENDER_TARGET_TYPE_SOFTWARE,
             pixelFormat: D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_IGNORE },
@@ -305,26 +272,6 @@ impl Gfx {
         if let Some(rt) = &self.hwnd_rt {
             unsafe { rt.Resize(&D2D_SIZE_U { width: width.max(1), height: height.max(1) }).ok() };
         }
-    }
-
-    /// Write the offscreen target (snapshot mode) as PNG.
-    pub fn save_png(&self, path: &std::path::Path) -> Result<()> {
-        use windows::Win32::Graphics::Imaging::*;
-        let Some((wic, bmp, _, _)) = &self.offscreen else { return Err(windows::core::Error::empty()) };
-        unsafe {
-            let stream = wic.CreateStream()?;
-            stream.InitializeFromFilename(&HSTRING::from(path.as_os_str()), windows::Win32::Foundation::GENERIC_WRITE.0)?;
-            let enc = wic.CreateEncoder(&GUID_ContainerFormatPng, std::ptr::null())?;
-            enc.Initialize(&stream, WICBitmapEncoderNoCache)?;
-            let mut frame = None;
-            enc.CreateNewFrame(&mut frame, std::ptr::null_mut())?;
-            let frame = frame.ok_or_else(windows::core::Error::empty)?;
-            frame.Initialize(None)?;
-            frame.WriteSource(bmp, std::ptr::null())?;
-            frame.Commit()?;
-            enc.Commit()?;
-        }
-        Ok(())
     }
 
     fn brush(&mut self, ink: Ink) -> ID2D1SolidColorBrush {
@@ -417,8 +364,7 @@ impl Gfx {
     }
 
     /// Falling particles over the text, in window coordinates (drawn into the frame
-    /// only where no composition overlay animates them: PNG snapshots, or when the
-    /// overlay could not be made).
+    /// only where no composition overlay animates them: when it could not be made).
     unsafe fn draw_sprites(&mut self, rt: &ID2D1RenderTarget, particles: Option<(&crate::particles::Particles, &[crate::particles::Sprite])>, theme: &Theme) {
         let Some((ps, sprites)) = particles else { return };
         let tint = particle_tint(ps, theme);
