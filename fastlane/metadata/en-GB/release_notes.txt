@@ -1,9 +1,1 @@
-Fresh engine, sharper senses!
-
-• A brand-new Markdown engine under the bonnet: same pages you love, now on a faster, more modern foundation
-• Formulas behave: maths like a² + b² = c² no longer gets its superscripts scrambled
-• Change detection now keeps watching after you reload, so the "file changed" banner turns up every time, not just the first
-• Files opened from the recents list or the side menu stay live, even when iCloud is having a slow day
-• No more phantom banners when you hop quickly between files
-
-Happy reading!
+Fixed a crash that could prevent Markdownr from opening on iOS 27.

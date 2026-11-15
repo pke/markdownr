@@ -1,9 +1,1 @@
-Neuer Motor, schärfere Sinne!
-
-• Eine brandneue Markdown-Engine unter der Haube: dieselben Seiten, die du liebst, jetzt auf einem schnelleren, moderneren Fundament
-• Formeln benehmen sich: Bei a² + b² = c² geraten die Hochzahlen nicht mehr durcheinander
-• Die Änderungserkennung bleibt auch nach dem Neuladen wach – der Hinweis „Datei geändert“ erscheint jedes Mal, nicht nur beim ersten Mal
-• Dateien aus der Verlaufsliste oder dem Seitenmenü bleiben aktuell, selbst wenn iCloud gerade trödelt
-• Keine Phantom-Hinweise mehr, wenn du schnell zwischen Dateien wechselst
-
-Viel Freude beim Lesen!
+Ein Absturz wurde behoben, der den Start von Markdownr unter iOS 27 verhindern konnte.
