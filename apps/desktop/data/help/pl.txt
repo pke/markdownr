@@ -1,0 +1,35 @@
+Skróty klawiszowe
+Esc lub kliknięcie zamyka
+Kółko myszy
+plik
+Czytanie
+Następna strona
+Poprzednia strona
+Przewijanie
+Początek / koniec
+Zaznacz wszystko / kopiuj
+Szukanie
+Otwórz pasek wyszukiwania
+Następne / poprzednie trafienie
+Zamknij wyszukiwanie
+Plik
+Otwórz (również przeciągnij i upuść)
+Wczytaj ponownie (zmiany wczytują się też same)
+Zakończ
+Wiersz poleceń
+Otwiera plik
+Strona startowa z ostatnio otwartymi plikami
+Widok
+Spis treści
+Źródło
+Zmień motyw
+Większa / mniejsza czcionka
+Rozmiar czcionki
+Przywróć rozmiar czcionki
+Pełny ekran wł. / wył.
+Ta pomoc
+Zmienne środowiskowe
+Ustawienia z tego pliku zamiast %APPDATA%\Markdownr\settings.ini
+Bez pliku pokaż przykładowy dokument
+Cudzysłowy tego języka zamiast systemowych
+Pomoc w tym języku zamiast języka wyświetlania Windows

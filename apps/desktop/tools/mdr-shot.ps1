@@ -5,7 +5,7 @@
 # only, never the screen). The app has no screenshot code of its own.
 #
 #   tools/mdr-shot.ps1 -Exe target/release/markdownr.exe -Doc assets/sample.md -Out shot.png `
-#       [-Settings perf.ini] [-Locale de-DE] [-TimeMs 1234] [-Scroll 650] [-Keys Ctrl+T,F1] `
+#       [-Settings perf.ini] [-Locale de-DE] [-Language ja] [-TimeMs 1234] [-Scroll 650] [-Keys Ctrl+T,F1] `
 #       [-Type 'suche'] [-TopBar] [-OnScreen]
 #
 # -Scroll   DIPs to scroll down (mouse wheel messages; one notch is 3 x the font size, -FontSize)
@@ -24,6 +24,7 @@ param(
     [Parameter(Mandatory)][string]$Out,
     [string]$Settings,
     [string]$Locale,
+    [string]$Language,
     [Nullable[long]]$TimeMs,
     [double]$Scroll = 0,
     [double]$FontSize = 16,
@@ -179,9 +180,10 @@ $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = (Resolve-Path $Exe).Path
 if ($Doc) { $psi.Arguments = '"' + (Resolve-Path $Doc).Path + '"' }
 $psi.UseShellExecute = $false
-foreach ($v in 'MARKDOWNR_SETTINGS', 'MARKDOWNR_LOCALE', 'MARKDOWNR_TIME_MS') { [void]$psi.EnvironmentVariables.Remove($v) }
+foreach ($v in 'MARKDOWNR_SETTINGS', 'MARKDOWNR_LOCALE', 'MARKDOWNR_LANGUAGE', 'MARKDOWNR_TIME_MS') { [void]$psi.EnvironmentVariables.Remove($v) }
 if ($Settings) { $psi.EnvironmentVariables['MARKDOWNR_SETTINGS'] = (Resolve-Path $Settings).Path }
 if ($Locale) { $psi.EnvironmentVariables['MARKDOWNR_LOCALE'] = $Locale }
+if ($Language) { $psi.EnvironmentVariables['MARKDOWNR_LANGUAGE'] = $Language }
 if ($null -ne $TimeMs) { $psi.EnvironmentVariables['MARKDOWNR_TIME_MS'] = [string]$TimeMs }
 $proc = [System.Diagnostics.Process]::Start($psi)
 try {

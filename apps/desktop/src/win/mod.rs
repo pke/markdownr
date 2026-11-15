@@ -855,6 +855,8 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
+        crate::view::set_language(&std::env::var("MARKDOWNR_LANGUAGE").unwrap_or_else(|_| ui_language()));
+        crate::view::set_key_namer(key_name);
         if let Ok(locale) = std::env::var("MARKDOWNR_LOCALE") {
             crate::transforms::set_locale(&locale);
         } else {
@@ -985,4 +987,37 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         }
         APP.with(|c| c.borrow_mut().take());
     }
+}
+
+/// Windows' display language as a two-letter code, as FileCushion picks it: traditional
+/// Chinese (zh-TW, zh-HK, zh-MO, zh-Hant) gets English, simplified is "zh".
+fn ui_language() -> String {
+    let mut buf = [0u16; 85];
+    let n = unsafe { windows::Win32::Globalization::LCIDToLocaleName(windows::Win32::Globalization::GetUserDefaultUILanguage() as u32, Some(&mut buf), 0) };
+    let name = String::from_utf16_lossy(&buf[..(n.max(1) - 1) as usize]);
+    if ["zh-TW", "zh-HK", "zh-MO", "zh-Hant"].iter().any(|t| name.starts_with(t)) {
+        return "en".into();
+    }
+    name.get(..2).unwrap_or("en").to_ascii_lowercase()
+}
+
+/// A key's name in the keyboard layout's language (GetKeyNameTextW: STRG, BILD-NACH-UNTEN on
+/// a German keyboard, Ctrl, Page Down on an English one); all-capital names are written with
+/// a capital first letter only (Strg, Bild-nach-unten).
+fn key_name(vk: u16, extended: bool) -> Option<String> {
+    let mut buf = [0u16; 64];
+    let n = unsafe {
+        let scan = MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC);
+        GetKeyNameTextW(((scan << 16) | if extended { 1 << 24 } else { 0 }) as i32, &mut buf)
+    };
+    let name = String::from_utf16_lossy(&buf[..n.max(0) as usize]);
+    if name.is_empty() {
+        return None;
+    }
+    if name.chars().any(char::is_lowercase) {
+        return Some(name);
+    }
+    let mut chars = name.chars();
+    let first = chars.next()?;
+    Some(std::iter::once(first).chain(chars.flat_map(char::to_lowercase)).collect())
 }

@@ -51,10 +51,27 @@ pub fn math() -> &'static str {
     tables()[2]
 }
 
-/// The F1 help texts, one per line, in the order `view::HELP` shows them.
-pub fn help() -> &'static str {
-    tables()[3]
+/// The F1 help texts in `language` (two-letter code; English when there are none), one per
+/// line, in the order `view::HELP` shows them.
+pub fn help(language: &str) -> &'static str {
+    help_block(language).or_else(|| help_block("en")).unwrap_or("")
 }
+
+fn help_block(language: &str) -> Option<&'static str> {
+    let all = tables()[3];
+    let start = all.split_inclusive('\n').scan(0, |at, l| {
+        let here = *at;
+        *at += l.len();
+        Some((here, l))
+    });
+    let (at, line) = start.filter(|(_, l)| l.starts_with('#')).find(|(_, l)| l[1..].trim_end() == language)?;
+    let body = &all[at + line.len()..];
+    Some(&body[..body.find("\n#").map_or(body.len(), |i| i + 1)])
+}
+
+/// The help's languages (FileCushion's).
+#[cfg(test)]
+pub const HELP_LANGUAGES: [&str; 9] = ["de", "en", "es", "fr", "ja", "ko", "pl", "ru", "zh"];
 
 fn tables() -> &'static [&'static str; 4] {
     TABLES.get_or_init(|| {
@@ -121,7 +138,7 @@ fn expand(front: &[u8]) -> Vec<u8> {
 
 #[cfg(not(windows))]
 fn unpack() -> String {
-    [include_str!("../data/entities.txt"), "\0", include_str!("../data/emoji.txt"), "\0", include_str!("../data/math.txt"), "\0", include_str!("../data/help.txt")].concat()
+    [include_str!("../data/entities.txt"), "\0", include_str!("../data/emoji.txt"), "\0", include_str!("../data/math.txt"), "\0", HELP_SOURCES].concat()
 }
 
 #[cfg(test)]
@@ -144,6 +161,26 @@ mod tests {
         assert_eq!(lines(super::entities()), lines(include_str!("../data/entities.txt")));
         assert_eq!(lines(super::emoji()), lines(include_str!("../data/emoji.txt")));
         assert_eq!(super::math(), include_str!("../data/math.txt"));
-        assert_eq!(super::help(), include_str!("../data/help.txt"));
+        for (code, text) in super::HELP_LANGUAGES.iter().zip(super::HELP_TEXTS) {
+            assert_eq!(super::help(code), text, "{code}");
+        }
+        assert_eq!(super::help("xx"), super::help("en"));
     }
 }
+
+/// The help files as packed (`#code` line, then the texts), for builds without tables.bin.
+#[cfg(not(windows))]
+const HELP_SOURCES: &str = concat!(
+    "#de\n", include_str!("../data/help/de.txt"), "#en\n", include_str!("../data/help/en.txt"),
+    "#es\n", include_str!("../data/help/es.txt"), "#fr\n", include_str!("../data/help/fr.txt"),
+    "#ja\n", include_str!("../data/help/ja.txt"), "#ko\n", include_str!("../data/help/ko.txt"),
+    "#pl\n", include_str!("../data/help/pl.txt"), "#ru\n", include_str!("../data/help/ru.txt"),
+    "#zh\n", include_str!("../data/help/zh.txt"),
+);
+
+#[cfg(test)]
+const HELP_TEXTS: [&str; 9] = [
+    include_str!("../data/help/de.txt"), include_str!("../data/help/en.txt"), include_str!("../data/help/es.txt"),
+    include_str!("../data/help/fr.txt"), include_str!("../data/help/ja.txt"), include_str!("../data/help/ko.txt"),
+    include_str!("../data/help/pl.txt"), include_str!("../data/help/ru.txt"), include_str!("../data/help/zh.txt"),
+];

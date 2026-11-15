@@ -1,0 +1,35 @@
+Keyboard shortcuts
+Esc or click to close
+Mouse wheel
+file
+Reading
+Next page
+Previous page
+Scroll
+Start / end
+Select all / copy
+Find
+Open the find bar
+Next / previous match
+Close the search
+File
+Open (or drag and drop)
+Reload (changes also load by themselves)
+Quit
+Command line
+Opens the file
+Start page with recently opened files
+View
+Table of contents
+Source
+Switch theme
+Larger / smaller text
+Text size
+Reset text size
+Full screen on / off
+This help
+Environment variables
+Settings from this file instead of %APPDATA%\Markdownr\settings.ini
+Show the sample document when no file is given
+Quotation marks of this language instead of the system's
+Help in this language instead of Windows' display language

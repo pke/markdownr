@@ -1,5 +1,7 @@
 Tastenkürzel
 Esc oder Klick schließt
+Mausrad
+Datei
 Lesen
 Seite weiter
 Seite zurück
@@ -30,3 +32,4 @@ Umgebungsvariablen
 Einstellungen aus dieser Datei statt %APPDATA%\Markdownr\settings.ini
 Ohne Datei das Beispieldokument zeigen
 Anführungszeichen dieser Sprache statt der Systemsprache
+Hilfe in dieser Sprache statt der Windows-Anzeigesprache

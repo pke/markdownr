@@ -1,0 +1,35 @@
+Raccourcis clavier
+Échap ou clic pour fermer
+Molette
+fichier
+Lecture
+Page suivante
+Page précédente
+Défiler
+Début / fin
+Tout sélectionner / copier
+Rechercher
+Ouvrir la barre de recherche
+Résultat suivant / précédent
+Fermer la recherche
+Fichier
+Ouvrir (ou glisser-déposer)
+Recharger (les modifications se chargent aussi d’elles-mêmes)
+Quitter
+Ligne de commande
+Ouvre le fichier
+Page d’accueil avec les fichiers récents
+Affichage
+Table des matières
+Source
+Changer de thème
+Texte plus grand / plus petit
+Taille du texte
+Rétablir la taille du texte
+Plein écran activé / désactivé
+Cette aide
+Variables d’environnement
+Paramètres de ce fichier au lieu de %APPDATA%\Markdownr\settings.ini
+Afficher le document d’exemple sans fichier
+Guillemets de cette langue au lieu de ceux du système
+Aide dans cette langue au lieu de la langue d’affichage de Windows

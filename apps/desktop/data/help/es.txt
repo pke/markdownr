@@ -1,0 +1,35 @@
+Atajos de teclado
+Esc o clic para cerrar
+Rueda del ratón
+archivo
+Lectura
+Página siguiente
+Página anterior
+Desplazar
+Inicio / final
+Seleccionar todo / copiar
+Buscar
+Abrir la barra de búsqueda
+Coincidencia siguiente / anterior
+Cerrar la búsqueda
+Archivo
+Abrir (o arrastrar y soltar)
+Recargar (los cambios también se cargan solos)
+Salir
+Línea de comandos
+Abre el archivo
+Página de inicio con los archivos abiertos recientemente
+Vista
+Índice
+Código fuente
+Cambiar tema
+Texto más grande / más pequeño
+Tamaño del texto
+Restablecer el tamaño del texto
+Pantalla completa sí / no
+Esta ayuda
+Variables de entorno
+Configuración de este archivo en lugar de %APPDATA%\Markdownr\settings.ini
+Mostrar el documento de ejemplo si no se indica archivo
+Comillas de este idioma en lugar de las del sistema
+Ayuda en este idioma en lugar del idioma de Windows

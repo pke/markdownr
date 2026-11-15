@@ -22,16 +22,59 @@ const SHOW_FOR: Duration = Duration::from_millis(2500);
 const FADE_IN: f32 = 0.12; // seconds
 const FADE_OUT: f32 = 0.35;
 
-/// F1 overlay: (column, [keys of each row]). Its texts (title, hint, then each section's
-/// heading and row descriptions in this order) are `tables::help()`, shipped compressed.
+/// F1 overlay: (column, [keys of each row]). In the keys, `{Ctrl}`, `{PgDn}` … are keys the
+/// system names in its keyboard's language (`set_key_namer`) and `{#0}` (mouse wheel), `{#1}`
+/// (file) words of the help texts. The texts — title, hint, the two words, then each
+/// section's heading and row descriptions in this order — are `tables::help(language)`.
 const HELP: &[(usize, &[&str])] = &[
-    (0, &["Bild ↓   →   Leertaste", "Bild ↑   ←   ⇧ Leertaste", "↓   ↑   Mausrad", "Pos1   Ende", "Strg+A   Strg+C"]),
-    (0, &["Strg+F   F3", "Enter   ⇧ Enter", "Esc"]),
-    (0, &["Strg+O", "F5   Strg+R", "Strg+Q   Strg+W"]),
-    (0, &["markdownr Datei.md", "markdownr"]),
-    (1, &["Strg+T", "Strg+U", "Strg+D", "Strg++   Strg+−", "Strg+Mausrad", "Strg+0", "F11   Esc", "F1"]),
-    (1, &["MARKDOWNR_SETTINGS=Datei", "MARKDOWNR_SAMPLE=1", "MARKDOWNR_LOCALE=de-DE"]),
+    (0, &["{PgDn}   →   {Space}", "{PgUp}   ←   ⇧ {Space}", "↓   ↑   {#0}", "{Home}   {End}", "{Ctrl}+A   {Ctrl}+C"]),
+    (0, &["{Ctrl}+F   F3", "{Enter}   ⇧ {Enter}", "{Esc}"]),
+    (0, &["{Ctrl}+O", "F5   {Ctrl}+R", "{Ctrl}+Q   {Ctrl}+W"]),
+    (0, &["markdownr {#1}.md", "markdownr"]),
+    (1, &["{Ctrl}+T", "{Ctrl}+U", "{Ctrl}+D", "{Ctrl}++   {Ctrl}+−", "{Ctrl}+{#0}", "{Ctrl}+0", "F11   {Esc}", "F1"]),
+    (1, &["MARKDOWNR_SETTINGS={#1}", "MARKDOWNR_SAMPLE=1", "MARKDOWNR_LOCALE=de-DE", "MARKDOWNR_LANGUAGE=de"]),
 ];
+
+/// Keys of the help by name: (name in HELP, virtual-key code, extended key).
+const HELP_KEYS: [(&str, u16, bool); 8] =
+    [("Ctrl", 0x11, false), ("Esc", 0x1B, false), ("PgDn", 0x22, true), ("PgUp", 0x21, true), ("Home", 0x24, true), ("End", 0x23, true), ("Space", 0x20, false), ("Enter", 0x0D, false)];
+
+static LANGUAGE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+static KEY_NAMER: std::sync::OnceLock<fn(u16, bool) -> Option<String>> = std::sync::OnceLock::new();
+
+/// The help's language (two-letter code, e.g. from Windows' display language); set once at
+/// startup. Unset or unknown: English.
+pub fn set_language(code: &str) {
+    let _ = LANGUAGE.set(code.get(..2).unwrap_or(code).to_ascii_lowercase());
+}
+
+/// How the platform names a key (virtual-key code, extended) in its keyboard's language;
+/// set once at startup. Unset or None: English names.
+pub fn set_key_namer(f: fn(u16, bool) -> Option<String>) {
+    let _ = KEY_NAMER.set(f);
+}
+
+/// A HELP key column entry with its `{Key}` and `{#n}` parts filled in.
+fn help_keys(spec: &str, words: &[&str]) -> String {
+    let mut out = String::new();
+    let mut rest = spec;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let Some(close) = rest[open..].find('}') else { break };
+        let name = &rest[open + 1..open + close];
+        if let Some(n) = name.strip_prefix('#').and_then(|n| n.parse::<usize>().ok()) {
+            out.push_str(words.get(n).copied().unwrap_or(""));
+        } else if let Some(&(_, vk, ext)) = HELP_KEYS.iter().find(|k| k.0 == name) {
+            match KEY_NAMER.get().and_then(|f| f(vk, ext)) {
+                Some(s) => out.push_str(&s),
+                None => out.push_str(if name == "PgDn" { "Page Down" } else if name == "PgUp" { "Page Up" } else { name }),
+            }
+        }
+        rest = &rest[open + close + 1..];
+    }
+    out.push_str(rest);
+    out
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -700,16 +743,17 @@ impl<P: Paragraph> Viewer<P> {
         let col_w = if two { 380.0 } else { (w - 64.0).clamp(220.0, 460.0) };
         let (gap, key_w) = (36.0, 158.0);
         // (paragraph, text, x, y, w, h) relative to the panel's content origin.
-        let mut items: Vec<(P, &str, f32, f32, f32, f32)> = Vec::new();
-        let mut put = |ts: &mut T, s: &'static str, style: &BaseStyle, x: f32, y: f32, max_w: f32| {
+        let mut items: Vec<(P, String, f32, f32, f32, f32)> = Vec::new();
+        let mut put = |ts: &mut T, s: &str, style: &BaseStyle, x: f32, y: f32, max_w: f32| {
             let para = ts.paragraph(s, &[], style, max_w);
             let (pw, ph) = para.size();
-            items.push((para, s, x, y, pw, ph));
+            items.push((para, s.to_string(), x, y, pw, ph));
             (pw, ph)
         };
-        let mut texts = crate::tables::help().lines();
+        let mut texts = crate::tables::help(LANGUAGE.get().map_or("en", String::as_str)).lines();
         let mut next = || texts.next().unwrap_or("");
         let (title_s, hint_s) = (next(), next());
+        let words = [next(), next()];
         let mut col_h = [0.0f32; 2];
         for &(col, rows) in HELP {
             let c = if two { col } else { 0 };
@@ -718,7 +762,7 @@ impl<P: Paragraph> Viewer<P> {
             y += put(ts, next(), &head, x0, y, col_w).1 + 6.0;
             for &k in rows {
                 let d = next();
-                let (kw, kh) = put(ts, k, &keys, x0, y, col_w);
+                let (kw, kh) = put(ts, &help_keys(k, &words), &keys, x0, y, col_w);
                 // Long keys (commands, variables) get the description on the next line.
                 let (dx, dy) = if kw + 12.0 <= key_w { (x0 + key_w, y) } else { (x0 + 16.0, y + kh) };
                 let dh = put(ts, d, &text, dx, dy, col_w - (dx - x0)).1;
@@ -745,7 +789,7 @@ impl<P: Paragraph> Viewer<P> {
         place(hint_p, hint_s, px + pw - pad - hw, py + pad + tht - hh, hw, hh);
         let top = py + pad + tht + 14.0;
         for (para, s, x, y, bw, bh) in items {
-            place(para, s, px + pad + x, top + y, bw, bh);
+            place(para, &s, px + pad + x, top + y, bw, bh);
         }
         out
     }
@@ -1274,10 +1318,22 @@ mod tests {
 
 #[cfg(test)]
 mod help_tests {
-    /// data/help.txt has exactly one text per HELP heading and row, plus title and hint.
+    /// Every language has exactly one text per HELP heading and row, plus title, hint and
+    /// the two words.
     #[test]
     fn help_texts_match_keys() {
-        let want = 2 + super::HELP.iter().map(|(_, rows)| 1 + rows.len()).sum::<usize>();
-        assert_eq!(crate::tables::help().lines().count(), want);
+        let want = 4 + super::HELP.iter().map(|(_, rows)| 1 + rows.len()).sum::<usize>();
+        for code in crate::tables::HELP_LANGUAGES {
+            assert_eq!(crate::tables::help(code).lines().count(), want, "{code}");
+        }
+    }
+
+    /// Keys and words are filled in (English key names without a platform namer).
+    #[test]
+    fn help_keys_filled_in() {
+        assert_eq!(super::help_keys("{Ctrl}+{#0}", &["Mausrad", "Datei"]), "Ctrl+Mausrad");
+        assert_eq!(super::help_keys("{PgDn}   →   {Space}", &[]), "Page Down   →   Space");
+        assert_eq!(super::help_keys("markdownr {#1}.md", &["x", "Datei"]), "markdownr Datei.md");
+        assert_eq!(super::help_keys("F1", &[]), "F1");
     }
 }
