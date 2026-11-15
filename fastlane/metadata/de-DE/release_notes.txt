@@ -1,1 +1,1 @@
-Sorry für den abrupten Abgang! Ich habe den Absturz beim Start unter iOS 27 behoben. Viel Spaß beim Weiterlesen!
+Sorry, dass Markdownr unter iOS 27 beim Start abgestürzt ist. Ich hab den Fehler behoben. Viel Spaß beim Weiterlesen!
