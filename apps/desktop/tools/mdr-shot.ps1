@@ -226,6 +226,7 @@ try {
         $last = $px
         Start-Sleep -Milliseconds 150
     }
+    if ($null -eq $last) { $last = [MdrShot]::Client($h, [ref]$w, [ref]$ht) }   # -StableMs 0: the picture as it is
     $outPath = if ([System.IO.Path]::IsPathRooted($Out)) { $Out } else { [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Out)) }
     [MdrShot]::SavePng($last, $w, $ht, $outPath)
     "shot: $outPath ($w x $ht)$(if ($same -lt 2) { ', still changing' })"

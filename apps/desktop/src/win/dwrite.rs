@@ -466,13 +466,14 @@ pub fn particle_tint(ps: &crate::particles::Particles, theme: &Theme) -> Ink {
     ps.color.map_or(theme.text, |(l, d)| Ink::rgb(if dark { d } else { l }))
 }
 
-/// A particle's ink and fade. The brush carries the opacity (monochrome glyphs use it,
-/// colour emoji ignore it); below 0.99 the whole sprite fades once more, as a layer did
-/// when sprites were drawn as text.
+/// A particle's ink and fade: the glyph is drawn opaque and the whole sprite fades by the
+/// particle's opacity, once, for monochrome glyphs (✦ • ❅) and colour emoji (❄ 🍂) alike.
+/// (Before, monochrome glyphs also took it from the brush alpha, so they got it twice;
+/// colour emoji ignore brush alpha.)
 pub fn particle_ink(tint: Ink, p: &crate::particles::Particle) -> (Ink, f32) {
     let mut ink = tint;
-    ink.0[3] = (p.opacity * 255.0) as u8;
-    (ink, if p.opacity < 0.99 && !p.text.is_ascii() { p.opacity } else { 1.0 })
+    ink.0[3] = 255;
+    (ink, if p.opacity < 0.99 { p.opacity } else { 1.0 })
 }
 
 impl Gfx {
