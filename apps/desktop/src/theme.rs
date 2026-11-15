@@ -360,6 +360,7 @@ pub fn days_from_civil(y: i32, m: u32, d: u32) -> i64 {
 }
 
 /// (year, month, day) from days since 1970-01-01.
+#[cfg(test)]
 pub fn civil_from_days(z: i64) -> (i32, u32, u32) {
     let z = z + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;

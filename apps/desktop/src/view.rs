@@ -826,10 +826,6 @@ impl<P: Paragraph> Viewer<P> {
         self.chrome_dirty = true;
     }
 
-    pub fn finding(&self) -> bool {
-        self.find.is_some()
-    }
-
     /// Matches as (block, byte range, is current) for drawing.
     pub fn find_highlights(&self) -> Vec<(usize, Range<usize>, bool)> {
         let Some(f) = &self.find else { return Vec::new() };

@@ -57,7 +57,6 @@ impl Paragraph for DwPara {
     }
     fn set_align(&mut self, align: TextAlign) {
         let a = match align {
-            TextAlign::Start => DWRITE_TEXT_ALIGNMENT_LEADING,
             TextAlign::Center => DWRITE_TEXT_ALIGNMENT_CENTER,
             TextAlign::End => DWRITE_TEXT_ALIGNMENT_TRAILING,
         };

@@ -25,7 +25,6 @@ pub struct RectF {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextAlign {
-    Start,
     Center,
     End,
 }
@@ -222,6 +221,7 @@ pub struct Layouter<'a, T: Typesetter> {
 }
 
 impl<T: Typesetter> Layouter<'_, T> {
+    #[cfg(test)]
     pub fn layout(&mut self, doc: &Node, x: f32, width: f32, top: f32) -> DocLayout<T::Para> {
         let mut out = DocLayout::default();
         let mut at = Resume { next: 0, y: top, x, width };
@@ -384,7 +384,6 @@ impl<T: Typesetter> Layouter<'_, T> {
                             Tok::Function => theme.syn_function,
                             Tok::Tag => theme.syn_tag,
                             Tok::Attr => theme.syn_attr,
-                            Tok::Punct => continue,
                         };
                         inline.spans.push((r.clone(), Span::Color(ink)));
                         if tok == Tok::Comment {

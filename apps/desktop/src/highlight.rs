@@ -16,7 +16,6 @@ pub enum Tok {
     Function,
     Tag,
     Attr,
-    Punct,
 }
 
 struct Lang {
