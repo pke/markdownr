@@ -1,1 +1,1 @@
-Sorry for the abrupt exit! We fixed the iOS 27 launch crash. Happy reading!
+Sorry for the abrupt exit! I fixed the iOS 27 launch crash. Happy reading!
