@@ -14,6 +14,7 @@ mod ast;
 mod highlight;
 mod layout;
 mod math;
+mod paint;
 mod particles;
 mod settings;
 mod tables;

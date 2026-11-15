@@ -3,7 +3,8 @@
 //! compositor moves the particles at the display's rate and the app draws no frames
 //! for them (before, every particle frame redrew the whole document).
 
-use super::dwrite::{Gfx, particle_ink, particle_tint};
+use super::dwrite::Gfx;
+use crate::paint::{particle_ink, particle_tint};
 use crate::particles::{Particles, Track, Wave};
 use crate::theme::{Ink, Theme};
 use crate::util::VecMap;

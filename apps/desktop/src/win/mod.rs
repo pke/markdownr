@@ -332,11 +332,20 @@ impl App {
         self.painted = true;
         let v = &self.viewer;
         let finds = v.find_highlights();
-        let chrome = v.chrome_visible().then_some((&v.chrome, v.chrome_alpha));
         let sprites = v.sprites(Instant::now());
-        self.gfx.now_ms = (Instant::now() - v.anim_start).as_secs_f32() * 1000.0;
-        let particles = v.particles.as_ref().map(|p| (p, sprites.as_slice()));
-        if self.gfx.draw(&v.layout, v.selection.as_ref(), &finds, &v.theme, v.scroll, v.view_h, chrome, particles, &v.tip_layout).is_err() {
+        let frame = crate::paint::Frame {
+            doc: &v.layout,
+            selection: v.selection.as_ref(),
+            finds: &finds,
+            theme: &v.theme,
+            scroll: v.scroll,
+            view_h: v.view_h,
+            chrome: v.chrome_visible().then_some((&v.chrome, v.chrome_alpha)),
+            particles: v.particles.as_ref().map(|p| (p, sprites.as_slice())),
+            tip: &v.tip_layout,
+            now_ms: (Instant::now() - v.anim_start).as_secs_f32() * 1000.0,
+        };
+        if self.gfx.draw(&frame).is_err() {
             self.viewer.invalidate();
             self.invalidate();
         }

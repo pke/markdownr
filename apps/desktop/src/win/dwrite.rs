@@ -1,8 +1,8 @@
 //! DirectWrite text layout + Direct2D drawing with ClearType.
 
-use crate::layout::{BaseStyle, DocLayout, DocSelection, Paragraph, RectF, Span, TextAlign, Typesetter};
-use crate::math::{Item, MathFont};
-use crate::theme::{Ink, Theme};
+use crate::layout::{BaseStyle, Paragraph, RectF, Span, TextAlign, Typesetter};
+use crate::math::MathFont;
+use crate::theme::Ink;
 use crate::util::VecMap;
 use std::ops::Range;
 use windows::Win32::Foundation::{D2DERR_RECREATE_TARGET, HWND};
@@ -168,8 +168,6 @@ pub struct Gfx {
     sprites: VecMap<(&'static str, u32, u32, u32), (ID2D1Bitmap, f32, f32, f32)>,
     math: Option<MathFace>,
     pub images: super::images::Images,
-    /// Animation clock for time-based effects (quote crossfades), ms.
-    pub now_ms: f32,
 }
 
 fn color(ink: Ink) -> D2D1_COLOR_F {
@@ -217,7 +215,6 @@ impl Gfx {
                 typo_sub: typo(DWRITE_FONT_FEATURE_TAG_SUBSCRIPT)?,
                 math: load_math_face(&dw),
                 images: super::images::Images::new(hwnd),
-                now_ms: 0.0,
                 d2d,
                 dw,
                 rt: None,
@@ -307,91 +304,6 @@ impl Gfx {
         f
     }
 
-    /// Paint the visible part of the document, then the chrome overlay (window
-    /// coordinates) with the given opacity.
-    #[allow(clippy::too_many_arguments)]
-    pub fn draw(
-        &mut self,
-        doc: &DocLayout<DwPara>,
-        selection: Option<&DocSelection>,
-        finds: &[(usize, std::ops::Range<usize>, bool)],
-        theme: &Theme,
-        scroll: f32,
-        view_h: f32,
-        chrome: Option<(&DocLayout<DwPara>, f32)>,
-        particles: Option<(&crate::particles::Particles, &[crate::particles::Sprite])>,
-        tip: &DocLayout<DwPara>,
-    ) -> Result<()> {
-        let Some(rt) = self.rt.clone() else { return Ok(()) };
-        unsafe {
-            rt.BeginDraw();
-            rt.SetTransform(&windows_numerics::Matrix3x2::translation(0.0, -scroll.round()));
-            rt.Clear(Some(&color(theme.background)));
-            self.draw_layout(&rt, doc, selection, finds, theme, scroll, view_h);
-            rt.SetTransform(&windows_numerics::Matrix3x2::identity());
-            self.draw_sprites(&rt, particles, theme);
-            if let Some((c, alpha)) = chrome {
-                rt.SetTransform(&windows_numerics::Matrix3x2::identity());
-                let params = D2D1_LAYER_PARAMETERS {
-                    contentBounds: D2D_RECT_F { left: -1e6, top: -1e6, right: 1e6, bottom: 1e6 },
-                    geometricMask: std::mem::ManuallyDrop::new(None),
-                    maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
-                    maskTransform: windows_numerics::Matrix3x2::identity(),
-                    opacity: alpha,
-                    opacityBrush: std::mem::ManuallyDrop::new(None),
-                    layerOptions: D2D1_LAYER_OPTIONS_INITIALIZE_FOR_CLEARTYPE,
-                };
-                rt.PushLayer(&params, None);
-                self.draw_layout(&rt, c, None, &[], theme, 0.0, view_h);
-                rt.PopLayer();
-            }
-            if !tip.rects.is_empty() {
-                self.draw_layout(&rt, tip, None, &[], theme, 0.0, view_h);
-            }
-            let r = rt.EndDraw(None, None);
-            if let Err(e) = &r {
-                if e.code() == D2DERR_RECREATE_TARGET {
-                    self.rt = None;
-                    self.hwnd_rt = None;
-                    self.brushes.clear();
-                    self.sprites.clear();
-                    self.images.reset_device();
-                }
-            }
-            r
-        }
-    }
-
-    /// Falling particles over the text, in window coordinates (drawn into the frame
-    /// only where no composition overlay animates them: when it could not be made).
-    unsafe fn draw_sprites(&mut self, rt: &ID2D1RenderTarget, particles: Option<(&crate::particles::Particles, &[crate::particles::Sprite])>, theme: &Theme) {
-        let Some((ps, sprites)) = particles else { return };
-        let tint = particle_tint(ps, theme);
-        let (mut dpi, mut dpi_y) = (96.0, 96.0);
-        unsafe {
-            rt.GetDpi(&mut dpi, &mut dpi_y);
-            for s in sprites {
-                let p = &ps.items[s.index];
-                // Each glyph is rasterised once into a bitmap; a frame only draws the
-                // bitmaps rotated (rotated text would be rasterised again every frame).
-                let (ink, fade) = particle_ink(tint, p);
-                let key = (p.text, p.size.to_bits(), u32::from_le_bytes(ink.0), dpi.to_bits());
-                let (bitmap, pad, w, h) = match self.sprites.get(&key) {
-                    Some(v) => v.clone(),
-                    None => {
-                        let Some(v) = self.sprite_bitmap(rt, p.text, p.size, ink) else { continue };
-                        self.sprites.insert(key, v.clone());
-                        v
-                    }
-                };
-                let c = windows_numerics::Vector2 { X: s.x + p.size / 2.0, Y: s.y + p.size / 2.0 };
-                rt.SetTransform(&windows_numerics::Matrix3x2::rotation_around(s.rotation, c));
-                let dest = D2D_RECT_F { left: s.x - pad, top: s.y - pad, right: s.x - pad + w, bottom: s.y - pad + h };
-                rt.DrawBitmap(&bitmap, Some(&dest), fade, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, None);
-            }
-            rt.SetTransform(&windows_numerics::Matrix3x2::identity());
-        }
-    }
 
     /// One particle glyph in `ink` (alpha included) on a transparent bitmap with `pad`
     /// DIPs around its layout box.
@@ -457,32 +369,66 @@ impl Gfx {
             Some((pixels, w, h, pad))
         }
     }
-}
 
-/// The particles' tint: the theme's (light or dark) for monochrome glyphs, else the text colour.
-pub fn particle_tint(ps: &crate::particles::Particles, theme: &Theme) -> Ink {
-    let [r, g, b, _] = theme.background.0;
-    let dark = (r as u32 + g as u32 + b as u32) < 384;
-    ps.color.map_or(theme.text, |(l, d)| Ink::rgb(if dark { d } else { l }))
-}
-
-/// A particle's ink and fade: the glyph is drawn opaque and the whole sprite fades by the
-/// particle's opacity, once, for monochrome glyphs (✦ • ❅) and colour emoji (❄ 🍂) alike.
-/// (Before, monochrome glyphs also took it from the brush alpha, so they got it twice;
-/// colour emoji ignore brush alpha.)
-pub fn particle_ink(tint: Ink, p: &crate::particles::Particle) -> (Ink, f32) {
-    let mut ink = tint;
-    ink.0[3] = 255;
-    (ink, if p.opacity < 0.99 { p.opacity } else { 1.0 })
-}
-
-impl Gfx {
-
-    /// Santa hat (port of the iOS SantaHat SVG, 64×64 viewBox).
-    unsafe fn draw_hat(&mut self, rt: &ID2D1RenderTarget, x: f32, y: f32, size: f32, scroll: f32) {
+    /// Paint a frame (see `paint::frame`). A lost device drops the target; the next
+    /// frame makes a new one.
+    pub fn draw(&mut self, frame: &crate::paint::Frame<DwPara>) -> Result<()> {
+        let Some(rt) = self.rt.clone() else { return Ok(()) };
         unsafe {
-            let make = |d2d: &ID2D1Factory, pts: &[(f32, f32)]| -> Option<ID2D1PathGeometry> {
-                let geo = d2d.CreatePathGeometry().ok()?;
+            rt.BeginDraw();
+            crate::paint::frame(&mut D2dCanvas { gfx: self, rt: &rt }, frame);
+            let r = rt.EndDraw(None, None);
+            if let Err(e) = &r {
+                if e.code() == D2DERR_RECREATE_TARGET {
+                    self.rt = None;
+                    self.hwnd_rt = None;
+                    self.brushes.clear();
+                    self.sprites.clear();
+                    self.images.reset_device();
+                }
+            }
+            r
+        }
+    }
+}
+
+/// `paint::Canvas` on a Direct2D render target during a frame.
+struct D2dCanvas<'a> {
+    gfx: &'a mut Gfx,
+    rt: &'a ID2D1RenderTarget,
+}
+
+fn matrix(m: crate::paint::Affine) -> windows_numerics::Matrix3x2 {
+    windows_numerics::Matrix3x2 { M11: m[0], M12: m[1], M21: m[2], M22: m[3], M31: m[4], M32: m[5] }
+}
+
+impl crate::paint::Canvas for D2dCanvas<'_> {
+    type Para = DwPara;
+
+    fn clear(&mut self, ink: Ink) {
+        unsafe { self.rt.Clear(Some(&color(ink))) };
+    }
+
+    fn transform(&mut self, m: crate::paint::Affine) {
+        unsafe { self.rt.SetTransform(&matrix(m)) };
+    }
+
+    fn fill(&mut self, r: RectF, ink: Ink, radius: f32) {
+        let b = self.gfx.brush(ink);
+        unsafe {
+            if radius > 0.0 {
+                self.rt.FillRoundedRectangle(&D2D1_ROUNDED_RECT { rect: rect(r), radiusX: radius, radiusY: radius }, &b);
+            } else {
+                self.rt.FillRectangle(&rect(r), &b);
+            }
+        }
+    }
+
+    fn fill_path(&mut self, pts: &[(f32, f32)], ink: Ink) {
+        let b = self.gfx.brush(ink);
+        let geo = || -> Option<ID2D1PathGeometry> {
+            unsafe {
+                let geo = self.gfx.d2d.CreatePathGeometry().ok()?;
                 let sink = geo.Open().ok()?;
                 let v = |p: (f32, f32)| windows_numerics::Vector2 { X: p.0, Y: p.1 };
                 sink.BeginFigure(v(pts[0]), D2D1_FIGURE_BEGIN_FILLED);
@@ -497,169 +443,84 @@ impl Gfx {
                 sink.EndFigure(D2D1_FIGURE_END_CLOSED);
                 sink.Close().ok()?;
                 Some(geo)
-            };
-            let body = make(&self.d2d, &[(0.0, 56.0), (4.0, 30.0), (16.0, 14.0), (32.0, 4.0), (48.0, 14.0), (60.0, 30.0), (64.0, 56.0)]);
-            let shade = make(&self.d2d, &[(32.0, 4.0), (48.0, 14.0), (60.0, 30.0), (64.0, 56.0), (32.0, 56.0)]);
-            let k = size / 64.0;
-            let m = windows_numerics::Matrix3x2::scale(k, k)
-                * windows_numerics::Matrix3x2::rotation_around(-18.0, windows_numerics::Vector2 { X: 32.0 * k, Y: 56.0 * k })
-                * windows_numerics::Matrix3x2::translation(x, y - scroll.round());
-            rt.SetTransform(&m);
-            let white = self.brush(Ink::rgb(0xffffff));
-            let red = self.brush(Ink::rgb(0xcc0000));
-            let dark = self.brush(Ink::rgba(0xaa0000, 102));
-            if let Some(g) = &body {
-                rt.FillGeometry(g, &red, None);
             }
-            if let Some(g) = &shade {
-                rt.FillGeometry(g, &dark, None);
-            }
-            rt.FillEllipse(&D2D1_ELLIPSE { point: windows_numerics::Vector2 { X: 32.0, Y: 56.0 }, radiusX: 32.0, radiusY: 8.0 }, &white);
-            rt.FillEllipse(&D2D1_ELLIPSE { point: windows_numerics::Vector2 { X: 32.0, Y: 4.0 }, radiusX: 4.0, radiusY: 4.0 }, &white);
-            rt.SetTransform(&windows_numerics::Matrix3x2::translation(0.0, -scroll.round()));
+        };
+        if let Some(g) = geo() {
+            unsafe { self.rt.FillGeometry(&g, &b, None) };
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    unsafe fn draw_layout(
-        &mut self,
-        rt: &ID2D1RenderTarget,
-        doc: &DocLayout<DwPara>,
-        selection: Option<&DocSelection>,
-        finds: &[(usize, std::ops::Range<usize>, bool)],
-        theme: &Theme,
-        scroll: f32,
-        view_h: f32,
-    ) {
-        let (top, bottom) = (scroll - 50.0, scroll + view_h + 50.0);
-        let visible = |y: f32, h: f32| y + h >= top && y <= bottom;
-        let text_brush = self.brush(theme.text);
-        let sel_brush = self.brush(theme.selection);
-        let find_brush = self.brush(theme.find);
-        let current_brush = self.brush(theme.find_current);
-        // `:::quotes` crossfade: opacity per quote's block and rect ranges (elsewhere 1;
-        // the last range containing an index wins).
-        let now_ms = self.now_ms;
-        let fades: Vec<(&std::ops::Range<usize>, &std::ops::Range<usize>, f32)> = doc
-            .cycles
-            .iter()
-            .flat_map(|group| {
-                let n = group.len().max(1);
-                let period = 10_000.0;
-                let k = (now_ms / period) as usize;
-                let (cur, prev) = (k % n, (k + n - 1) % n);
-                let f = if k == 0 { 1.0 } else { ((now_ms % period) / 600.0).min(1.0) };
-                group.iter().enumerate().map(move |(qi, (br, rr))| (br, rr, if qi == cur { f } else if qi == prev && f < 1.0 { 1.0 - f } else { 0.0 }))
-            })
-            .collect();
-        let block_alpha = |i: usize| fades.iter().rev().find(|(br, _, _)| br.contains(&i)).map_or(1.0, |f| f.2);
-        let rect_alpha = |i: usize| fades.iter().rev().find(|(_, rr, _)| rr.contains(&i)).map_or(1.0, |f| f.2);
-        let fade_layer = |rt: &ID2D1RenderTarget, a: f32| unsafe {
-            let params = D2D1_LAYER_PARAMETERS {
-                contentBounds: D2D_RECT_F { left: -1e6, top: -1e6, right: 1e6, bottom: 1e6 },
-                geometricMask: std::mem::ManuallyDrop::new(None),
-                maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
-                maskTransform: windows_numerics::Matrix3x2::identity(),
-                opacity: a,
-                opacityBrush: std::mem::ManuallyDrop::new(None),
-                layerOptions: D2D1_LAYER_OPTIONS_INITIALIZE_FOR_CLEARTYPE,
-            };
-            rt.PushLayer(&params, None);
-        };
-        unsafe {
-            for (ri, r) in doc.rects.iter().enumerate() {
-                let a = rect_alpha(ri);
-                if !visible(r.r.y, r.r.h) || a <= 0.0 {
-                    continue;
-                }
-                if a < 1.0 {
-                    fade_layer(rt, a);
-                }
-                let b = self.brush(r.color);
-                if r.radius > 0.0 {
-                    rt.FillRoundedRectangle(&D2D1_ROUNDED_RECT { rect: rect(r.r), radiusX: r.radius, radiusY: r.radius }, &b);
-                } else {
-                    rt.FillRectangle(&rect(r.r), &b);
-                }
-                if a < 1.0 {
-                    rt.PopLayer();
-                }
-            }
+    fn fill_ellipse(&mut self, cx: f32, cy: f32, rx: f32, ry: f32, ink: Ink) {
+        let b = self.gfx.brush(ink);
+        unsafe { self.rt.FillEllipse(&D2D1_ELLIPSE { point: windows_numerics::Vector2 { X: cx, Y: cy }, radiusX: rx, radiusY: ry }, &b) };
+    }
 
-            for img in &doc.images {
-                if !visible(img.r.y, img.r.h) {
-                    continue;
-                }
-                if let Some(bmp) = self.images.bitmap(&img.url, rt) {
-                    rt.DrawBitmap(&bmp, Some(&rect(img.r)), 1.0, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, None);
-                }
+    fn push_opacity(&mut self, a: f32) {
+        let params = D2D1_LAYER_PARAMETERS {
+            contentBounds: D2D_RECT_F { left: -1e6, top: -1e6, right: 1e6, bottom: 1e6 },
+            geometricMask: std::mem::ManuallyDrop::new(None),
+            maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+            maskTransform: windows_numerics::Matrix3x2::identity(),
+            opacity: a,
+            opacityBrush: std::mem::ManuallyDrop::new(None),
+            layerOptions: D2D1_LAYER_OPTIONS_INITIALIZE_FOR_CLEARTYPE,
+        };
+        unsafe { self.rt.PushLayer(&params, None) };
+    }
+
+    fn pop_opacity(&mut self) {
+        unsafe { self.rt.PopLayer() };
+    }
+
+    fn text(&mut self, para: &DwPara, x: f32, y: f32, ink: Ink) {
+        let b = self.gfx.brush(ink);
+        unsafe { self.rt.DrawTextLayout(windows_numerics::Vector2 { X: x, Y: y }, para.layout(), &b, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT) };
+    }
+
+    fn image(&mut self, url: &str, r: RectF) {
+        if let Some(bmp) = self.gfx.images.bitmap(url, self.rt) {
+            unsafe { self.rt.DrawBitmap(&bmp, Some(&rect(r)), 1.0, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, None) };
+        }
+    }
+
+    fn glyph(&mut self, id: u16, x: f32, y: f32, size: f32, ink: Ink) {
+        let Some(face) = self.gfx.math.as_ref().map(|m| m.face.clone()) else { return };
+        let brush = self.gfx.brush(ink);
+        let advance = 0.0f32;
+        let run = DWRITE_GLYPH_RUN {
+            fontFace: std::mem::ManuallyDrop::new(Some(face)),
+            fontEmSize: size,
+            glyphCount: 1,
+            glyphIndices: &id,
+            glyphAdvances: &advance,
+            glyphOffsets: std::ptr::null(),
+            isSideways: BOOL(0),
+            bidiLevel: 0,
+        };
+        unsafe { self.rt.DrawGlyphRun(windows_numerics::Vector2 { X: x, Y: y }, &run, &brush, DWRITE_MEASURING_MODE_NATURAL) };
+        drop(std::mem::ManuallyDrop::into_inner(run.fontFace));
+    }
+
+    fn sprite(&mut self, text: &'static str, size: f32, ink: Ink, alpha: f32, x: f32, y: f32, rotation: f32) {
+        // Each glyph is rasterised once into a bitmap; a frame only draws the bitmaps
+        // rotated (rotated text would be rasterised again every frame).
+        let (mut dpi, mut dpi_y) = (96.0, 96.0);
+        unsafe { self.rt.GetDpi(&mut dpi, &mut dpi_y) };
+        let key = (text, size.to_bits(), u32::from_le_bytes(ink.0), dpi.to_bits());
+        let (bitmap, pad, w, h) = match self.gfx.sprites.get(&key) {
+            Some(v) => v.clone(),
+            None => {
+                let Some(v) = (unsafe { self.gfx.sprite_bitmap(self.rt, text, size, ink) }) else { return };
+                self.gfx.sprites.insert(key, v.clone());
+                v
             }
-            for (i, block) in doc.blocks.iter().enumerate() {
-                let a = block_alpha(i);
-                if !visible(block.y, block.h) || a <= 0.0 {
-                    continue;
-                }
-                if a < 1.0 {
-                    fade_layer(rt, a);
-                }
-                for (_, range, current) in finds.iter().filter(|f| f.0 == i) {
-                    let b = if *current { &current_brush } else { &find_brush };
-                    for r in block.para.range_rects(range.clone()) {
-                        rt.FillRoundedRectangle(&D2D1_ROUNDED_RECT { rect: rect(RectF { x: block.x + r.x - 1.0, y: block.y + r.y, w: r.w + 2.0, h: r.h }), radiusX: 3.0, radiusY: 3.0 }, b);
-                    }
-                }
-                if let Some(range) = selection.and_then(|s| doc.block_range(s, i)) {
-                    for r in block.para.range_rects(range) {
-                        rt.FillRectangle(&rect(RectF { x: block.x + r.x, y: block.y + r.y, ..r }), &sel_brush);
-                    }
-                }
-                rt.DrawTextLayout(
-                    windows_numerics::Vector2 { X: block.x, Y: block.y },
-                    block.para.layout(),
-                    &text_brush,
-                    D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
-                );
-                if a < 1.0 {
-                    rt.PopLayer();
-                }
-            }
-            for &(hx, hy, hs) in &doc.hats {
-                if visible(hy, hs) {
-                    self.draw_hat(rt, hx, hy, hs, scroll);
-                }
-            }
-            if let Some(math) = &self.math {
-                let face = math.face.clone();
-                for p in &doc.math {
-                    if !visible(p.y - p.mbox.asc, p.mbox.asc + p.mbox.desc) {
-                        continue;
-                    }
-                    for item in &p.mbox.items {
-                        match *item {
-                            Item::Glyph { id, x, y, size, color } => {
-                                let brush = self.brush(color.map_or(p.color, |[r, g, b]| Ink([r, g, b, 255])));
-                                let advance = 0.0f32;
-                                let run = DWRITE_GLYPH_RUN {
-                                    fontFace: std::mem::ManuallyDrop::new(Some(face.clone())),
-                                    fontEmSize: size,
-                                    glyphCount: 1,
-                                    glyphIndices: &id,
-                                    glyphAdvances: &advance,
-                                    glyphOffsets: std::ptr::null(),
-                                    isSideways: BOOL(0),
-                                    bidiLevel: 0,
-                                };
-                                rt.DrawGlyphRun(windows_numerics::Vector2 { X: p.x + x, Y: p.y + y }, &run, &brush, DWRITE_MEASURING_MODE_NATURAL);
-                                drop(std::mem::ManuallyDrop::into_inner(run.fontFace));
-                            }
-                            Item::Rule { r, color } => {
-                                let brush = self.brush(color.map_or(p.color, |[r, g, b]| Ink([r, g, b, 255])));
-                                rt.FillRectangle(&rect(RectF { x: p.x + r.x, y: p.y + r.y, ..r }), &brush);
-                            }
-                        }
-                    }
-                }
-            }
+        };
+        let c = windows_numerics::Vector2 { X: x + size / 2.0, Y: y + size / 2.0 };
+        let dest = D2D_RECT_F { left: x - pad, top: y - pad, right: x - pad + w, bottom: y - pad + h };
+        unsafe {
+            self.rt.SetTransform(&windows_numerics::Matrix3x2::rotation_around(rotation, c));
+            self.rt.DrawBitmap(&bitmap, Some(&dest), alpha, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, None);
+            self.rt.SetTransform(&windows_numerics::Matrix3x2::identity());
         }
     }
 }
