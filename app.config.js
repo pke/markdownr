@@ -143,6 +143,7 @@ export default {
       // android/build.gradle) picked up by autolinking — no config plugin.
       './modules/android-release/plugin.js',
       './modules/ios-pod-deployment-target/plugin.js',
+      ['./modules/ios-scene-lifecycle/plugin.js', { metroPort: IS_DEV ? 8092 : undefined }],
       ...(WITH_UITESTS ? ['./modules/ui-tests/plugin.js'] : []),
     ],
   },
