@@ -168,16 +168,47 @@ pub struct MathBox {
 pub struct MathFont {
     face: Font,
     upem: f32,
+    /// Laid-out formulas by (hash of source, size, display), sorted by that hash: a document
+    /// repeats formulas (big.md: 1480, 36 distinct) and every relayout (resize, zoom back,
+    /// idle completion) needs them all again.
+    cache: core::cell::RefCell<Vec<(u64, (Box<str>, u32, bool), MathBox)>>,
 }
+
+/// Entries kept at most; beyond that the cache starts over.
+const CACHE_MAX: usize = 4096;
 
 impl MathFont {
     /// Font file data and face offset (see [`super::otf::faces`]); leaked once per process.
     pub fn new(data: Vec<u8>, face: usize) -> Option<Self> {
         let face = Font::new(data, face)?;
-        Some(MathFont { upem: face.upem, face })
+        Some(MathFont { upem: face.upem, face, cache: Default::default() })
     }
 
+    /// `src` laid out at `size` (display or inline style); repeated formulas come from the cache.
     pub fn layout(&self, src: &str, size: f32, display: bool) -> MathBox {
+        let key = src.bytes().chain(size.to_bits().to_le_bytes()).chain([display as u8]).fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3));
+        let cacheable = {
+            let cache = self.cache.borrow();
+            match cache.binary_search_by_key(&key, |e| e.0) {
+                Ok(i) if (&*cache[i].1.0, cache[i].1.1, cache[i].1.2) == (src, size.to_bits(), display) => return cache[i].2.clone(),
+                Ok(_) => false, // another formula with the same hash: not cached
+                Err(_) => true,
+            }
+        };
+        let b = self.layout_uncached(src, size, display);
+        if cacheable {
+            let mut cache = self.cache.borrow_mut();
+            if cache.len() >= CACHE_MAX {
+                cache.clear();
+            }
+            if let Err(i) = cache.binary_search_by_key(&key, |e| e.0) {
+                cache.insert(i, (key, (src.into(), size.to_bits(), display), b.clone()));
+            }
+        }
+        b
+    }
+
+    fn layout_uncached(&self, src: &str, size: f32, display: bool) -> MathBox {
         let tree = super::parse::parse(src);
         let mut l = Ctx { f: self, base: size };
         let st = Style { level: if display { 0 } else { 1 }, cramped: false };
@@ -937,3 +968,60 @@ mod tests {
 }
 
 
+
+#[cfg(all(test, windows))]
+mod math_bench {
+    /// Time to lay out every formula of a document (BENCH_DOC) once, as a full layout does:
+    /// `BENCH_DOC=... cargo test --release math_layout_cost -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn math_layout_cost() {
+        let data = std::fs::read(r"C:\Windows\Fonts\cambria.ttc").unwrap();
+        let face = *crate::math::otf::faces(&data).get(1).unwrap();
+        let font = super::MathFont::new(data, face).unwrap();
+        let src = std::fs::read_to_string(std::env::var("BENCH_DOC").unwrap()).unwrap();
+        let doc = crate::ast::parse(&src);
+        let mut formulas = Vec::new();
+        fn walk(n: &crate::ast::Node, out: &mut Vec<(String, bool)>) {
+            match n.kind {
+                crate::ast::Kind::InlineMath => out.push((n.text.clone(), false)),
+                crate::ast::Kind::DisplayMath => out.push((n.text.clone(), true)),
+                _ => n.children.iter().for_each(|c| walk(c, out)),
+            }
+        }
+        walk(&doc, &mut formulas);
+        let mut distinct: Vec<_> = formulas.clone();
+        distinct.sort();
+        distinct.dedup();
+        let mut times = Vec::new();
+        for _ in 0..5 {
+            let t = std::time::Instant::now();
+            for (f, display) in &formulas {
+                std::hint::black_box(font.layout(f, 16.0, *display));
+            }
+            times.push(t.elapsed().as_micros() / 1000);
+        }
+        eprintln!("MATH {} formulas ({} distinct): first layout {} ms, then {:?} ms", formulas.len(), distinct.len(), times[0], &times[1..]);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod cache_tests {
+    /// Cached formulas are exactly what a fresh layout gives, per size and style.
+    #[test]
+    fn cache_returns_the_same_boxes() {
+        let data = std::fs::read(r"C:\Windows\Fonts\cambria.ttc").unwrap();
+        let face = *crate::math::otf::faces(&data).get(1).unwrap();
+        let font = super::MathFont::new(data, face).unwrap();
+        for src in [r"\frac{a}{b}", r"\sum_{i=0}^n x_i^2", r"\sqrt{x+1}", "x"] {
+            for (size, display) in [(16.0, false), (16.0, true), (24.0, false)] {
+                let fresh = font.layout_uncached(src, size, display);
+                for _ in 0..2 {
+                    let b = font.layout(src, size, display);
+                    assert_eq!((b.w, b.asc, b.desc, &b.items), (fresh.w, fresh.asc, fresh.desc, &fresh.items), "{src} {size} {display}");
+                }
+            }
+        }
+        assert_eq!(font.cache.borrow().len(), 12);
+    }
+}
