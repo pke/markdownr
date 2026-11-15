@@ -229,6 +229,9 @@ try {
         Start-Sleep -Milliseconds 150
     }
     if ($null -eq $last) { $last = [MdrShot]::Client($h, [ref]$w, [ref]$ht) }   # -StableMs 0: the picture as it is
+    # One colour all over is never a frame of the app (it always draws text): the display is off or
+    # the window never painted. Fail instead of saving a picture that compares equal to anything.
+    if ([MdrShot]::Blank($last)) { throw "blank capture (display off or window not painted); nothing saved" }
     $outPath = if ([System.IO.Path]::IsPathRooted($Out)) { $Out } else { [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Out)) }
     [MdrShot]::SavePng($last, $w, $ht, $outPath)
     "shot: $outPath ($w x $ht)$(if ($same -lt 2) { ', still changing' })"
