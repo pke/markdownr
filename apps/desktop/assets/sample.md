@@ -35,7 +35,7 @@ Extra syntax from transforms: ==marked text==, ++inserted text++, x^2^ and H~2~O
 
 ## Images
 
-![Banner](assets/banner.png)
+![Sample Image](https://picsum.photos/800/400 "Sample image")
 
 ## Code
 

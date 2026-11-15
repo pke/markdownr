@@ -167,3 +167,19 @@ unsafe fn decode(path: &Path) -> Decoded {
         Some((w, h, pixels))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The sample's image is a random one from the net (needs a connection: `--ignored`).
+    #[test]
+    #[ignore]
+    fn sample_remote_image_loads() {
+        let sample = include_str!("../../assets/sample.md");
+        let url = sample.split("![").nth(1).and_then(|s| s.split("](").nth(1)).and_then(|s| s.split([' ', ')']).next()).filter(|u| u.starts_with("https://")).expect("remote image in sample.md");
+        let Some(source @ crate::util::ImageSource::Url(_)) = crate::util::image_source(url, None) else { panic!("{url}") };
+        let (w, h, _) = unsafe { load(&source) }.expect(url);
+        assert_eq!((w, h), (800, 400));
+    }
+}
