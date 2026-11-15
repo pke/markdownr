@@ -137,7 +137,7 @@ struct MathFace {
 }
 
 fn load_math_face(dw: &IDWriteFactory) -> Option<MathFace> {
-    let windir = std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into());
+    let windir = super::env_var("WINDIR").unwrap_or_else(|| "C:\\Windows".into());
     let path = crate::util::path::join(std::path::Path::new(&windir), std::path::Path::new(r"Fonts\cambria.ttc"));
     let data = crate::util::fs::read(&path)?;
     // Cambria Math is face 1 of the collection; fall back to scanning.

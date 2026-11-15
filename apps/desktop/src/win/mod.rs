@@ -61,13 +61,17 @@ struct App {
     sample: &'static str,
 }
 
-thread_local! {
-    static APP: RefCell<Option<App>> = const { RefCell::new(None) };
-}
+/// The app, used only on the UI thread (window procedure and `run`; thread-pool work posts
+/// messages instead). A plain static rather than `thread_local!`, whose destructor
+/// registration brings std's TLS clean-up and its abort path; `run` drops the app itself.
+struct AppCell(RefCell<Option<App>>);
+// SAFETY: only the UI thread touches it (see above).
+unsafe impl Sync for AppCell {}
+static APP: AppCell = AppCell(RefCell::new(None));
 
 /// Run `f` on the app unless it is already borrowed (re-entrant window messages).
 fn with_app<R>(f: impl FnOnce(&mut App) -> R) -> Option<R> {
-    APP.with(|cell| cell.try_borrow_mut().ok().and_then(|mut a| a.as_mut().map(f)))
+    APP.0.try_borrow_mut().ok().and_then(|mut a| a.as_mut().map(f))
 }
 
 fn parse(text: &str) -> Node {
@@ -195,7 +199,7 @@ fn from_touch() -> bool {
 }
 
 fn settings_path() -> PathBuf {
-    let base = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let base = env_var("APPDATA").map(PathBuf::from).unwrap_or_else(temp_dir);
     crate::util::path::join(&base, Path::new(r"Markdownr\settings.ini"))
 }
 
@@ -401,7 +405,7 @@ impl App {
     fn load_text(&mut self, title: &str, text: &str) {
         self.path = None;
         self.modified = None;
-        self.gfx.images.set_base(std::env::current_dir().ok());
+        self.gfx.images.set_base(current_dir());
         self.viewer.set_document(title.to_string(), text.to_string(), parse(text), false);
         self.set_title();
         self.invalidate();
@@ -855,9 +859,9 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
-        crate::view::set_language(&std::env::var("MARKDOWNR_LANGUAGE").unwrap_or_else(|_| ui_language()));
+        crate::view::set_language(&env_string("MARKDOWNR_LANGUAGE").unwrap_or_else(ui_language));
         crate::view::set_key_namer(key_name);
-        if let Ok(locale) = std::env::var("MARKDOWNR_LOCALE") {
+        if let Some(locale) = env_string("MARKDOWNR_LOCALE") {
             crate::transforms::set_locale(&locale);
         } else {
             let mut buf = [0u16; 85];
@@ -908,7 +912,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         ];
         SetGestureConfig(hwnd, 0, &configs, size_of::<GESTURECONFIG>() as u32).ok();
 
-        let settings_path = std::env::var_os("MARKDOWNR_SETTINGS").map(PathBuf::from).unwrap_or_else(settings_path);
+        let settings_path = env_var("MARKDOWNR_SETTINGS").map(PathBuf::from).unwrap_or_else(settings_path);
         let mut settings = Settings::load(&settings_path);
         let mut gfx = Gfx::new(hwnd).expect("Direct2D/DirectWrite");
         {
@@ -916,7 +920,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             let (w, h) = client_size(hwnd);
             let _ = gfx.ensure_target(w, h, dpi_scale(hwnd) * 96.0);
         }
-        let sample_mode = std::env::var_os("MARKDOWNR_SAMPLE").is_some();
+        let sample_mode = env_var("MARKDOWNR_SAMPLE").is_some();
         let (title, source, doc) = match background {
             Some(job) => BackgroundDoc::join(job),
             None if sample_mode => ("Beispiel".into(), sample.to_string(), parse(sample)),
@@ -934,7 +938,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         viewer.theme_choice = ThemeChoice::from_name(&settings.theme);
         viewer.remember_fullscreen = settings.remember_fullscreen;
         let start_fullscreen = settings.remember_fullscreen && settings.fullscreen;
-        gfx.images.set_base(path.as_ref().map(|p| crate::util::path::parent(p).to_path_buf()).or_else(|| std::env::current_dir().ok()));
+        gfx.images.set_base(path.as_ref().map(|p| crate::util::path::parent(p).to_path_buf()).or_else(|| current_dir()));
         let mut app = App {
             hwnd,
             gfx,
@@ -963,14 +967,14 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             let mut anim = BOOL(1);
             let _ = SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, Some(&mut anim as *mut _ as *mut _), SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0));
             app.viewer.reduce_motion = !anim.as_bool();
-            if let Some(ms) = std::env::var("MARKDOWNR_TIME_MS").ok().and_then(|s| s.parse::<u64>().ok()) {
+            if let Some(ms) = env_string("MARKDOWNR_TIME_MS").and_then(|s| s.parse::<u64>().ok()) {
                 app.viewer.anim_start = Instant::now() - Duration::from_millis(ms);
             }
         }
         app.apply_dark();
         app.set_title();
         app.update_size();
-        APP.with(|c| *c.borrow_mut() = Some(app));
+        *APP.0.borrow_mut() = Some(app);
         with_app(|a| a.schedule());
         SetTimer(Some(hwnd), TIMER_WATCH, 1000, None);
         // Cloaked until the first frame is drawn (App::uncloak): no white client area.
@@ -985,7 +989,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
-        APP.with(|c| c.borrow_mut().take());
+        drop(APP.0.borrow_mut().take());
     }
 }
 
@@ -1020,4 +1024,40 @@ fn key_name(vk: u16, extended: bool) -> Option<String> {
     let mut chars = name.chars();
     let first = chars.next()?;
     Some(std::iter::once(first).chain(chars.flat_map(char::to_lowercase)).collect())
+}
+
+/// Environment, current and temp directory straight from Win32: std::env's versions go
+/// through io::Error and bring its formatting into the exe. A Win32 string of up to `n`
+/// u16s, filled by `get(buffer)` (which returns the length, or the size needed).
+fn win_string(get: impl Fn(&mut [u16]) -> u32) -> Option<std::ffi::OsString> {
+    use std::os::windows::ffi::OsStringExt;
+    let mut buf = vec![0u16; 260];
+    loop {
+        let n = get(&mut buf) as usize;
+        if n == 0 {
+            return None;
+        }
+        if n < buf.len() {
+            return Some(std::ffi::OsString::from_wide(&buf[..n]));
+        }
+        buf.resize(n + 1, 0);
+    }
+}
+
+/// An environment variable, or None when it is not set.
+pub(crate) fn env_var(name: &str) -> Option<std::ffi::OsString> {
+    let name = HSTRING::from(name);
+    win_string(|b| unsafe { windows::Win32::System::Environment::GetEnvironmentVariableW(&name, Some(b)) })
+}
+
+fn env_string(name: &str) -> Option<String> {
+    env_var(name).and_then(|v| v.into_string().ok())
+}
+
+fn current_dir() -> Option<PathBuf> {
+    win_string(|b| unsafe { windows::Win32::System::Environment::GetCurrentDirectoryW(Some(b)) }).map(PathBuf::from)
+}
+
+fn temp_dir() -> PathBuf {
+    win_string(|b| unsafe { windows::Win32::Storage::FileSystem::GetTempPathW(Some(b)) }).map_or_else(|| PathBuf::from(r"C:\Windows\Temp"), PathBuf::from)
 }
