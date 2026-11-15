@@ -1,1 +1,1 @@
-Fixed a crash that could prevent Markdownr from opening on iOS 27.
+Sorry for the abrupt exit! We fixed the iOS 27 launch crash. Happy reading!

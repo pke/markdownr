@@ -1,1 +1,1 @@
-Ein Absturz wurde behoben, der den Start von Markdownr unter iOS 27 verhindern konnte.
+Sorry für den abrupten Abgang! Wir haben den Startabsturz unter iOS 27 behoben. Viel Spaß beim Weiterlesen!
