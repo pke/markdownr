@@ -23,7 +23,7 @@ type Decoded = Option<(u32, u32, Vec<u8>)>;
 /// Work item handed to the thread pool and back to the UI thread.
 struct Job {
     url: String,
-    source: Option<Source>,
+    source: Option<crate::util::ImageSource>,
     hwnd: isize,
     decoded: Decoded,
 }
@@ -76,7 +76,7 @@ impl Images {
             };
         }
         self.map.borrow_mut().insert(url.to_string(), State::Loading);
-        let source = resolve(url, self.base.borrow().as_deref());
+        let source = crate::util::image_source(url, self.base.borrow().as_deref());
         let job = Box::into_raw(Box::new(Job { url: url.to_string(), source, hwnd: self.hwnd, decoded: None }));
         // SAFETY: run_job takes ownership of the box; reclaim it if submission fails.
         if unsafe { TrySubmitThreadpoolCallback(run_job, job as *mut _, core::ptr::null()) } == 0 {
@@ -132,45 +132,11 @@ impl Images {
     }
 }
 
-enum Source {
-    File(PathBuf),
-    Url(String),
-}
-
-fn resolve(url: &str, base: Option<&Path>) -> Option<Source> {
-    let lower = url.to_ascii_lowercase();
-    if lower.starts_with("http://") || lower.starts_with("https://") {
-        return Some(Source::Url(url.to_string()));
-    }
-    let path = url.strip_prefix("file:///").or_else(|| url.strip_prefix("file://")).unwrap_or(url);
-    let path = percent_decode(path.split(['?', '#']).next().unwrap_or(path));
-    let p = Path::new(&path);
-    Some(Source::File(if crate::util::path::is_absolute(p) { p.to_path_buf() } else { crate::util::path::join(base?, p) }))
-}
-
-fn percent_decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() && s.is_char_boundary(i + 3) {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-unsafe fn load(source: &Source) -> Decoded {
+unsafe fn load(source: &crate::util::ImageSource) -> Decoded {
     unsafe {
         let path = match source {
-            Source::File(p) => p.clone(),
-            Source::Url(u) => {
+            crate::util::ImageSource::File(p) => p.clone(),
+            crate::util::ImageSource::Url(u) => {
                 let mut buf = [0u16; 1024];
                 windows::Win32::System::Com::Urlmon::URLDownloadToCacheFileW(None, &HSTRING::from(u.as_str()), &mut buf, 0, None).ok()?;
                 let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());

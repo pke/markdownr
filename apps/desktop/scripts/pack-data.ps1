@@ -42,3 +42,11 @@ $raw = [Text.UTF8Encoding]::new($false).GetBytes($text)
 $packed = [CabPack]::Pack(5, $raw)   # 5 = COMPRESS_ALGORITHM_LZMS
 [IO.File]::WriteAllBytes("$root\data\tables.bin", [BitConverter]::GetBytes([uint32]$raw.Length) + $packed)
 "tables.bin: $($raw.Length) -> $($packed.Length + 4) bytes"
+# The same text zlib-compressed for macOS and Linux (data/tables.z, same 4-byte size header):
+# both have zlib in the system (libz), so their binaries carry no decompressor either.
+# Needs PowerShell 7 (.NET's ZLibStream).
+$z = [IO.MemoryStream]::new()
+$zs = [IO.Compression.ZLibStream]::new($z, [IO.Compression.CompressionLevel]::SmallestSize)
+$zs.Write($raw, 0, $raw.Length); $zs.Dispose()
+[IO.File]::WriteAllBytes("$root\data\tables.z", [BitConverter]::GetBytes([uint32]$raw.Length) + $z.ToArray())
+"tables.z: $($raw.Length) -> $($z.ToArray().Length + 4) bytes"

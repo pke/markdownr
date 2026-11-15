@@ -96,24 +96,6 @@ pub fn settings_path() -> PathBuf {
     crate::util::env::var("MARKDOWNR_SETTINGS").map(PathBuf::from).unwrap_or_else(crate::settings::default_path)
 }
 
-fn percent_decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let Some(v) = s.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok()) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
 pub struct App<G: Gfx, H: Host> {
     pub host: H,
     pub gfx: G,
@@ -336,7 +318,7 @@ impl<G: Gfx, H: Host> App<G, H> {
         if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("mailto:") {
             return self.host.open_external(url);
         }
-        let file = percent_decode(url.split('#').next().unwrap_or(""));
+        let file = crate::util::percent_decode(url.split('#').next().unwrap_or(""));
         let file = file.strip_prefix("file://").map_or(file.as_str(), |f| {
             // file:///C:/x (Windows) and file:///home/x (elsewhere)
             if cfg!(windows) { f.strip_prefix('/').unwrap_or(f) } else { f }
@@ -413,7 +395,12 @@ impl<G: Gfx, H: Host> App<G, H> {
     /// `notches` of the wheel (positive: towards the user, i.e. down).
     pub fn wheel(&mut self, notches: f32, mods: Mods, x: f32, y: f32) {
         let step = self.viewer.font_size * 3.0;
-        self.viewer.wheel(notches * step, mods, x, y);
+        self.scroll(notches * step, mods, x, y);
+    }
+
+    /// Scrolled by `dy` DIPs (precise trackpad deltas; positive: down).
+    pub fn scroll(&mut self, dy: f32, mods: Mods, x: f32, y: f32) {
+        self.viewer.wheel(dy, mods, x, y);
         self.invalidate();
     }
 

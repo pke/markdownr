@@ -120,6 +120,11 @@ impl<K, V> VecMap<K, V> {
         &mut self.0[i].1
     }
 
+    #[cfg_attr(windows, allow(dead_code))] // the macOS and Linux image caches
+    pub fn drain(&mut self) -> std::vec::Drain<'_, (K, V)> {
+        self.0.drain(..)
+    }
+
     pub fn clear(&mut self) {
         self.0.clear();
     }
@@ -456,4 +461,42 @@ pub mod env {
     pub fn home() -> PathBuf {
         var("HOME").map_or_else(|| PathBuf::from("/tmp"), PathBuf::from)
     }
+}
+
+/// `%xx` escapes decoded (invalid UTF-8 replaced).
+pub fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() && s.is_char_boundary(i + 3) {
+            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Where an image comes from.
+pub enum ImageSource {
+    File(std::path::PathBuf),
+    Url(String),
+}
+
+/// An image reference from a document: a web address, or a file path (absolute, `file:` URL
+/// or relative to `base`, the document's directory).
+pub fn image_source(url: &str, base: Option<&std::path::Path>) -> Option<ImageSource> {
+    let lower = url.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        return Some(ImageSource::Url(url.to_string()));
+    }
+    let path = url.strip_prefix("file://").map_or(url, |f| if cfg!(windows) { f.strip_prefix('/').unwrap_or(f) } else { f });
+    let path = percent_decode(path.split(['?', '#']).next().unwrap_or(path));
+    let p = std::path::Path::new(&path);
+    Some(ImageSource::File(if path::is_absolute(p) { p.to_path_buf() } else { path::join(base?, p) }))
 }

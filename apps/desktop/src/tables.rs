@@ -1,7 +1,7 @@
-//! Emoji, HTML entity and LaTeX symbol tables. On Windows they ship
-//! LZMS-compressed and front coded (`data/tables.bin`, built by `scripts/pack-data.ps1`)
-//! and are unpacked once with the OS's own cabinet.dll, so the exe carries no
-//! decompressor.
+//! Emoji, HTML entity and LaTeX symbol tables and the help texts. They ship front coded
+//! and compressed and are unpacked once with the system's own decompressor, so the binary
+//! carries none: LZMS with cabinet.dll on Windows (`data/tables.bin`), zlib with libz on
+//! macOS and Linux (`data/tables.z`); both built by `scripts/pack-data.ps1`.
 
 use std::sync::OnceLock;
 
@@ -112,7 +112,6 @@ fn unpack() -> String {
 /// Front-coded lines (one byte 0x20 + bytes shared with the previous key, rest of the key,
 /// tab, value, newline; tables separated by `\0`) back to `\n key \t value \n` lines. The
 /// fourth table (help texts, in display order) is stored as is.
-#[cfg(windows)]
 fn expand(front: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(front.len() * 5 / 4);
     for (i, table) in front.split(|&b| b == 0).enumerate() {
@@ -136,9 +135,21 @@ fn expand(front: &[u8]) -> Vec<u8> {
     out
 }
 
+/// macOS and Linux: `data/tables.z` (same text, zlib) unpacked with the system's libz.
 #[cfg(not(windows))]
 fn unpack() -> String {
-    [include_str!("../data/entities.txt"), "\0", include_str!("../data/emoji.txt"), "\0", include_str!("../data/math.txt"), "\0", HELP_SOURCES].concat()
+    #[cfg_attr(target_os = "macos", link(name = "z"))]
+    unsafe extern "C" {
+        fn uncompress(dst: *mut u8, dst_len: *mut core::ffi::c_ulong, src: *const u8, src_len: core::ffi::c_ulong) -> i32;
+    }
+    static PACKED: &[u8] = include_bytes!("../data/tables.z");
+    let len = u32::from_le_bytes([PACKED[0], PACKED[1], PACKED[2], PACKED[3]]) as usize;
+    let mut out = vec![0u8; len];
+    let mut size = len as core::ffi::c_ulong;
+    // SAFETY: zlib with valid buffers and lengths.
+    let ok = unsafe { uncompress(out.as_mut_ptr(), &mut size, PACKED[4..].as_ptr(), (PACKED.len() - 4) as core::ffi::c_ulong) } == 0;
+    out.truncate(if ok { size as usize } else { 0 });
+    String::from_utf8(expand(&out)).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -167,16 +178,6 @@ mod tests {
         assert_eq!(super::help("xx"), super::help("en"));
     }
 }
-
-/// The help files as packed (`#code` line, then the texts), for builds without tables.bin.
-#[cfg(not(windows))]
-const HELP_SOURCES: &str = concat!(
-    "#de\n", include_str!("../data/help/de.txt"), "#en\n", include_str!("../data/help/en.txt"),
-    "#es\n", include_str!("../data/help/es.txt"), "#fr\n", include_str!("../data/help/fr.txt"),
-    "#ja\n", include_str!("../data/help/ja.txt"), "#ko\n", include_str!("../data/help/ko.txt"),
-    "#pl\n", include_str!("../data/help/pl.txt"), "#ru\n", include_str!("../data/help/ru.txt"),
-    "#zh\n", include_str!("../data/help/zh.txt"),
-);
 
 #[cfg(test)]
 const HELP_TEXTS: [&str; 9] = [
