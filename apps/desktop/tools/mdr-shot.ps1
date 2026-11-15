@@ -115,6 +115,12 @@ public static class MdrShot {
         return px;
     }
 
+    // One colour everywhere: the window shows nothing yet (or no longer).
+    public static bool Blank(int[] px) {
+        for (int i = 1; i < px.Length; i++) if (px[i] != px[0]) return false;
+        return true;
+    }
+
     public static bool Same(int[] a, int[] b) {
         if (a == null || b == null || a.Length != b.Length) return false;
         for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
@@ -215,7 +221,8 @@ try {
     $stableBy = [DateTime]::Now.AddMilliseconds($StableMs)
     while ([DateTime]::Now -lt $deadline -and [DateTime]::Now -lt $stableBy -and $same -lt 2) {
         $px = [MdrShot]::Client($h, [ref]$w, [ref]$ht)
-        if ([MdrShot]::Same($px, $last)) { $same++ } else { $same = 0 }
+        if ([MdrShot]::Blank($px)) { $same = 0; $stableBy = $deadline }   # not drawn yet: wait (up to TimeoutMs)
+        elseif ([MdrShot]::Same($px, $last)) { $same++ } else { $same = 0 }
         $last = $px
         Start-Sleep -Milliseconds 150
     }

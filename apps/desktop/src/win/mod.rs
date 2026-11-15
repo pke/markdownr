@@ -387,7 +387,7 @@ impl App {
 
     fn load(&mut self, path: PathBuf) {
         let (title, source, doc) = read_doc(&path);
-        let same = self.path.as_ref() == Some(&path);
+        let same = self.path.as_ref().is_some_and(|p| p.as_os_str() == path.as_os_str()); // (PathBuf == parses components)
         self.gfx.images.set_base(Some(crate::util::path::parent(&path).to_path_buf()));
         self.viewer.set_document(title, source, doc, same);
         self.modified = mtime(&path);
