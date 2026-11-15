@@ -137,7 +137,7 @@ struct MathFace {
 }
 
 fn load_math_face(dw: &IDWriteFactory) -> Option<MathFace> {
-    let windir = super::env_var("WINDIR").unwrap_or_else(|| "C:\\Windows".into());
+    let windir = crate::util::env::var("WINDIR").unwrap_or_else(|| "C:\\Windows".into());
     let path = crate::util::path::join(std::path::Path::new(&windir), std::path::Path::new(r"Fonts\cambria.ttc"));
     let data = crate::util::fs::read(&path)?;
     // Cambria Math is face 1 of the collection; fall back to scanning.
@@ -372,7 +372,7 @@ impl Gfx {
 
     /// Paint a frame (see `paint::frame`). A lost device drops the target; the next
     /// frame makes a new one.
-    pub fn draw(&mut self, frame: &crate::paint::Frame<DwPara>) -> Result<()> {
+    fn paint_frame(&mut self, frame: &crate::paint::Frame<DwPara>) -> Result<()> {
         let Some(rt) = self.rt.clone() else { return Ok(()) };
         unsafe {
             rt.BeginDraw();
@@ -595,5 +595,15 @@ impl Typesetter for Gfx {
             }
         }
         para
+    }
+}
+
+impl crate::app::Gfx for Gfx {
+    fn set_image_base(&mut self, dir: Option<std::path::PathBuf>) {
+        self.images.set_base(dir);
+    }
+
+    fn draw(&mut self, frame: &crate::paint::Frame<DwPara>) -> bool {
+        self.paint_frame(frame).is_ok()
     }
 }

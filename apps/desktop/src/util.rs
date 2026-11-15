@@ -390,3 +390,70 @@ pub mod fs {
         }
     }
 }
+
+/// Environment variables and the current and temporary directory. On Windows straight
+/// Win32: std::env's versions go through io::Error and bring its formatting into the exe.
+pub mod env {
+    use std::ffi::OsString;
+    use std::path::PathBuf;
+
+    /// A Win32 string filled by `get(buffer)` (which returns the length, or the size needed).
+    #[cfg(windows)]
+    fn win_string(get: impl Fn(&mut [u16]) -> u32) -> Option<OsString> {
+        use std::os::windows::ffi::OsStringExt;
+        let mut buf = vec![0u16; 260];
+        loop {
+            let n = get(&mut buf) as usize;
+            if n == 0 {
+                return None;
+            }
+            if n < buf.len() {
+                return Some(OsString::from_wide(&buf[..n]));
+            }
+            buf.resize(n + 1, 0);
+        }
+    }
+
+    /// An environment variable, or None when it is not set.
+    #[cfg(windows)]
+    pub fn var(name: &str) -> Option<OsString> {
+        let name = windows::core::HSTRING::from(name);
+        win_string(|b| unsafe { windows::Win32::System::Environment::GetEnvironmentVariableW(&name, Some(b)) })
+    }
+
+    #[cfg(windows)]
+    pub fn current_dir() -> Option<PathBuf> {
+        win_string(|b| unsafe { windows::Win32::System::Environment::GetCurrentDirectoryW(Some(b)) }).map(PathBuf::from)
+    }
+
+    #[cfg(windows)]
+    pub fn temp_dir() -> PathBuf {
+        win_string(|b| unsafe { windows::Win32::Storage::FileSystem::GetTempPathW(Some(b)) }).map_or_else(|| PathBuf::from(r"C:\Windows\Temp"), PathBuf::from)
+    }
+
+    #[cfg(not(windows))]
+    pub fn var(name: &str) -> Option<OsString> {
+        std::env::var_os(name)
+    }
+
+    #[cfg(not(windows))]
+    pub fn current_dir() -> Option<PathBuf> {
+        std::env::current_dir().ok()
+    }
+
+    #[cfg(not(windows))]
+    pub fn temp_dir() -> PathBuf {
+        std::env::temp_dir()
+    }
+
+    /// An environment variable as UTF-8.
+    pub fn string(name: &str) -> Option<String> {
+        var(name).and_then(|v| v.into_string().ok())
+    }
+
+    /// The user's home directory.
+    #[cfg(not(windows))]
+    pub fn home() -> PathBuf {
+        var("HOME").map_or_else(|| PathBuf::from("/tmp"), PathBuf::from)
+    }
+}

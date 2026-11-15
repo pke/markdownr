@@ -10,6 +10,7 @@
 // runtime calls `main` below directly.
 #![cfg_attr(all(windows, not(test)), no_main)]
 
+mod app;
 mod ast;
 mod highlight;
 mod layout;

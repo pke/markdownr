@@ -1,14 +1,16 @@
-//! Windows shell: plain Win32 window, Direct2D/DirectWrite rendering.
+//! Windows shell: plain Win32 window, Direct2D/DirectWrite rendering. The app logic is
+//! `crate::app`; this file is the window, its messages and what only Windows has (the
+//! title bar colours, cloaking until the first frame, touch gestures, the compositor
+//! overlay for particles).
 
 mod comp;
 mod dwrite;
 mod images;
 
-use crate::ast::Node;
+use crate::app::{App, Cursor, Host, Timer};
 use crate::settings::Settings;
-use crate::theme::ThemeChoice;
-use crate::view::{Effect, Key, Mods, Viewer};
-use dwrite::{DwPara, Gfx};
+use crate::view::{Effect, Key, Mods};
+use dwrite::Gfx;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -33,21 +35,72 @@ const TIMER_WATCH: usize = 2;
 const TIMER_LAYOUT: usize = 4;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 
-struct App {
+/// What the shared app asks of the window.
+struct WinHost {
     hwnd: HWND,
-    gfx: Gfx,
-    viewer: Viewer<DwPara>,
-    path: Option<PathBuf>,
-    modified: Option<u64>,
-    fullscreen: Option<(WINDOWPLACEMENT, i32)>,
-    mouse: (f32, f32),
+}
+
+impl Host for WinHost {
+    fn invalidate(&self) {
+        unsafe { InvalidateRect(Some(self.hwnd), None, false).ok().ok() };
+    }
+
+    fn set_title(&self, title: &str) {
+        unsafe { SetWindowTextW(self.hwnd, &HSTRING::from(title)).ok() };
+    }
+
+    fn set_timer(&mut self, timer: Timer, every: Option<Duration>) {
+        let id = match timer {
+            Timer::Chrome => TIMER_CHROME,
+            Timer::Layout => TIMER_LAYOUT,
+        };
+        unsafe {
+            match every {
+                Some(d) => {
+                    SetTimer(Some(self.hwnd), id, (d.as_millis() as u32).max(1), None);
+                }
+                None => KillTimer(Some(self.hwnd), id).ok().unwrap_or_default(),
+            }
+        }
+    }
+
+    fn open_dialog(&mut self) -> Option<PathBuf> {
+        let mut buf = [0u16; 2048];
+        let filter: Vec<u16> = "Markdown (*.md;*.markdown;*.txt)\0*.md;*.markdown;*.mdown;*.mkd;*.txt\0Alle Dateien\0*.*\0\0".encode_utf16().collect();
+        let mut ofn = OPENFILENAMEW {
+            lStructSize: size_of::<OPENFILENAMEW>() as u32,
+            hwndOwner: self.hwnd,
+            lpstrFilter: PCWSTR(filter.as_ptr()),
+            lpstrFile: PWSTR(buf.as_mut_ptr()),
+            nMaxFile: buf.len() as u32,
+            Flags: OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST,
+            ..Default::default()
+        };
+        if !unsafe { GetOpenFileNameW(&mut ofn) }.as_bool() {
+            return None;
+        }
+        let n = buf.iter().position(|&c| c == 0).unwrap_or(0);
+        Some(PathBuf::from(String::from_utf16_lossy(&buf[..n])))
+    }
+
+    fn open_external(&mut self, target: &str) {
+        unsafe { ShellExecuteW(Some(self.hwnd), w!("open"), &HSTRING::from(target), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
+    }
+
+    fn minimized(&self) -> bool {
+        unsafe { IsIconic(self.hwnd) }.as_bool()
+    }
+}
+
+/// The app plus the window state only Windows has.
+struct Win {
+    app: App<Gfx, WinHost>,
+    hwnd: HWND,
+    /// Placement and style to restore when leaving full screen.
+    full: Option<(WINDOWPLACEMENT, i32)>,
     tracking: bool,
     pan: Option<(i32, i32, i32, i32)>, // last x, y; start x, y (pixels)
     zoom: Option<u64>,
-    chrome_timer: bool,
-    /// While the window is being resized (until 150 ms after the last WM_SIZE or the
-    /// end of the drag) the idle layout waits: each size step would discard it.
-    sizing_until: Option<Instant>,
     /// Particle overlay on the compositor (made after the first frame); failed: not again.
     overlay: Option<comp::Overlay>,
     overlay_failed: bool,
@@ -56,40 +109,19 @@ struct App {
     caption: Option<(u32, u32)>,
     /// Still hidden from the screen until the first frame (see `uncloak`).
     cloaked: bool,
-    settings: Settings,
-    settings_path: PathBuf,
-    sample: &'static str,
 }
 
 /// The app, used only on the UI thread (window procedure and `run`; thread-pool work posts
 /// messages instead). A plain static rather than `thread_local!`, whose destructor
 /// registration brings std's TLS clean-up and its abort path; `run` drops the app itself.
-struct AppCell(RefCell<Option<App>>);
+struct AppCell(RefCell<Option<Win>>);
 // SAFETY: only the UI thread touches it (see above).
 unsafe impl Sync for AppCell {}
 static APP: AppCell = AppCell(RefCell::new(None));
 
 /// Run `f` on the app unless it is already borrowed (re-entrant window messages).
-fn with_app<R>(f: impl FnOnce(&mut App) -> R) -> Option<R> {
+fn with_app<R>(f: impl FnOnce(&mut Win) -> R) -> Option<R> {
     APP.0.try_borrow_mut().ok().and_then(|mut a| a.as_mut().map(f))
-}
-
-fn parse(text: &str) -> Node {
-    let mut doc = crate::ast::parse(&crate::transforms::preprocess_html(text));
-    crate::transforms::compose(&mut doc, &crate::transforms::default_pipeline());
-    doc
-}
-
-fn read_doc(path: &Path) -> (String, String, Node) {
-    let text = match crate::util::fs::read(path) {
-        Some(bytes) => {
-            let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
-            String::from_utf8(bytes.to_vec()).unwrap_or_else(|e| e.into_bytes().iter().map(|&b| b as char).collect())
-        }
-        None => ["# Datei kann nicht geöffnet werden\n\n`", &path.to_string_lossy(), "`"].concat(),
-    };
-    let doc = parse(&text);
-    (crate::util::path::file_name(path).to_string_lossy().into_owned(), text, doc)
 }
 
 #[link(name = "kernel32")]
@@ -107,7 +139,7 @@ struct BackgroundDoc {
     done: isize,
     /// Running on the pool: `result` belongs to the worker until `done` is set.
     pooled: bool,
-    result: Option<(String, String, Node)>,
+    result: Option<(String, String, crate::ast::Node)>,
 }
 
 impl BackgroundDoc {
@@ -127,12 +159,12 @@ impl BackgroundDoc {
         // SAFETY: ctx is the job from `start`; the main thread waits for `done` before using `result`.
         unsafe {
             let job = ctx as *mut BackgroundDoc;
-            (*job).result = Some(read_doc(&(*job).path));
+            (*job).result = Some(crate::app::read_doc(&(*job).path));
             SetEvent((*job).done);
         }
     }
 
-    fn join(job: *mut BackgroundDoc) -> (String, String, Node) {
+    fn join(job: *mut BackgroundDoc) -> (String, String, crate::ast::Node) {
         // SAFETY: `job` comes from `start` and is used once; after `done` is signalled
         // (or when it never ran on the pool) the worker no longer touches it.
         unsafe {
@@ -143,7 +175,7 @@ impl BackgroundDoc {
             if job.done != 0 {
                 CloseHandle(job.done);
             }
-            job.result.take().unwrap_or_else(|| read_doc(&job.path))
+            job.result.take().unwrap_or_else(|| crate::app::read_doc(&job.path))
         }
     }
 }
@@ -152,10 +184,6 @@ impl BackgroundDoc {
 fn cloak(hwnd: HWND, on: bool) {
     let v = BOOL::from(on);
     unsafe { DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &v as *const _ as _, 4).ok() };
-}
-
-fn mtime(path: &Path) -> Option<u64> {
-    crate::util::fs::modified(path)
 }
 
 fn system_dark() -> bool {
@@ -198,72 +226,10 @@ fn from_touch() -> bool {
     (unsafe { GetMessageExtraInfo() }.0 as u32 & 0xFFFF_FF00) == 0xFF51_5700
 }
 
-fn settings_path() -> PathBuf {
-    let base = env_var("APPDATA").map(PathBuf::from).unwrap_or_else(temp_dir);
-    crate::util::path::join(&base, Path::new(r"Markdownr\settings.ini"))
-}
-
-fn percent_decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let Some(v) = s.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok()) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-impl App {
-    fn invalidate(&self) {
-        unsafe { InvalidateRect(Some(self.hwnd), None, false).ok().ok() };
-    }
-
-    /// Complete a partial layout before input that may need all of it (selection
-    /// end, links and anchors, find, TOC, copy). Scrolling extends it as needed.
-    fn settle(&mut self) {
-        self.viewer.finish_layout(&mut self.gfx);
-    }
-
-    /// Arm the idle layout: at once, or once a resize has come to rest.
-    fn arm_layout(&mut self) {
-        let wait = self.sizing_until.map_or(0, |t| t.saturating_duration_since(Instant::now()).as_millis() as u32);
-        if wait == 0 {
-            self.sizing_until = None;
-        }
-        unsafe { SetTimer(Some(self.hwnd), TIMER_LAYOUT, wait.max(1), None) };
-    }
-
-    /// One idle slice of a partial layout; repaint once it is complete.
-    fn continue_layout(&mut self) {
-        if self.sizing_until.is_some_and(|t| t > Instant::now()) {
-            return self.arm_layout();
-        }
-        if self.viewer.continue_layout(&mut self.gfx, Duration::from_millis(30)) || !self.viewer.layout_pending() {
-            unsafe { KillTimer(Some(self.hwnd), TIMER_LAYOUT).ok() };
-            self.invalidate();
-        }
-    }
-
-    fn set_title(&self) {
-        // "First heading | Markdownr", or just "Markdownr" when the document has no heading.
-        let title = match self.viewer.first_heading() {
-            Some(h) => [h.as_str(), " | Markdownr"].concat(),
-            None => "Markdownr".to_string(),
-        };
-        unsafe { SetWindowTextW(self.hwnd, &HSTRING::from(title)).ok() };
-    }
-
+impl Win {
     fn apply_dark(&mut self) {
         let dark = system_dark();
-        self.viewer.set_dark(dark);
+        self.app.set_dark(dark);
         self.caption = None; // the next frame sets the title bar from the theme again
         let v = BOOL::from(dark);
         unsafe {
@@ -274,7 +240,7 @@ impl App {
     /// Title bar in the theme's colours (Windows 11; earlier versions ignore it):
     /// background and text, and dark caption buttons on a dark background.
     fn apply_caption(&mut self) {
-        let t = &self.viewer.theme;
+        let t = &self.app.viewer.theme;
         let bgr = |ink: crate::theme::Ink| u32::from_le_bytes([ink.0[0], ink.0[1], ink.0[2], 0]);
         let colours = (bgr(t.background), bgr(t.heading));
         if self.caption == Some(colours) {
@@ -301,60 +267,34 @@ impl App {
         }
     }
 
-    fn update_size(&mut self) {
+    fn update_size(&mut self, live: bool) {
         let (w, h) = client_size(self.hwnd);
         let s = dpi_scale(self.hwnd);
-        self.gfx.resize(w, h);
-        self.viewer.resize(w as f32 / s, h as f32 / s);
+        self.app.gfx.resize(w, h);
+        self.app.resize(w as f32 / s, h as f32 / s, live);
     }
 
     fn paint(&mut self) {
         let (w, h) = client_size(self.hwnd);
         let dpi = dpi_scale(self.hwnd) * 96.0;
-        match self.gfx.ensure_target(w, h, dpi) {
-            Ok(true) => self.viewer.invalidate(),
+        match self.app.gfx.ensure_target(w, h, dpi) {
+            Ok(true) => self.app.viewer.invalidate(),
             Ok(false) => {}
             Err(_) => {
                 return;
             }
         }
-        self.viewer.ensure_layout(&mut self.gfx);
-        if self.viewer.layout_pending() {
-            self.arm_layout();
-        }
+        self.app.layout();
         self.apply_caption();
         self.particle_overlay();
-        if !self.chrome_timer {
-            // The layout just made may animate (particles, quote crossfades): arm the
-            // timer now rather than at the next input.
-            self.schedule();
-        }
         self.painted = true;
-        let v = &self.viewer;
-        let finds = v.find_highlights();
-        let sprites = v.sprites(Instant::now());
-        let frame = crate::paint::Frame {
-            doc: &v.layout,
-            selection: v.selection.as_ref(),
-            finds: &finds,
-            theme: &v.theme,
-            scroll: v.scroll,
-            view_h: v.view_h,
-            chrome: v.chrome_visible().then_some((&v.chrome, v.chrome_alpha)),
-            particles: v.particles.as_ref().map(|p| (p, sprites.as_slice())),
-            tip: &v.tip_layout,
-            now_ms: (Instant::now() - v.anim_start).as_secs_f32() * 1000.0,
-        };
-        if self.gfx.draw(&frame).is_err() {
-            self.viewer.invalidate();
-            self.invalidate();
-        }
+        self.app.draw();
     }
 
     /// From the second frame on, particles move on a compositor overlay (no frames of
     /// ours); a window whose overlay failed draws them into the frame.
     fn particle_overlay(&mut self) {
-        let v = &self.viewer;
+        let v = &self.app.viewer;
         let wanted = self.painted && !self.overlay_failed && v.particles.is_some() && !v.reduce_motion;
         if wanted && self.overlay.is_none() {
             match comp::Overlay::new(self.hwnd) {
@@ -364,8 +304,8 @@ impl App {
         }
         if let (true, Some(o), Some(ps)) = (wanted, self.overlay.as_mut(), v.particles.as_ref()) {
             let ms = (Instant::now() - v.anim_start).as_secs_f32() * 1000.0;
-            if o.show(&mut self.gfx, ps, v.particles_gen, &v.theme, v.view_h, dpi_scale(self.hwnd), ms).is_ok() {
-                self.viewer.composited = true;
+            if o.show(&mut self.app.gfx, ps, v.particles_gen, &v.theme, v.view_h, dpi_scale(self.hwnd), ms).is_ok() {
+                self.app.viewer.composited = true;
                 return;
             }
             self.overlay_failed = true;
@@ -373,173 +313,38 @@ impl App {
         if let Some(o) = self.overlay.take() {
             o.clear();
         }
-        self.viewer.composited = false;
-    }
-
-    /// Drive the chrome fade: (re)arm or stop the animation timer.
-    fn schedule(&mut self) {
-        let (repaint, next) = self.viewer.tick(Instant::now());
-        let next = if unsafe { IsIconic(self.hwnd) }.as_bool() { None } else { next };
-        if repaint {
-            self.invalidate();
-        }
-        unsafe {
-            match next {
-                Some(d) => {
-                    SetTimer(Some(self.hwnd), TIMER_CHROME, d.as_millis().clamp(10, 60_000) as u32, None);
-                    self.chrome_timer = true;
-                }
-                None if self.chrome_timer => {
-                    KillTimer(Some(self.hwnd), TIMER_CHROME).ok();
-                    self.chrome_timer = false;
-                }
-                None => {}
-            }
-        }
-    }
-
-    fn load(&mut self, path: PathBuf) {
-        let (title, source, doc) = read_doc(&path);
-        let same = self.path.as_ref().is_some_and(|p| p.as_os_str() == path.as_os_str()); // (PathBuf == parses components)
-        self.gfx.images.set_base(Some(crate::util::path::parent(&path).to_path_buf()));
-        self.viewer.set_document(title, source, doc, same);
-        self.modified = mtime(&path);
-        self.settings.add_recent(&path);
-        self.settings.save(&self.settings_path);
-        self.path = Some(path);
-        self.set_title();
-        self.invalidate();
-    }
-
-    fn load_text(&mut self, title: &str, text: &str) {
-        self.path = None;
-        self.modified = None;
-        self.gfx.images.set_base(current_dir());
-        self.viewer.set_document(title.to_string(), text.to_string(), parse(text), false);
-        self.set_title();
-        self.invalidate();
-    }
-
-    fn reload(&mut self) {
-        match self.path.clone() {
-            Some(p) => {
-                let (title, source, doc) = read_doc(&p);
-                self.viewer.set_document(title, source, doc, true);
-                self.modified = mtime(&p);
-                self.set_title();
-            }
-            None => {
-                let start = self.settings.start_page();
-                self.viewer.set_document("Markdownr".into(), start.clone(), parse(&start), true);
-            }
-        }
-        self.invalidate();
-    }
-
-    /// Reload when the file changed on disk (polled once a second).
-    fn watch(&mut self) {
-        if let Some(p) = &self.path {
-            let now = mtime(p);
-            if now.is_some() && now != self.modified {
-                self.reload();
-            }
-        }
-    }
-
-    fn open_dialog(&mut self) {
-        let mut buf = [0u16; 2048];
-        let filter: Vec<u16> = "Markdown (*.md;*.markdown;*.txt)\0*.md;*.markdown;*.mdown;*.mkd;*.txt\0Alle Dateien\0*.*\0\0".encode_utf16().collect();
-        let mut ofn = OPENFILENAMEW {
-            lStructSize: size_of::<OPENFILENAMEW>() as u32,
-            hwndOwner: self.hwnd,
-            lpstrFilter: PCWSTR(filter.as_ptr()),
-            lpstrFile: PWSTR(buf.as_mut_ptr()),
-            nMaxFile: buf.len() as u32,
-            Flags: OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST,
-            ..Default::default()
-        };
-        if unsafe { GetOpenFileNameW(&mut ofn) }.as_bool() {
-            let n = buf.iter().position(|&c| c == 0).unwrap_or(0);
-            self.load(PathBuf::from(String::from_utf16_lossy(&buf[..n])));
-        }
-    }
-
-    fn open_url(&mut self, url: &str) {
-        let lower = url.to_ascii_lowercase();
-        match lower.as_str() {
-            "markdownr:open" => return self.open_dialog(),
-            "markdownr:sample" => {
-                let sample = self.sample;
-                return self.load_text("Beispiel", sample);
-            }
-            _ => {}
-        }
-        if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("mailto:") {
-            unsafe { ShellExecuteW(Some(self.hwnd), w!("open"), &HSTRING::from(url), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
-            return;
-        }
-        let file = percent_decode(url.split('#').next().unwrap_or(""));
-        let file = file.strip_prefix("file:///").or_else(|| file.strip_prefix("file://")).unwrap_or(&file).to_string();
-        let p = Path::new(&file);
-        let target = if crate::util::path::is_absolute(p) {
-            p.to_path_buf()
-        } else if let Some(doc) = &self.path {
-            crate::util::path::join(crate::util::path::parent(doc), p)
-        } else {
-            return;
-        };
-        if !crate::util::fs::is_file(&target) {
-            return;
-        }
-        let ext = crate::util::path::extension(&target);
-        if matches!(ext.as_str(), "md" | "markdown" | "mdown" | "mkd" | "txt") {
-            self.load(target);
-        } else {
-            unsafe { ShellExecuteW(Some(self.hwnd), w!("open"), &HSTRING::from(target.as_os_str()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
-        }
-    }
-
-    fn save_settings(&mut self) {
-        self.settings.font_size = self.viewer.font_size;
-        self.settings.theme = self.viewer.theme_choice.name().to_string();
-        self.settings.remember_fullscreen = self.viewer.remember_fullscreen;
-        self.settings.fullscreen = self.viewer.remember_fullscreen && self.fullscreen.is_some();
-        self.settings.save(&self.settings_path);
+        self.app.viewer.composited = false;
     }
 }
 
 /// Effects that may re-enter the window procedure run outside the app borrow.
 fn apply(hwnd: HWND, effect: Effect) {
-    match effect {
-        Effect::Copy(text) => copy_to_clipboard(hwnd, &text),
-        Effect::ToggleFullscreen => toggle_fullscreen(hwnd, None),
-        Effect::ExitFullscreen => toggle_fullscreen(hwnd, Some(false)),
-        Effect::OpenUrl(url) => {
-            with_app(|a| a.open_url(&url));
-        }
-        Effect::OpenDialog => {
-            with_app(|a| a.open_dialog());
-        }
-        Effect::Reload => {
-            with_app(|a| a.reload());
-        }
-        Effect::Quit => unsafe { DestroyWindow(hwnd).ok().unwrap_or_default() },
+    let rest = match effect {
+        Effect::Copy(_) | Effect::ToggleFullscreen | Effect::ExitFullscreen | Effect::Quit => Some(effect),
+        other => with_app(|w| w.app.effect(other)).flatten(),
+    };
+    match rest {
+        Some(Effect::Copy(text)) => copy_to_clipboard(hwnd, &text),
+        Some(Effect::ToggleFullscreen) => toggle_fullscreen(hwnd, None),
+        Some(Effect::ExitFullscreen) => toggle_fullscreen(hwnd, Some(false)),
+        Some(Effect::Quit) => unsafe { DestroyWindow(hwnd).ok().unwrap_or_default() },
+        _ => {}
     }
-    with_app(|a| {
-        a.schedule();
-        a.invalidate();
+    with_app(|w| {
+        w.app.schedule();
+        w.app.invalidate();
     });
 }
 
 fn toggle_fullscreen(hwnd: HWND, want: Option<bool>) {
-    let saved = with_app(|a| a.fullscreen.take()).flatten();
+    let saved = with_app(|w| w.full.take()).flatten();
     unsafe {
         if let Some((placement, style)) = saved {
             if want == Some(true) {
-                with_app(|a| a.fullscreen = Some((placement, style)));
+                with_app(|w| w.full = Some((placement, style)));
                 return;
             }
-            with_app(|a| a.viewer.set_fullscreen(false));
+            with_app(|w| w.app.set_fullscreen(false));
             SetWindowLongW(hwnd, GWL_STYLE, style);
             SetWindowPlacement(hwnd, &placement).ok();
             SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED).ok();
@@ -553,9 +358,9 @@ fn toggle_fullscreen(hwnd: HWND, want: Option<bool>) {
             let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
             let mut mi = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
             GetMonitorInfoW(monitor, &mut mi).ok().ok();
-            with_app(|a| {
-                a.fullscreen = Some((placement, style));
-                a.viewer.set_fullscreen(true);
+            with_app(|w| {
+                w.full = Some((placement, style));
+                w.app.set_fullscreen(true);
             });
             // Borderless over the whole monitor, covering the taskbar.
             SetWindowLongW(hwnd, GWL_STYLE, style & !(WS_OVERLAPPEDWINDOW.0 as i32));
@@ -619,34 +424,34 @@ fn gesture(hwnd: HWND, lp: LPARAM) -> bool {
     const GF_BEGIN: u32 = 1;
     const GF_END: u32 = 4;
     let (x, y) = (gi.ptsLocation.x as i32, gi.ptsLocation.y as i32);
-    let handled = with_app(|a| {
+    let handled = with_app(|w| {
         let s = dpi_scale(hwnd);
         if gi.dwID == GID_PAN.0 {
-            if gi.dwFlags & GF_BEGIN != 0 || a.pan.is_none() {
-                a.pan = Some((x, y, x, y));
+            if gi.dwFlags & GF_BEGIN != 0 || w.pan.is_none() {
+                w.pan = Some((x, y, x, y));
             }
-            let (_, ly, sx, sy) = a.pan.unwrap();
-            a.viewer.scroll_by(-(y - ly) as f32 / s);
-            a.pan = Some((x, y, sx, sy));
+            let (_, ly, sx, sy) = w.pan.unwrap();
+            w.app.viewer.scroll_by(-(y - ly) as f32 / s);
+            w.pan = Some((x, y, sx, sy));
             if gi.dwFlags & GF_END != 0 {
-                a.viewer.swipe((x - sx) as f32 / s, (y - sy) as f32 / s);
-                a.pan = None;
+                w.app.viewer.swipe((x - sx) as f32 / s, (y - sy) as f32 / s);
+                w.pan = None;
             }
-            a.invalidate();
+            w.app.invalidate();
             true
         } else if gi.dwID == GID_ZOOM.0 {
             if gi.dwFlags & GF_BEGIN != 0 {
-                a.zoom = Some(gi.ullArguments);
-            } else if let Some(start) = a.zoom {
+                w.zoom = Some(gi.ullArguments);
+            } else if let Some(start) = w.zoom {
                 let ratio = gi.ullArguments as f32 / start.max(1) as f32;
                 if !(0.85..=1.15).contains(&ratio) {
-                    a.viewer.zoom_by(ratio);
-                    a.zoom = Some(gi.ullArguments);
-                    a.invalidate();
+                    w.app.viewer.zoom_by(ratio);
+                    w.zoom = Some(gi.ullArguments);
+                    w.app.invalidate();
                 }
             }
             if gi.dwFlags & GF_END != 0 {
-                a.zoom = None;
+                w.zoom = None;
             }
             true
         } else {
@@ -666,29 +471,20 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             WM_PAINT => {
                 let mut ps = PAINTSTRUCT::default();
                 BeginPaint(hwnd, &mut ps);
-                with_app(|a| {
-                    a.paint();
-                    a.uncloak();
+                with_app(|w| {
+                    w.paint();
+                    w.uncloak();
                 });
                 let _ = EndPaint(hwnd, &ps);
                 LRESULT(0)
             }
             WM_ERASEBKGND => LRESULT(1),
             WM_SIZE => {
-                with_app(|a| {
-                    a.sizing_until = Some(Instant::now() + Duration::from_millis(150));
-                    a.update_size();
-                    a.invalidate();
-                });
+                with_app(|w| w.update_size(true));
                 LRESULT(0)
             }
             WM_EXITSIZEMOVE => {
-                with_app(|a| {
-                    a.sizing_until = None;
-                    if a.viewer.layout_pending() {
-                        a.arm_layout();
-                    }
-                });
+                with_app(|w| w.app.resize_done());
                 LRESULT(0)
             }
             WM_DPICHANGED => {
@@ -697,31 +493,28 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 LRESULT(0)
             }
             WM_SETTINGCHANGE => {
-                with_app(|a| {
-                    a.apply_dark();
-                    a.invalidate();
-                });
+                with_app(|w| w.apply_dark());
                 LRESULT(0)
             }
             WM_TIMER => {
-                with_app(|a| match wp.0 {
-                    TIMER_CHROME => a.schedule(),
+                with_app(|w| match wp.0 {
+                    TIMER_CHROME => w.app.schedule(),
                     TIMER_WATCH => {
-                        a.uncloak(); // in case no frame could be drawn
-                        a.watch()
+                        w.uncloak(); // in case no frame could be drawn
+                        w.app.watch()
                     }
-                    TIMER_LAYOUT => a.continue_layout(),
+                    TIMER_LAYOUT => w.app.continue_layout(),
                     _ => {}
                 });
                 LRESULT(0)
             }
             images::WM_IMAGE_LOADED => {
                 // SAFETY: lParam is the Job box posted by the image loader.
-                let ready = with_app(|a| a.gfx.images.collect(lp.0));
-                with_app(|a| {
+                let ready = with_app(|w| w.app.gfx.images.collect(lp.0));
+                with_app(|w| {
                     if ready == Some(true) {
-                        a.viewer.invalidate();
-                        a.invalidate();
+                        w.app.viewer.invalidate();
+                        w.app.invalidate();
                     }
                 });
                 LRESULT(0)
@@ -730,11 +523,9 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 let delta = ((wp.0 >> 16) & 0xffff) as i16 as f32 / 120.0;
                 let mut pt = POINT { x: lparam_point(lp).0, y: lparam_point(lp).1 };
                 ScreenToClient(hwnd, &mut pt).ok().ok();
-                with_app(|a| {
+                with_app(|w| {
                     let s = dpi_scale(hwnd);
-                    let step = a.viewer.font_size * 3.0;
-                    a.viewer.wheel(-delta * step, mods(), pt.x as f32 / s, pt.y as f32 / s);
-                    a.invalidate();
+                    w.app.wheel(-delta, mods(), pt.x as f32 / s, pt.y as f32 / s);
                 });
                 LRESULT(0)
             }
@@ -749,10 +540,9 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 SetCapture(hwnd);
                 let (x, y) = lparam_point(lp);
                 let dbl = Duration::from_millis(GetDoubleClickTime() as u64);
-                with_app(|a| {
+                with_app(|w| {
                     let s = dpi_scale(hwnd);
-                    a.viewer.press(x as f32 / s, y as f32 / s, mods(), dbl);
-                    a.invalidate();
+                    w.app.press(x as f32 / s, y as f32 / s, mods(), dbl);
                 });
                 LRESULT(0)
             }
@@ -760,13 +550,9 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 ReleaseCapture().ok();
                 let (x, y) = lparam_point(lp);
                 let tap = from_touch();
-                let effect = with_app(|a| {
-                    a.settle();
+                let effect = with_app(|w| {
                     let s = dpi_scale(hwnd);
-                    let e = a.viewer.release(x as f32 / s, y as f32 / s, tap, Instant::now());
-                    a.schedule();
-                    a.invalidate();
-                    e
+                    w.app.release(x as f32 / s, y as f32 / s, tap)
                 })
                 .flatten();
                 if let Some(e) = effect {
@@ -777,41 +563,29 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             WM_MOUSEMOVE => {
                 let (x, y) = lparam_point(lp);
                 let touch = from_touch();
-                with_app(|a| {
-                    if !a.tracking {
+                with_app(|w| {
+                    if !w.tracking {
                         let mut tme = TRACKMOUSEEVENT { cbSize: size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE, hwndTrack: hwnd, dwHoverTime: 0 };
-                        a.tracking = TrackMouseEvent(&mut tme).is_ok();
+                        w.tracking = TrackMouseEvent(&mut tme).is_ok();
                     }
                     let s = dpi_scale(hwnd);
-                    a.mouse = (x as f32 / s, y as f32 / s);
-                    if !touch && a.viewer.mouse_move(a.mouse.0, a.mouse.1, Instant::now()) {
-                        a.invalidate();
-                    }
-                    a.schedule();
+                    w.app.mouse_move(x as f32 / s, y as f32 / s, touch);
                 });
                 LRESULT(0)
             }
             WM_MOUSELEAVE => {
-                with_app(|a| {
-                    a.tracking = false;
-                    a.viewer.mouse_leave();
-                    a.schedule();
-                    a.invalidate();
+                with_app(|w| {
+                    w.tracking = false;
+                    w.app.mouse_leave();
                 });
                 LRESULT(0)
             }
             WM_SETCURSOR if (lp.0 & 0xffff) as u32 == HTCLIENT => {
-                let cursor = with_app(|a| {
-                    let (x, y) = a.mouse;
-                    if a.viewer.over_button(x, y) || a.viewer.over_link(x, y) {
-                        IDC_HAND
-                    } else if a.viewer.over_chrome_area(x, y) {
-                        IDC_ARROW
-                    } else {
-                        IDC_IBEAM
-                    }
-                })
-                .unwrap_or(IDC_ARROW);
+                let cursor = match with_app(|w| w.app.cursor()) {
+                    Some(Cursor::Hand) => IDC_HAND,
+                    Some(Cursor::Text) => IDC_IBEAM,
+                    _ => IDC_ARROW,
+                };
                 if let Ok(c) = LoadCursorW(None, cursor) {
                     SetCursor(Some(c));
                 }
@@ -819,16 +593,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             }
             WM_KEYDOWN | WM_SYSKEYDOWN => {
                 let Some(key) = key_from_vk(wp.0 as u16) else { return DefWindowProcW(hwnd, msg, wp, lp) };
-                let effect = with_app(|a| {
-                    if !matches!(key, Key::PageDown | Key::PageUp | Key::Space | Key::Down | Key::Up | Key::Left | Key::Right | Key::Home | Key::End) {
-                        a.settle();
-                    }
-                    let e = a.viewer.key(key, mods(), Instant::now());
-                    a.schedule();
-                    a.invalidate();
-                    e
-                })
-                .flatten();
+                let effect = with_app(|w| w.app.key(key, mods())).flatten();
                 if let Some(e) = effect {
                     apply(hwnd, e);
                 }
@@ -836,12 +601,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             }
             WM_CHAR => {
                 if let Some(c) = char::from_u32(wp.0 as u32) {
-                    with_app(|a| {
-                        a.settle();
-                        if a.viewer.text_input(c) {
-                            a.invalidate();
-                        }
-                    });
+                    with_app(|w| w.app.text(c));
                 }
                 LRESULT(0)
             }
@@ -851,11 +611,11 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 let n = DragQueryFileW(drop, 0, Some(&mut buf)) as usize;
                 DragFinish(drop);
                 let path = PathBuf::from(String::from_utf16_lossy(&buf[..n]));
-                with_app(|a| a.load(path));
+                with_app(|w| w.app.load(path));
                 LRESULT(0)
             }
             WM_DESTROY => {
-                with_app(|a| a.save_settings());
+                with_app(|w| w.app.save_settings());
                 PostQuitMessage(0);
                 LRESULT(0)
             }
@@ -868,17 +628,12 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
-        crate::view::set_language(&env_string("MARKDOWNR_LANGUAGE").unwrap_or_else(ui_language));
-        crate::view::set_key_namer(key_name);
-        if let Some(locale) = env_string("MARKDOWNR_LOCALE") {
-            crate::transforms::set_locale(&locale);
-        } else {
+        crate::app::init_locale(ui_language, || {
             let mut buf = [0u16; 85];
             let n = windows::Win32::Globalization::GetUserDefaultLocaleName(&mut buf);
-            if n > 1 {
-                crate::transforms::set_locale(&String::from_utf16_lossy(&buf[..n as usize - 1]));
-            }
-        }
+            (n > 1).then(|| String::from_utf16_lossy(&buf[..n as usize - 1]))
+        });
+        crate::view::set_key_namer(key_name);
         // Parse the document while the window and Direct2D come up.
         let background = path.as_deref().map(BackgroundDoc::start);
         let instance = GetModuleHandleW(None).expect("module handle");
@@ -921,72 +676,35 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         ];
         SetGestureConfig(hwnd, 0, &configs, size_of::<GESTURECONFIG>() as u32).ok();
 
-        let settings_path = env_var("MARKDOWNR_SETTINGS").map(PathBuf::from).unwrap_or_else(settings_path);
-        let mut settings = Settings::load(&settings_path);
+        let settings_path = crate::app::settings_path();
+        let settings = Settings::load(&settings_path);
         let mut gfx = Gfx::new(hwnd).expect("Direct2D/DirectWrite");
         {
             // Create the render target now, in parallel with the parse.
             let (w, h) = client_size(hwnd);
             let _ = gfx.ensure_target(w, h, dpi_scale(hwnd) * 96.0);
         }
-        let sample_mode = env_var("MARKDOWNR_SAMPLE").is_some();
-        let (title, source, doc) = match background {
+        let doc = match background {
             Some(job) => BackgroundDoc::join(job),
-            None if sample_mode => ("Beispiel".into(), sample.to_string(), parse(sample)),
-            None => {
-                let start = settings.start_page();
-                ("Markdownr".into(), start.clone(), parse(&start))
-            }
+            None => crate::app::start_doc(&settings, sample),
         };
-        if let Some(p) = &path {
-            settings.add_recent(p);
-            settings.save(&settings_path);
-        }
-        let mut viewer = Viewer::new(title, source, doc);
-        viewer.font_size = settings.font_size;
-        viewer.theme_choice = ThemeChoice::from_name(&settings.theme);
-        viewer.remember_fullscreen = settings.remember_fullscreen;
-        let start_fullscreen = settings.remember_fullscreen && settings.fullscreen;
-        gfx.images.set_base(path.as_ref().map(|p| crate::util::path::parent(p).to_path_buf()).or_else(|| current_dir()));
-        let mut app = App {
-            hwnd,
-            gfx,
-            viewer,
-            modified: path.as_deref().and_then(mtime),
-            path,
-            fullscreen: None,
-            mouse: (0.0, 0.0),
-            tracking: false,
-            pan: None,
-            zoom: None,
-            chrome_timer: false,
-            sizing_until: None,
-            overlay: None,
-            overlay_failed: false,
-            painted: false,
-            caption: None,
-            cloaked: true,
-            settings,
-            settings_path,
-            sample,
-        };
+        let mut app = App::new(WinHost { hwnd }, gfx, path, doc, settings, settings_path, sample);
+        let start_fullscreen = app.start_fullscreen();
         {
             let st = windows::Win32::System::SystemInformation::GetLocalTime();
             app.viewer.today = (st.wYear as i32, st.wMonth as u32, st.wDay as u32);
             let mut anim = BOOL(1);
             let _ = SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, Some(&mut anim as *mut _ as *mut _), SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0));
             app.viewer.reduce_motion = !anim.as_bool();
-            if let Some(ms) = env_string("MARKDOWNR_TIME_MS").and_then(|s| s.parse::<u64>().ok()) {
-                app.viewer.anim_start = Instant::now() - Duration::from_millis(ms);
-            }
         }
-        app.apply_dark();
-        app.set_title();
-        app.update_size();
-        *APP.0.borrow_mut() = Some(app);
-        with_app(|a| a.schedule());
+        let mut win = Win { app, hwnd, full: None, tracking: false, pan: None, zoom: None, overlay: None, overlay_failed: false, painted: false, caption: None, cloaked: true };
+        win.apply_dark();
+        win.app.set_title();
+        win.update_size(false);
+        *APP.0.borrow_mut() = Some(win);
+        with_app(|w| w.app.schedule());
         SetTimer(Some(hwnd), TIMER_WATCH, 1000, None);
-        // Cloaked until the first frame is drawn (App::uncloak): no white client area.
+        // Cloaked until the first frame is drawn (Win::uncloak): no white client area.
         cloak(hwnd, true);
         let _ = ShowWindow(hwnd, SW_SHOW);
         if start_fullscreen {
@@ -1033,40 +751,4 @@ fn key_name(vk: u16, extended: bool) -> Option<String> {
     let mut chars = name.chars();
     let first = chars.next()?;
     Some(std::iter::once(first).chain(chars.flat_map(char::to_lowercase)).collect())
-}
-
-/// Environment, current and temp directory straight from Win32: std::env's versions go
-/// through io::Error and bring its formatting into the exe. A Win32 string of up to `n`
-/// u16s, filled by `get(buffer)` (which returns the length, or the size needed).
-fn win_string(get: impl Fn(&mut [u16]) -> u32) -> Option<std::ffi::OsString> {
-    use std::os::windows::ffi::OsStringExt;
-    let mut buf = vec![0u16; 260];
-    loop {
-        let n = get(&mut buf) as usize;
-        if n == 0 {
-            return None;
-        }
-        if n < buf.len() {
-            return Some(std::ffi::OsString::from_wide(&buf[..n]));
-        }
-        buf.resize(n + 1, 0);
-    }
-}
-
-/// An environment variable, or None when it is not set.
-pub(crate) fn env_var(name: &str) -> Option<std::ffi::OsString> {
-    let name = HSTRING::from(name);
-    win_string(|b| unsafe { windows::Win32::System::Environment::GetEnvironmentVariableW(&name, Some(b)) })
-}
-
-fn env_string(name: &str) -> Option<String> {
-    env_var(name).and_then(|v| v.into_string().ok())
-}
-
-fn current_dir() -> Option<PathBuf> {
-    win_string(|b| unsafe { windows::Win32::System::Environment::GetCurrentDirectoryW(Some(b)) }).map(PathBuf::from)
-}
-
-fn temp_dir() -> PathBuf {
-    win_string(|b| unsafe { windows::Win32::Storage::FileSystem::GetTempPathW(Some(b)) }).map_or_else(|| PathBuf::from(r"C:\Windows\Temp"), PathBuf::from)
 }

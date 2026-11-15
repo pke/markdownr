@@ -21,6 +21,22 @@ impl Default for Settings {
     }
 }
 
+/// Where the settings live: %APPDATA%\Markdownr (Windows), ~/Library/Application Support/Markdownr
+/// (macOS), $XDG_CONFIG_HOME/markdownr or ~/.config/markdownr (Linux).
+pub fn default_path() -> PathBuf {
+    use crate::util::{env, path::join};
+    #[cfg(windows)]
+    let (base, rel) = (env::var("APPDATA").map(PathBuf::from).unwrap_or_else(env::temp_dir), r"Markdownr\settings.ini");
+    #[cfg(target_os = "macos")]
+    let (base, rel) = (env::home(), "Library/Application Support/Markdownr/settings.ini");
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let (base, rel) = match env::var("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
+        Some(v) => (PathBuf::from(v), "markdownr/settings.ini"),
+        None => (env::home(), ".config/markdownr/settings.ini"),
+    };
+    join(&base, Path::new(rel))
+}
+
 impl Settings {
     pub fn parse(text: &str) -> Self {
         let mut s = Settings::default();
