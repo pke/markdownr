@@ -204,7 +204,7 @@ pub mod path {
         }
         let mut s = dir.as_os_str().to_os_string();
         if !matches!(d.last(), Some(b'\\' | b'/')) {
-            s.push("\\");
+            s.push(if cfg!(windows) { "\\" } else { "/" });
         }
         s.push(rel.as_os_str());
         PathBuf::from(s)
@@ -214,6 +214,8 @@ pub mod path {
     mod tests {
         use super::*;
 
+        /// Compared with std's Windows paths (elsewhere std does not split at `\`).
+        #[cfg(windows)]
         #[test]
         fn like_std_for_our_paths() {
             for s in [r"C:\a\b.md", r"C:\b.MD", "b.md", r"\srv\share\x.png", r"C:/a/b.tar.gz", ".bashrc", r"C:\a\", "dir/sub/f"] {
@@ -227,6 +229,20 @@ pub mod path {
             assert_eq!(join(Path::new(r"C:\"), Path::new("x.png")), PathBuf::from(r"C:\x.png"));
             assert_eq!(join(Path::new(""), Path::new("x.png")), PathBuf::from("x.png"));
             assert_eq!(join(Path::new(r"C:\a"), Path::new(r"D:\y.png")), PathBuf::from(r"D:\y.png"));
+        }
+
+        #[cfg(not(windows))]
+        #[test]
+        fn like_std_for_unix_paths() {
+            for s in ["/home/a/b.md", "/b.MD", "b.md", "/a/b.tar.gz", ".bashrc", "/a/", "dir/sub/f"] {
+                let p = Path::new(s);
+                assert_eq!(parent(p), p.parent().unwrap_or(Path::new("")), "{s}");
+                assert_eq!(file_name(p), Path::new(p.file_name().unwrap_or_default()), "{s}");
+                assert_eq!(is_absolute(p), p.is_absolute(), "{s}");
+            }
+            assert_eq!(join(Path::new("/home/a"), Path::new("img/x.png")), PathBuf::from("/home/a/img/x.png"));
+            assert_eq!(join(Path::new("/"), Path::new("x.png")), PathBuf::from("/x.png"));
+            assert_eq!(join(Path::new("/home/a"), Path::new("/y.png")), PathBuf::from("/y.png"));
         }
     }
 }
