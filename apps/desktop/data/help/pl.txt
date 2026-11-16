@@ -33,3 +33,19 @@ Ustawienia z tego pliku zamiast {path}
 Bez pliku pokaż przykładowy dokument
 Cudzysłowy tego języka zamiast systemowych
 Pomoc w tym języku zamiast języka systemu
+Zaawansowane użycie
+Spis treści
+Otwórz
+Okno
+Pełny ekran
+Przy starcie
+Szukaj
+brak wyników
+źródło
+Motyw sezonowy:
+Brak nagłówków
+Szybki, lekki czytnik Markdown.
+Otwórz plik …
+Przykładowy dokument
+Także przez przeciągnij i upuść lub `{Ctrl}+O`. `{Full}` pełny ekran, `{Ctrl}+F` szukaj, `{Ctrl}+T` spis treści, `F1` wszystkie skróty.
+Ostatnio otwierane

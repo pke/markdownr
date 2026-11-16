@@ -33,3 +33,19 @@ Settings from this file instead of {path}
 Show the sample document when no file is given
 Quotation marks of this language instead of the system's
 Help in this language instead of the system language
+Advanced usage
+Contents
+Open
+Window
+Full screen
+On start
+Search
+no matches
+source
+Seasonal theme:
+No headings
+A fast, lean Markdown reader.
+Open file …
+Sample document
+Also by drag and drop or `{Ctrl}+O`. `{Full}` full screen, `{Ctrl}+F` search, `{Ctrl}+T` contents, `F1` all shortcuts.
+Recently opened

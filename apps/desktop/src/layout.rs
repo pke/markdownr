@@ -15,7 +15,7 @@ use std::time::Instant;
 // Platform interface
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct RectF {
     pub x: f32,
     pub y: f32,

@@ -14,6 +14,24 @@ function run(argv) {
   const pid = parseInt(argv[0]);
   for (const spec of argv.slice(1)) {
     if (spec.startsWith("sleep:")) { $.NSThread.sleepForTimeInterval(parseInt(spec.slice(6)) / 1000); continue; }
+    if (spec.startsWith("click:")) {
+      // x,y in the window (points from its top left); the window found by the pid.
+      const [x, y] = spec.slice(6).split(",").map(Number);
+      const l = ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, 0));
+      let b = null, wid = 0;
+      for (let i = 0; i < l.count; i++) { const w = ObjC.deepUnwrap(l.objectAtIndex(i)); if (w.kCGWindowOwnerPID === pid && w.kCGWindowLayer === 0) { b = w.kCGWindowBounds; wid = w.kCGWindowNumber; } }
+      if (!b) throw new Error("no window");
+      const p = $.CGPointMake(b.X + x, b.Y + y);
+      for (const type of [1, 2]) { // left mouse down, up
+        const e = $.CGEventCreateMouseEvent(null, type, p, 0);
+        $.CGEventSetIntegerValueField(e, 1, 1); // click state
+        $.CGEventSetIntegerValueField(e, 91, wid); // window under the pointer
+        $.CGEventSetIntegerValueField(e, 92, wid); // … that can handle the event
+        $.CGEventPostToPid(pid, e);
+        $.NSThread.sleepForTimeInterval(0.05);
+      }
+      continue;
+    }
     if (spec.startsWith("wheel:")) {
       const e = $.CGEventCreateScrollWheelEvent(null, 1, 1, parseInt(spec.slice(6)));
       $.CGEventPostToPid(pid, e); continue;

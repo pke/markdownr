@@ -22,18 +22,54 @@ const SHOW_FOR: Duration = Duration::from_millis(2500);
 const FADE_IN: f32 = 0.12; // seconds
 const FADE_OUT: f32 = 0.35;
 
-/// F1 overlay: (column, [keys of each row]). In the keys, `{Ctrl}`, `{PgDn}` … are keys the
-/// system names in its keyboard's language (`set_key_namer`) and `{#0}` (mouse wheel), `{#1}`
-/// (file) words of the help texts. The texts — title, hint, the two words, then each
-/// section's heading and row descriptions in this order — are `tables::help(language)`.
-const HELP: &[(usize, &[&str])] = &[
-    (0, &["{PgDn}   →   {Space}", "{PgUp}   ←   ⇧ {Space}", "↓   ↑   {#0}", "{Home}   {End}", "{Ctrl}+A   {Ctrl}+C"]),
-    (0, &["{Ctrl}+F   F3", "{Enter}   ⇧ {Enter}", "{Esc}"]),
-    (0, &["{Ctrl}+O", "F5   {Ctrl}+R", "{Ctrl}+Q   {Ctrl}+W"]),
-    (0, &["markdownr {#1}.md", "markdownr"]),
-    (1, &["{Ctrl}+T", "{Ctrl}+U", "{Ctrl}+D", "{Ctrl}++   {Ctrl}+−", "{Ctrl}+{#0}", "{Ctrl}+0", "{Full}   {Esc}", "F1"]),
-    (1, &["MARKDOWNR_SETTINGS={#1}", "MARKDOWNR_SAMPLE=1", "MARKDOWNR_LOCALE=de-DE", "MARKDOWNR_LANGUAGE=de"]),
+/// F1 overlay: (column, advanced, [keys of each row]); advanced sections show only after
+/// "Advanced usage" is opened. In the keys, `{Ctrl}`, `{PgDn}` … are keys the system names
+/// in its keyboard's language (`set_key_namer`) and `{#0}` (mouse wheel), `{#1}` (file) words
+/// of the help texts. The texts — title, hint, the two words, then each section's heading and
+/// row descriptions in this order, then the interface texts (`Ui`) — are
+/// `tables::help(language)`.
+const HELP: &[(usize, bool, &[&str])] = &[
+    (0, false, &["{PgDn}   →   {Space}", "{PgUp}   ←   ⇧ {Space}", "↓   ↑   {#0}", "{Home}   {End}", "{Ctrl}+A   {Ctrl}+C"]),
+    (0, false, &["{Ctrl}+F   F3", "{Enter}   ⇧ {Enter}", "{Esc}"]),
+    (0, false, &["{Ctrl}+O", "F5   {Ctrl}+R", "{Ctrl}+Q   {Ctrl}+W"]),
+    (0, true, &["markdownr {#1}.md", "markdownr"]),
+    (1, false, &["{Ctrl}+T", "{Ctrl}+U", "{Ctrl}+D", "{Ctrl}++   {Ctrl}+−", "{Ctrl}+{#0}", "{Ctrl}+0", "{Full}   {Esc}", "F1"]),
+    (1, true, &["MARKDOWNR_SETTINGS={#1}", "MARKDOWNR_SAMPLE=1", "MARKDOWNR_LOCALE=de-DE", "MARKDOWNR_LANGUAGE=de"]),
 ];
+
+/// Interface texts, in the order they follow the help texts in each language's block.
+#[derive(Clone, Copy)]
+pub enum Ui {
+    Advanced,
+    Contents,
+    Open,
+    Window,
+    FullScreen,
+    OnStart,
+    Search,
+    NoMatches,
+    Source,
+    Seasonal,
+    NoHeadings,
+    Tagline,
+    OpenFile,
+    Sample,
+    StartKeys,
+    Recent,
+}
+const UI_COUNT: usize = Ui::Recent as usize + 1;
+
+/// The language's help and interface texts, line by line (`tables::help`).
+fn texts() -> &'static [&'static str] {
+    static LINES: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    LINES.get_or_init(|| crate::tables::help(LANGUAGE.get().map_or("en", String::as_str)).lines().collect())
+}
+
+/// An interface text in the help's language.
+pub fn ui(t: Ui) -> &'static str {
+    let all = texts();
+    all.get((all.len() + t as usize).wrapping_sub(UI_COUNT)).copied().unwrap_or("")
+}
 
 /// Keys of the help by name: (name in HELP, virtual-key code, extended key).
 const HELP_KEYS: [(&str, u16, bool); 9] =
@@ -54,8 +90,8 @@ pub fn set_key_namer(f: fn(u16, bool) -> Option<String>) {
     let _ = KEY_NAMER.set(f);
 }
 
-/// A HELP key column entry with its `{Key}` and `{#n}` parts filled in.
-fn help_keys(spec: &str, words: &[&str]) -> String {
+/// A HELP key column entry (or a text with keys) with its `{Key}` and `{#n}` parts filled in.
+pub fn help_keys(spec: &str, words: &[&str]) -> String {
     let mut out = String::new();
     let mut rest = spec;
     while let Some(open) = rest.find('{') {
@@ -185,6 +221,10 @@ pub struct Viewer<P> {
     toc_scroll: f32,
     /// F1 overlay with the keyboard shortcuts.
     pub help: bool,
+    /// The help shows its advanced sections (command line, environment variables).
+    help_advanced: bool,
+    /// Where "Advanced usage" is in the help (window coordinates).
+    help_reveal: RectF,
     find: Option<Find>,
     dirty: bool,
     dragging: bool,
@@ -256,6 +296,8 @@ impl<P: Paragraph> Viewer<P> {
             toc_open: false,
             toc_scroll: 0.0,
             help: false,
+            help_advanced: false,
+            help_reveal: RectF::default(),
             find: None,
             dirty: true,
             dragging: false,
@@ -609,24 +651,24 @@ impl<P: Paragraph> Viewer<P> {
 
         // Left group.
         let mut x = 6.0 + self.bar_inset;
-        x += button(ts, &mut out, &mut buttons, "☰  Inhalt", Action::Toc, x, false, self.toc_open) + 2.0;
-        x += button(ts, &mut out, &mut buttons, "Öffnen", Action::Open, x, false, false) + 2.0;
+        x += button(ts, &mut out, &mut buttons, &["☰  ", ui(Ui::Contents)].concat(), Action::Toc, x, false, self.toc_open) + 2.0;
+        x += button(ts, &mut out, &mut buttons, ui(Ui::Open), Action::Open, x, false, false) + 2.0;
         let left_end = x;
 
         // Right group, laid out from the right edge.
         let mut rx = w - 6.0;
-        let fs = if self.fullscreen { "⤡  Fenster" } else { "⤢  Vollbild" };
-        rx -= button(ts, &mut out, &mut buttons, fs, Action::Fullscreen, rx, true, false) + 2.0;
+        let fs = if self.fullscreen { ["⤡  ", ui(Ui::Window)].concat() } else { ["⤢  ", ui(Ui::FullScreen)].concat() };
+        rx -= button(ts, &mut out, &mut buttons, &fs, Action::Fullscreen, rx, true, false) + 2.0;
         if self.fullscreen {
-            let pin = if self.remember_fullscreen { "☑ Beim Start" } else { "☐ Beim Start" };
-            rx -= button(ts, &mut out, &mut buttons, pin, Action::RememberFullscreen, rx, true, false) + 2.0;
+            let pin = [if self.remember_fullscreen { "☑ " } else { "☐ " }, ui(Ui::OnStart)].concat();
+            rx -= button(ts, &mut out, &mut buttons, &pin, Action::RememberFullscreen, rx, true, false) + 2.0;
         }
         rx -= button(ts, &mut out, &mut buttons, &self.theme_choice.label(), Action::Theme, rx, true, false) + 2.0;
         rx -= button(ts, &mut out, &mut buttons, "</>", Action::Source, rx, true, self.show_source) + 2.0;
         rx -= button(ts, &mut out, &mut buttons, "A+", Action::FontUp, rx, true, false) + 2.0;
         rx -= button(ts, &mut out, &mut buttons, "A−", Action::FontDown, rx, true, false) + 2.0;
         if self.find.is_none() {
-            rx -= button(ts, &mut out, &mut buttons, "⌕  Suchen", Action::Search, rx, true, false) + 2.0;
+            rx -= button(ts, &mut out, &mut buttons, &["⌕  ", ui(Ui::Search)].concat(), Action::Search, rx, true, false) + 2.0;
         }
 
         // Centre: title or find field.
@@ -635,7 +677,7 @@ impl<P: Paragraph> Viewer<P> {
             let count = if find.query.is_empty() {
                 String::new()
             } else if find.matches.is_empty() {
-                "keine Treffer".to_string()
+                ui(Ui::NoMatches).to_string()
             } else {
                 [num(find.current as u64 + 1), num(find.matches.len() as u64)].join(" / ")
             };
@@ -655,7 +697,7 @@ impl<P: Paragraph> Viewer<P> {
             let (para, pw, ph) = label(ts, &text, &style, field_w - 2.0 * pad);
             place(&mut out, para, &text, field_x + pad, by + (bh - ph) / 2.0, pw, ph);
         } else if avail > 60.0 {
-            let title = if self.show_source { [&self.title, " (Quelltext)"].concat() } else { self.title.clone() };
+            let title = if self.show_source { [&self.title, " (", ui(Ui::Source), ")"].concat() } else { self.title.clone() };
             let bold = BaseStyle { bold: true, ..style };
             let (mut para, mut pw, mut ph) = label(ts, &title, &bold, 4000.0);
             if pw > avail {
@@ -677,7 +719,7 @@ impl<P: Paragraph> Viewer<P> {
             let current = self.current_section();
             let mut y = top + 8.0 - self.toc_scroll;
             if let Some(name) = self.seasonal_suggestion() {
-                let text = ["Saison-Theme: ".into(), crate::theme::theme_def(name).map(|d| d.label()).unwrap_or_default()].concat();
+                let text = [ui(Ui::Seasonal).into(), " ".into(), crate::theme::theme_def(name).map(|d| d.label()).unwrap_or_default()].concat();
                 let s = BaseStyle { color: th.link, ..style };
                 let (para, pw, ph) = label(ts, &text, &s, dw - 32.0);
                 let row = RectF { x: 6.0, y, w: dw - 12.0, h: ph + 12.0 };
@@ -692,8 +734,8 @@ impl<P: Paragraph> Viewer<P> {
             }
             if self.layout.toc.is_empty() {
                 let muted = BaseStyle { color: th.muted, ..style };
-                let (para, pw, ph) = label(ts, "Keine Überschriften", &muted, dw - 32.0);
-                place(&mut out, para, "Keine Überschriften", 16.0, y + 8.0, pw, ph);
+                let (para, pw, ph) = label(ts, ui(Ui::NoHeadings), &muted, dw - 32.0);
+                place(&mut out, para, ui(Ui::NoHeadings), 16.0, y + 8.0, pw, ph);
             }
             let min_level = self.layout.toc.iter().map(|e| e.level).min().unwrap_or(1);
             for (i, e) in self.layout.toc.iter().enumerate() {
@@ -728,15 +770,16 @@ impl<P: Paragraph> Viewer<P> {
             place(&mut tip_out, para, text, bx + 10.0, by + 6.0, pw, ph);
         }
         if self.help {
-            tip_out = self.build_help(ts);
+            (tip_out, self.help_reveal) = self.build_help(ts);
         }
         self.tip_layout = tip_out;
         self.buttons = buttons;
     }
 
     /// F1 overlay: the page dimmed, on it a panel with the keyboard shortcuts and the
-    /// command line, in two columns when the window is wide enough.
-    fn build_help<T: Typesetter<Para = P>>(&self, ts: &mut T) -> DocLayout<P> {
+    /// command line, in two columns when the window is wide enough; also the rectangle of
+    /// "Advanced usage".
+    fn build_help<T: Typesetter<Para = P>>(&self, ts: &mut T) -> (DocLayout<P>, RectF) {
         let th = &self.theme;
         let (w, h) = (self.view_w, self.view_h);
         let text = BaseStyle { size: UI_SIZE, color: th.chrome_text, mono: false, bold: false, italic: false, line_height: 1.3 };
@@ -753,16 +796,21 @@ impl<P: Paragraph> Viewer<P> {
             items.push((para, s.to_string(), x, y, pw, ph));
             (pw, ph)
         };
-        let mut texts = crate::tables::help(LANGUAGE.get().map_or("en", String::as_str)).lines();
+        let mut texts = texts().iter().copied();
         let mut next = || texts.next().unwrap_or("");
         let (title_s, hint_s) = (next(), next());
         let words = [next(), next()];
         let mut col_h = [0.0f32; 2];
-        for &(col, rows) in HELP {
+        for &(col, advanced, rows) in HELP {
+            let heading = next();
+            if advanced && !self.help_advanced {
+                rows.iter().for_each(|_| _ = next());
+                continue;
+            }
             let c = if two { col } else { 0 };
             let x0 = c as f32 * (col_w + gap);
             let mut y = if col_h[c] > 0.0 { col_h[c] + 14.0 } else { 0.0 };
-            y += put(ts, next(), &head, x0, y, col_w).1 + 6.0;
+            y += put(ts, heading, &head, x0, y, col_w).1 + 6.0;
             for &k in rows {
                 let d = next().replace("{path}", crate::settings::PATH_HINT);
                 let (kw, kh) = put(ts, &help_keys(k, &words), &keys, x0, y, col_w);
@@ -773,13 +821,19 @@ impl<P: Paragraph> Viewer<P> {
             }
             col_h[c] = y;
         }
+        // "Advanced usage" under both columns opens and closes the command line and
+        // environment variable sections.
+        let ry = col_h[0].max(col_h[1]) + 10.0;
+        let reveal = [if self.help_advanced { "▾  " } else { "▸  " }, ui(Ui::Advanced)].concat();
+        let (rw, rh) = put(ts, &reveal, &head, 0.0, ry, col_w);
+        let bottom = ry + rh + 5.0;
         let pad = 24.0;
         let content_w = if two { 2.0 * col_w + gap } else { col_w };
         let title_p = ts.paragraph(title_s, &[], &BaseStyle { size: 18.0, ..keys }, content_w);
         let (tw, tht) = title_p.size();
         let hint_p = ts.paragraph(hint_s, &[], &BaseStyle { color: th.muted, ..text }, content_w);
         let (hw, hh) = hint_p.size();
-        let (pw, ph) = (content_w + 2.0 * pad, pad + tht + 14.0 + col_h[0].max(col_h[1]) - 5.0 + pad);
+        let (pw, ph) = (content_w + 2.0 * pad, pad + tht + 14.0 + bottom - 5.0 + pad);
         let (px, py) = (((w - pw) / 2.0).max(8.0).round(), ((h - ph) / 2.0).max(8.0).round());
         let mut out: DocLayout<P> = DocLayout::default();
         out.rects.push(Rect { r: RectF { x: 0.0, y: 0.0, w, h }, color: Ink::rgba(0x000000, 120), radius: 0.0 });
@@ -794,7 +848,7 @@ impl<P: Paragraph> Viewer<P> {
         for (para, s, x, y, bw, bh) in items {
             place(para, &s, px + pad + x, top + y, bw, bh);
         }
-        out
+        (out, RectF { x: px + pad - 6.0, y: top + ry - 4.0, w: rw + 12.0, h: rh + 8.0 })
     }
 
     fn drawer_width(&self) -> f32 {
@@ -1130,8 +1184,12 @@ impl<P: Paragraph> Viewer<P> {
     pub fn release(&mut self, x: f32, y: f32, tap: bool, now: Instant) -> Option<Effect> {
         self.dragging = false;
         if self.help {
-            // A click anywhere closes the help.
-            self.help = false;
+            // "Advanced usage" opens or closes those sections; a click anywhere else closes the help.
+            if contains(&self.help_reveal, x, y) {
+                self.help_advanced = !self.help_advanced;
+            } else {
+                self.help = false;
+            }
             self.chrome_dirty = true;
             return None;
         }
@@ -1190,7 +1248,7 @@ impl<P: Paragraph> Viewer<P> {
 
     /// Cursor hint: true over chrome buttons.
     pub fn over_button(&self, x: f32, y: f32) -> bool {
-        !self.help && self.chrome_hit(x, y).is_some()
+        if self.help { contains(&self.help_reveal, x, y) } else { self.chrome_hit(x, y).is_some() }
     }
 
     pub fn over_chrome_area(&self, x: f32, y: f32) -> bool {
@@ -1263,6 +1321,25 @@ mod tests {
         summary(&v.layout)
     }
 
+    /// A click on "Advanced usage" opens (and closes) the advanced sections and keeps the
+    /// help; a click elsewhere closes it.
+    #[test]
+    fn help_advanced_usage_toggles() {
+        let mut v = viewer(1000.0);
+        let now = Instant::now();
+        v.key(Key::F1, Mods::default(), now);
+        v.ensure_layout(&mut Fake);
+        let closed_blocks = v.tip_layout.blocks.len();
+        let r = v.help_reveal;
+        assert!(r.w > 0.0 && v.over_button(r.x + 2.0, r.y + 2.0));
+        v.release(r.x + 2.0, r.y + 2.0, false, now);
+        assert!(v.help && v.help_advanced);
+        v.ensure_layout(&mut Fake);
+        assert!(v.tip_layout.blocks.len() > closed_blocks, "advanced sections shown");
+        v.release(5.0, 5.0, false, now);
+        assert!(!v.help);
+    }
+
     #[test]
     fn fresh_layout_is_partial_then_complete() {
         let mut v = viewer(900.0);
@@ -1325,7 +1402,7 @@ mod help_tests {
     /// the two words.
     #[test]
     fn help_texts_match_keys() {
-        let want = 4 + super::HELP.iter().map(|(_, rows)| 1 + rows.len()).sum::<usize>();
+        let want = 4 + super::HELP.iter().map(|(_, _, rows)| 1 + rows.len()).sum::<usize>() + super::UI_COUNT;
         for code in crate::tables::HELP_LANGUAGES {
             assert_eq!(crate::tables::help(code).lines().count(), want, "{code}");
         }

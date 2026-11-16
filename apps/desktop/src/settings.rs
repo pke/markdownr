@@ -21,12 +21,6 @@ impl Default for Settings {
     }
 }
 
-/// The start page's line of shortcuts, in the platform's keys.
-#[cfg(target_os = "macos")]
-const START_KEYS: &str = "Auch per Drag & Drop oder `⌘O`. `⌃⌘F` Vollbild, `⌘F` Suchen, `⌘T` Inhalt, `F1` alle Tastenkürzel.\n\n";
-#[cfg(not(target_os = "macos"))]
-const START_KEYS: &str = "Auch per Drag & Drop oder `Strg+O`. `F11` Vollbild, `Strg+F` Suchen, `Strg+T` Inhalt, `F1` alle Tastenkürzel.\n\n";
-
 /// The settings file's usual place as the help names it.
 #[cfg(windows)]
 pub const PATH_HINT: &str = r"%APPDATA%\Markdownr\settings.ini";
@@ -102,13 +96,20 @@ impl Settings {
         self.recent.truncate(MAX_RECENT);
     }
 
-    /// Start page shown without a file: open button, recent files, sample.
+    /// Start page shown without a file: open button, recent files, sample; in the help's
+    /// language, with the platform's keys.
     pub fn start_page(&self) -> String {
-        let mut s = String::from("---\ntitle: Markdownr\n---\n# Markdownr\n\nEin schneller, schlanker Markdown-Reader.\n\n[Datei öffnen …](markdownr:open) · [Beispieldokument](markdownr:sample)\n\n");
-        s.push_str(START_KEYS);
+        use crate::view::{Ui, ui};
+        let keys = crate::view::help_keys(ui(Ui::StartKeys), &[]);
+        let mut s = String::from("---\ntitle: Markdownr\n---\n# Markdownr\n\n");
+        for part in [ui(Ui::Tagline), "\n\n[", ui(Ui::OpenFile), "](markdownr:open) · [", ui(Ui::Sample), "](markdownr:sample)\n\n", &keys, "\n\n"] {
+            s.push_str(part);
+        }
         let recent: Vec<_> = self.recent.iter().filter(|p| crate::util::fs::is_file(p)).collect();
         if !recent.is_empty() {
-            s.push_str("## Zuletzt geöffnet\n\n");
+            for part in ["## ", ui(Ui::Recent), "\n\n"] {
+                s.push_str(part);
+            }
             for p in recent {
                 let name = crate::util::path::file_name(p).to_string_lossy().into_owned();
                 let dir = crate::util::path::parent(p).to_string_lossy().into_owned();

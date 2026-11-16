@@ -33,3 +33,19 @@ Paramètres de ce fichier au lieu de {path}
 Afficher le document d’exemple sans fichier
 Guillemets de cette langue au lieu de ceux du système
 Aide dans cette langue au lieu de la langue du système
+Utilisation avancée
+Sommaire
+Ouvrir
+Fenêtre
+Plein écran
+Au démarrage
+Rechercher
+aucun résultat
+source
+Thème de saison :
+Aucun titre
+Un lecteur Markdown rapide et léger.
+Ouvrir un fichier …
+Document d’exemple
+Aussi par glisser-déposer ou `{Ctrl}+O`. `{Full}` plein écran, `{Ctrl}+F` rechercher, `{Ctrl}+T` sommaire, `F1` tous les raccourcis.
+Ouverts récemment

@@ -33,3 +33,19 @@ Einstellungen aus dieser Datei statt {path}
 Ohne Datei das Beispieldokument zeigen
 Anführungszeichen dieser Sprache statt der Systemsprache
 Hilfe in dieser Sprache statt der Systemsprache
+Erweiterte Nutzung
+Inhalt
+Öffnen
+Fenster
+Vollbild
+Beim Start
+Suchen
+keine Treffer
+Quelltext
+Saison-Theme:
+Keine Überschriften
+Ein schneller, schlanker Markdown-Reader.
+Datei öffnen …
+Beispieldokument
+Auch per Drag & Drop oder `{Ctrl}+O`. `{Full}` Vollbild, `{Ctrl}+F` Suchen, `{Ctrl}+T` Inhalt, `F1` alle Tastenkürzel.
+Zuletzt geöffnet
