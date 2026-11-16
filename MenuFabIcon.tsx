@@ -55,7 +55,7 @@ function MenuDot({frame, index, color}: {
   return <AnimatedCircle r={1.8} fill={color} animatedProps={animatedProps} />;
 }
 
-export function AndroidMenuIcon({progress, color}: {
+export function MenuFabIcon({progress, color}: {
   progress: SharedValue<number>;
   color: string;
 }) {

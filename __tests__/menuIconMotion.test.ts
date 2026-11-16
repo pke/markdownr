@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {getMenuIconFrame} from '../menuIconMotion';
 
-describe('Android menu icon motion', () => {
+describe('Menu FAB icon motion', () => {
   it('moves the dots to separate corners before drawing or filling the triangle', () => {
     const closed = getMenuIconFrame(0);
     const corners = getMenuIconFrame(0.42);

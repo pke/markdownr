@@ -58,10 +58,11 @@ import {getWelcomeMarkdown, OCEAN_THEMED_SAMPLE} from './example';
 import {getAboutMarkdown} from './about';
 import {ThemeSuggestion} from './ThemeSuggestion';
 import {FileChangedBanner} from './FileChangedBanner';
-import {AndroidMenuIcon, useMenuIconProgress} from './AndroidMenuIcon';
+import {MenuFabIcon, useMenuIconProgress} from './MenuFabIcon';
 
 const isIOS = Platform.OS === 'ios';
 const isAndroid = Platform.OS === 'android';
+const hasAnimatedMenuIcon = isIOS || isAndroid;
 // Android 12 added the hardware-accelerated blur used by expo-blur.
 const supportsAndroidBlur = Platform.OS === 'android' && Platform.Version >= 31;
 // nitro-markdown only loads http(s) images by default; keep embedded data: images working
@@ -383,13 +384,11 @@ function FloatingMenu({isMenuVisible, isMenuOpen, iconProgress, setIsMenuOpen, s
       accessibilityRole="button"
       accessibilityLabel={t('menu.label')}
       accessibilityState={{expanded: isMenuOpen}}>
-      {isAndroid ? (
-        <AndroidMenuIcon
+      {hasAnimatedMenuIcon ? (
+        <MenuFabIcon
           progress={iconProgress}
           color={theme.colors.text ?? (isDarkMode ? '#fff' : '#111827')}
         />
-      ) : isIOS ? (
-        <SymbolView name={isMenuOpen ? 'chevron.down' : 'ellipsis'} size={18} tintColor={theme.colors.text} />
       ) : (
         <Text style={[styles.mainMenuButtonText, {color: theme.colors.text}]}>{isMenuOpen ? '▼' : '…'}</Text>
       )}
@@ -690,7 +689,7 @@ export function ViewerScreen() {
   // Local state for menu visibility (only used in this screen)
   const [isMenuVisible, setIsMenuVisible] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const iconProgress = useMenuIconProgress(isAndroid && isMenuOpen);
+  const iconProgress = useMenuIconProgress(hasAnimatedMenuIcon && isMenuOpen);
   const [showSource, setShowSource] = useState(false);
   const toggleSource = useCallback(() => setShowSource(s => !s), []);
   const sourceProgress = useSharedValue(0);
