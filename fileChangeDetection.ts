@@ -1,5 +1,6 @@
 import {File} from 'expo-file-system/next';
 import {readPickedFile, statPickedFile} from 'file-picker';
+import {readFolderFile, statFolderFile} from 'folder-picker';
 
 /**
  * How the currently displayed file can be re-read/re-statted:
@@ -9,13 +10,14 @@ import {readPickedFile, statPickedFile} from 'file-picker';
  *   (`ref` holds the bookmark key)
  * See docs/superpowers/specs/2026-07-13-external-file-change-reload-design.md.
  */
-export type FileSourceKind = 'file' | 'content' | 'bookmark';
+export type FileSourceKind = 'file' | 'content' | 'bookmark' | 'folder';
 
 export type FileSource = {
   uri: string;
   kind: FileSourceKind;
-  /** Read/stat handle for picked kinds (iOS bookmarkKey; Android uses the uri). */
+  /** iOS file or folder bookmark key, or Android content URI. */
   ref?: string;
+  relativePath?: string;
 };
 
 /** Classify a viewer URI for external-change detection. */
@@ -39,6 +41,11 @@ export type ChangeCheck = {
  * or a provider reporting 0.
  */
 export async function statFileSource(source: FileSource): Promise<number | null> {
+  if (source.kind === 'folder') {
+    if (!source.ref || !source.relativePath) return null;
+    const mtime = await statFolderFile(source.ref, source.relativePath);
+    return mtime && mtime > 0 ? mtime : null;
+  }
   if (source.kind === 'bookmark' || source.kind === 'content') {
     const ref = source.ref ?? (source.kind === 'content' ? source.uri : null);
     if (!ref) return null;
@@ -52,6 +59,10 @@ export async function statFileSource(source: FileSource): Promise<number | null>
 
 /** Default read strategy (mirrors statFileSource's kind support). */
 export async function readFileSource(source: FileSource): Promise<string> {
+  if (source.kind === 'folder') {
+    if (!source.ref || !source.relativePath) throw new Error('Missing folder bookmark or path');
+    return readFolderFile(source.ref, source.relativePath);
+  }
   if (source.kind === 'bookmark' || source.kind === 'content') {
     const ref = source.ref ?? (source.kind === 'content' ? source.uri : null);
     if (!ref) throw new Error(`no ref for ${source.kind} source`);

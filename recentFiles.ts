@@ -2,6 +2,8 @@ import {File, Directory, Paths} from 'expo-file-system/next';
 import {Storage, StorageKeys} from './settings';
 import {parseFrontMatter} from './frontmatter';
 import {readFileSource, sourceForUri, type FileSource} from './fileChangeDetection';
+import type {FolderReference} from 'folder-picker';
+import {folderHandle, readFolder, readFolderDocumentOrIndex, type FolderLocation, type OpenDocument, type ViewerDocument} from './folderNavigation';
 
 const MAX_RECENT_FILES = 10;
 const recentFilesDir = new Directory(Paths.cache, 'recent-files');
@@ -14,7 +16,16 @@ export interface RecentFileEntry {
   /** How to re-read the live file (Phase 2). Entries predating this field
    * simply open from the cache copy, as before. */
   source?: FileSource;
+  folder?: FolderReference;
+  folderPath?: string;
 }
+
+export type RecentTarget = 'file' | 'folder';
+
+type OpenRecentOptions = {
+  target?: RecentTarget;
+  readLive?: (source: FileSource) => Promise<string>;
+};
 
 function ensureDir(): void {
   if (!recentFilesDir.exists) {
@@ -63,40 +74,45 @@ function saveRecentFiles(entries: RecentFileEntry[]): void {
   Storage.setString(StorageKeys.RECENT_FILES, JSON.stringify(entries));
 }
 
-export function addRecentFile(content: string, fileName: string | null, source?: FileSource): void {
-  ensureDir();
+export function addRecentFile(content: string, fileName: string | null, source?: FileSource, location?: FolderLocation): void {
   const entries = getRecentFiles();
-  const subtitle = deriveSubtitle(fileName);
-
-  const existingIndex = entries.findIndex(e => e.subtitle === subtitle);
-
-  let id: string;
-  if (existingIndex >= 0) {
-    id = entries[existingIndex].id;
-    entries.splice(existingIndex, 1);
-  } else {
-    id = generateId();
-  }
-
-  const title = deriveTitle(content, fileName);
-  const newEntry: RecentFileEntry = {
+  const subtitle = location && !location.relativePath ? '' : deriveSubtitle(fileName);
+  const folder = location && folderReference(location.result);
+  const index = entries.findIndex(entry => {
+    if (folder) return !!entry.folder && folderHandle(entry.folder) === folderHandle(folder);
+    if (entry.folder) return false;
+    return source && entry.source ? source.uri === entry.source.uri : entry.subtitle === subtitle;
+  });
+  const previous = index >= 0 ? entries.splice(index, 1)[0] : undefined;
+  const id = previous?.id ?? generateId();
+  let newEntry: RecentFileEntry = {
     id,
-    title,
+    title: folder?.folderName ?? deriveTitle(content, fileName),
     subtitle,
     addedAt: new Date().toISOString(),
     ...(source ? {source} : {}),
+    ...(folder ? {folder, folderPath: location?.relativePath} : {}),
   };
 
-  const file = new File(recentFilesDir, `${id}.md`);
-  if (file.exists) file.delete();
-  file.create();
-  file.write(content);
+  if (!folder || location?.relativePath) {
+    ensureDir();
+    const file = new File(recentFilesDir, `${id}.md`);
+    if (file.exists) file.delete();
+    file.create();
+    file.write(content);
+  } else if (previous) {
+    newEntry = {...previous, title: newEntry.title, addedAt: newEntry.addedAt, folder};
+  }
 
   const updated = [newEntry, ...entries];
   const evicted = updated.slice(MAX_RECENT_FILES);
   evicted.forEach(e => deleteCachedFile(e.id));
 
   saveRecentFiles(updated.slice(0, MAX_RECENT_FILES));
+}
+
+function folderReference({folderUri, folderName, bookmarkKey}: FolderReference): FolderReference {
+  return {folderUri, folderName, bookmarkKey};
 }
 
 export async function loadRecentFile(entry: RecentFileEntry): Promise<string | null> {
@@ -119,9 +135,15 @@ export async function loadRecentFile(entry: RecentFileEntry): Promise<string | n
  */
 export async function openRecentEntry(
   entry: RecentFileEntry,
-  openFile: (content: string, name: string | null, uri: string | null, source: FileSource | null) => void,
-  readLive: (source: FileSource) => Promise<string> = readFileSource,
+  openFile: OpenDocument,
+  {target = 'file', readLive = readFileSource}: OpenRecentOptions = {},
 ): Promise<boolean> {
+  if (entry.folder) {
+    const document = await readRecentFolder(entry, target);
+    if (!document) return false;
+    openFile(...document);
+    return true;
+  }
   if (entry.source) {
     try {
       const content = await readLive(entry.source);
@@ -135,6 +157,33 @@ export async function openRecentEntry(
   if (cached == null) return false;
   openFile(cached, entry.subtitle, entry.source?.uri ?? null, entry.source ?? null);
   return true;
+}
+
+async function readRecentFolder(entry: RecentFileEntry, target: RecentTarget): Promise<ViewerDocument | null> {
+  if (!entry.folder) return null;
+  const result = await readFolder(folderHandle(entry.folder));
+  if (!result) return null;
+  const file = target === 'file' ? result.files.find(file => file.relativePath === entry.folderPath) : undefined;
+  return readFolderDocumentOrIndex(result, file);
+}
+
+export async function restoreRecentDocument(entry: RecentFileEntry, legacyFolderUri?: string): Promise<ViewerDocument | null> {
+  if (entry.folder) {
+    const document = await readRecentFolder(entry, 'file');
+    if (document) return document;
+  }
+
+  const source = restoreSourceFor(entry);
+  if (!entry.folder && legacyFolderUri?.startsWith('content://') && source?.kind === 'content') {
+    const result = await readFolder(legacyFolderUri);
+    if (result) {
+      const file = result.files.find(file => file.uri === source.uri);
+      if (file) return readFolderDocumentOrIndex(result, file);
+    }
+  }
+
+  const content = await loadRecentFile(entry);
+  return content === null ? null : [content, entry.subtitle, source?.uri ?? null, source];
 }
 
 /**
