@@ -553,8 +553,10 @@ impl<P: Paragraph> Viewer<P> {
     pub fn ensure_layout<T: Typesetter<Para = P>>(&mut self, ts: &mut T) {
         if self.dirty {
             self.dirty = false;
-            // Keep the reading position: the block at the top of the view stays there.
+            // Keep the reading position: the block at the top of the view stays there; at the
+            // end of the document the view stays at the end (an image arriving there grows it).
             let anchor = self.scroll_anchor();
+            let at_end = self.resume.is_none() && self.scroll > 0.0 && self.scroll >= self.layout.height - self.view_h - 0.5;
             self.theme = self.resolve_theme();
             // One seed at every width: a particle keeps its glyph and size, only x follows.
             self.particles = self.theme.overlay.map(|o| Particles::new(o, self.view_w, 0x9e37_79b9));
@@ -597,6 +599,13 @@ impl<P: Paragraph> Viewer<P> {
                             self.shift_scroll(t.1 - y0);
                         }
                     }
+                }
+            }
+            if at_end {
+                // The rest from the view on (little: the end was in view).
+                self.extend_layout(ts, f32::INFINITY, None);
+                if self.resume.is_none() {
+                    self.shift_scroll((self.layout.height - self.view_h).max(0.0) - self.scroll);
                 }
             }
             self.last_layout_time = started.elapsed();
@@ -2103,6 +2112,47 @@ mod tests {
         assert!(v.image_alpha("far.png") > 0.3);
         v.tick(t1 + Duration::from_millis(260));
         assert_eq!(v.image_alpha("far.png"), 1.0);
+    }
+
+    /// At the end of the document (End), an image arriving there keeps the view at the end:
+    /// the document grows and the view goes with it. Elsewhere the view stays where it was.
+    #[test]
+    fn at_the_end_an_arriving_image_keeps_the_view_at_the_end() {
+        let src = ["# Oben\n\n", &"Absatz\n\n".repeat(100), "![e](end.png)\n"].concat();
+        let mut v = Viewer::new("t".into(), String::new(), crate::app::parse(&src));
+        v.resize(900.0, 600.0);
+        let mut ts = Pics::default();
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        let h = v.view_h;
+        // A screen above the end: the image is asked for, arrives, the view stays.
+        let above = v.layout.height - 2.0 * h;
+        scroll_to(&mut v, &mut ts, above);
+        assert_eq!(ts.asked, ["end.png"]);
+        let top = v.layout.blocks[v.layout.hit(0.0, v.scroll).unwrap().block].text.clone();
+        ts.ready.push("end.png".into());
+        v.invalidate();
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        assert_eq!(v.scroll, above, "not at the end: the view stays");
+        assert_eq!(v.layout.blocks[v.layout.hit(0.0, v.scroll).unwrap().block].text, top);
+        // At the end: the image arrives and the view stays at the (new) end.
+        ts.ready.clear();
+        v.set_document("t".into(), String::new(), crate::app::parse(&src), false);
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        v.key(Key::End, Mods::default(), Instant::now());
+        v.ensure_layout(&mut ts);
+        let end = v.layout.height - h;
+        assert_eq!(v.scroll, end, "at the end");
+        ts.ready.push("end.png".into());
+        v.invalidate();
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        assert!(v.layout.height - h > end + 50.0, "the document grew");
+        assert_eq!(v.scroll, v.layout.height - h, "the view is at the end again");
+        let img = v.layout.images.iter().find(|i| i.url == "end.png").unwrap().r;
+        assert!(img.y + img.h <= v.scroll + h, "the image all in view");
     }
 
     /// A new document starts afresh: its images load near the view again.
