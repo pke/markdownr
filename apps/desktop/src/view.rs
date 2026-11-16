@@ -551,9 +551,11 @@ impl<P: Paragraph> Viewer<P> {
         if self.dirty {
             self.dirty = false;
             // Keep the reading position: the block at the top of the view stays there; at the
-            // end of the document the view stays at the end (an image arriving there grows it).
+            // end of the document the view stays at the end (an image arriving there grows it),
+            // and so does a glide on its way there (the wheel spun to the end).
             let anchor = self.scroll_anchor();
-            let at_end = self.resume.is_none() && self.scroll > 0.0 && self.scroll >= self.layout.height - self.view_h - 0.5;
+            let to = self.glide.map_or(self.scroll, |g| g.to);
+            let at_end = self.resume.is_none() && to > 0.0 && to >= self.layout.height - self.view_h - 0.5;
             self.theme = self.resolve_theme();
             // One seed at every width: a particle keeps its glyph and size, only x follows.
             self.particles = self.theme.overlay.map(|o| Particles::new(o, self.view_w, 0x9e37_79b9));
@@ -602,7 +604,11 @@ impl<P: Paragraph> Viewer<P> {
                 // The rest from the view on (little: the end was in view).
                 self.extend_layout(ts, f32::INFINITY, None);
                 if self.resume.is_none() {
-                    self.shift_scroll((self.layout.height - self.view_h).max(0.0) - self.scroll);
+                    let end = (self.layout.height - self.view_h).max(0.0);
+                    match &mut self.glide {
+                        Some(g) => g.to = end,
+                        None => self.shift_scroll(end - self.scroll),
+                    }
                 }
             }
             self.last_layout_time = started.elapsed();
@@ -2150,6 +2156,172 @@ mod tests {
         assert_eq!(v.scroll, v.layout.height - h, "the view is at the end again");
         let img = v.layout.images.iter().find(|i| i.url == "end.png").unwrap().r;
         assert!(img.y + img.h <= v.scroll + h, "the image all in view");
+    }
+
+    /// End jumps over the middle of a document laid out only at its top: the images at the
+    /// end load, the one passed over does not.
+    #[test]
+    fn end_loads_the_images_at_the_end_not_those_passed_over() {
+        let src = ["![n](near.png)\n\n", &"Absatz\n\n".repeat(600), "![m](mid.png)\n\n", &"Absatz\n\n".repeat(600), "![e](end.png)\n"].concat();
+        let mut v = Viewer::new("t".into(), String::new(), crate::app::parse(&src));
+        v.resize(900.0, 600.0);
+        let mut ts = Pics::default();
+        v.ensure_layout(&mut ts);
+        assert!(v.resume.is_some(), "only the top is laid out");
+        v.key(Key::End, Mods::default(), Instant::now());
+        v.ensure_layout(&mut ts);
+        assert_eq!(v.scroll, v.layout.height - v.view_h, "at the end");
+        assert_eq!(ts.asked, ["near.png", "end.png"]);
+    }
+
+    /// An image that fails to load keeps its placeholder: it does not fade, keeps no frames
+    /// coming, is not asked for again and does not hold up another image's fade.
+    #[test]
+    fn a_failed_image_keeps_its_placeholder() {
+        let src = ["![a](broken.png)\n\n![b](fine.png)\n\n", &"Absatz\n\n".repeat(100)].concat();
+        let mut v = Viewer::new("t".into(), String::new(), crate::app::parse(&src));
+        v.resize(900.0, 600.0);
+        let mut ts = Pics::default();
+        v.ensure_layout(&mut ts);
+        assert_eq!(ts.asked, ["broken.png", "fine.png"]);
+        let placeholder = v.layout.pending.iter().find(|p| p.url == "broken.png").expect("waits").r;
+        // broken.png failed (the platform stops there, no relayout); fine.png arrives.
+        ts.ready.push("fine.png".into());
+        v.invalidate();
+        v.ensure_layout(&mut ts);
+        assert!(v.layout.images.iter().all(|i| i.url != "broken.png"), "never placed");
+        assert_eq!(v.layout.pending.iter().find(|p| p.url == "broken.png").map(|p| p.r), Some(placeholder), "its placeholder stays");
+        assert_eq!(v.image_alpha("broken.png"), 1.0, "nothing fades for it");
+        assert_eq!(v.image_alpha("fine.png"), 0.0, "the other one waits for its fade");
+        let t0 = Instant::now();
+        v.tick(t0);
+        v.tick(t0 + Duration::from_millis(260));
+        assert_eq!(v.image_alpha("fine.png"), 1.0, "and fades in");
+        assert!(!v.image_fade_waiting());
+        assert_eq!(v.tick(t0 + Duration::from_millis(300)), (false, None), "no frames for the broken one");
+        // More relayouts and scrolling do not ask again or start anything.
+        v.invalidate();
+        v.ensure_layout(&mut ts);
+        scroll_to(&mut v, &mut ts, 100.0);
+        scroll_to(&mut v, &mut ts, 0.0);
+        assert_eq!(ts.asked, ["broken.png", "fine.png"]);
+        assert!(!v.image_fade_waiting());
+        assert_eq!(v.tick(t0 + Duration::from_millis(400)).1, None);
+    }
+
+    /// At the end, a relayout with nothing new (a failed image, a theme change) leaves the
+    /// view exactly at the end.
+    #[test]
+    fn at_the_end_a_failed_image_leaves_the_view_where_it_is() {
+        let src = ["# Oben\n\n", &"Absatz\n\n".repeat(100), "![e](broken.png)\n"].concat();
+        let mut v = Viewer::new("t".into(), String::new(), crate::app::parse(&src));
+        v.resize(900.0, 600.0);
+        let mut ts = Pics::default();
+        v.ensure_layout(&mut ts);
+        v.key(Key::End, Mods::default(), Instant::now());
+        v.ensure_layout(&mut ts);
+        let end = v.scroll;
+        assert_eq!(end, v.layout.height - v.view_h);
+        assert_eq!(ts.asked, ["broken.png"]);
+        for _ in 0..3 {
+            v.invalidate();
+            v.ensure_layout(&mut ts);
+            v.finish_layout(&mut ts);
+            assert_eq!(v.scroll, end);
+            assert_eq!(v.scroll, v.layout.height - v.view_h);
+        }
+    }
+
+    /// At the end, an image arriving a screen above the view grows the document above it:
+    /// the view stays at the end.
+    #[test]
+    fn at_the_end_an_image_arriving_above_the_view_keeps_it_at_the_end() {
+        let src = ["# Oben\n\n", &"Absatz\n\n".repeat(100), "![a](above.png)\n\n", &"Absatz\n\n".repeat(20)].concat();
+        let mut v = Viewer::new("t".into(), String::new(), crate::app::parse(&src));
+        v.resize(900.0, 600.0);
+        let mut ts = Pics::default();
+        v.ensure_layout(&mut ts);
+        v.key(Key::End, Mods::default(), Instant::now());
+        v.ensure_layout(&mut ts);
+        let h = v.view_h;
+        let p = v.layout.pending.iter().find(|p| p.url == "above.png").expect("waits").r;
+        assert!(p.y + p.h <= v.scroll && p.y >= v.scroll - h, "a screen above the view: {} {} (view at {})", p.y, p.h, v.scroll);
+        assert_eq!(ts.asked, ["above.png"]);
+        let last = v.layout.blocks.last().unwrap().text.clone();
+        let height = v.layout.height;
+        ts.ready.push("above.png".into());
+        v.invalidate();
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        assert!(v.layout.height > height + 50.0, "the document grew");
+        assert_eq!(v.scroll, v.layout.height - h, "the view is at the end");
+        assert_eq!(v.layout.blocks.last().unwrap().text, last);
+    }
+
+    /// A document shorter than the view: an image arriving makes it longer, the view stays
+    /// at the top (where the reader is), not at the new end.
+    #[test]
+    fn a_short_document_that_grows_stays_at_the_top() {
+        let src = ["# Oben\n\n", &"Absatz\n\n".repeat(10), "![e](end.png)\n"].concat();
+        let mut v = Viewer::new("t".into(), String::new(), crate::app::parse(&src));
+        v.resize(900.0, 600.0);
+        let mut ts = Pics::default();
+        v.ensure_layout(&mut ts);
+        assert!(v.layout.height <= v.view_h, "fits: {}", v.layout.height);
+        v.key(Key::End, Mods::default(), Instant::now());
+        assert_eq!(v.scroll, 0.0);
+        ts.ready.push("end.png".into());
+        v.invalidate();
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        assert!(v.layout.height > v.view_h, "longer than the view now: {}", v.layout.height);
+        assert_eq!(v.scroll, 0.0);
+    }
+
+    /// A wheel glide on its way to the end when the image there arrives: the glide goes on
+    /// to the new end (as if the image had arrived a moment later, once it got there).
+    #[test]
+    fn a_glide_to_the_end_goes_to_the_new_end_when_an_image_arrives() {
+        let src = ["# Oben\n\n", &"Absatz\n\n".repeat(100), "![e](end.png)\n"].concat();
+        let mut v = Viewer::new("t".into(), String::new(), crate::app::parse(&src));
+        v.resize(900.0, 600.0);
+        let mut ts = Pics::default();
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        let h = v.view_h;
+        let end = v.layout.height - h;
+        scroll_to(&mut v, &mut ts, end - 300.0);
+        assert_eq!(ts.asked, ["end.png"]);
+        let t0 = Instant::now();
+        v.wheel(400.0, Mods::default(), 400.0, 300.0, Some(t0));
+        v.tick(t0 + Duration::from_millis(40));
+        assert!(v.scroll > end - 300.0 && v.scroll < end, "on its way: {}", v.scroll);
+        ts.ready.push("end.png".into());
+        v.invalidate();
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        assert!(v.layout.height - h > end + 50.0, "the document grew");
+        let before = v.scroll;
+        v.tick(t0 + Duration::from_millis(60));
+        assert!(v.scroll >= before, "no step back: {before} → {}", v.scroll);
+        v.tick(t0 + Duration::from_millis(400));
+        assert_eq!(v.scroll, v.layout.height - h, "at the new end");
+        let img = v.layout.images.iter().find(|i| i.url == "end.png").unwrap().r;
+        assert!(img.y + img.h <= v.scroll + h, "the image all in view");
+        // A glide that stops short of the end is not pulled there.
+        v.set_document("t".into(), String::new(), crate::app::parse(&src), false);
+        ts.ready.clear();
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        scroll_to(&mut v, &mut ts, end - 500.0);
+        v.wheel(100.0, Mods::default(), 400.0, 300.0, Some(t0));
+        v.tick(t0 + Duration::from_millis(40));
+        ts.ready.push("end.png".into());
+        v.invalidate();
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        v.tick(t0 + Duration::from_millis(400));
+        assert_eq!(v.scroll, end - 400.0);
     }
 
     /// A new document starts afresh: its images load near the view again.
