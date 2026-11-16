@@ -1,4 +1,4 @@
-# Builds the app icon after the Markdownr Windows (Store) app's logo (see below):
+# Builds the app icon after the Markdownr iOS app's icon (see below):
 # renders it with WPF at the sizes Windows asks for, writes
 # assets/markdownr.ico (PNG-compressed entries: a few KB instead of ~100 KB of bitmaps) and
 # compiles data/app.res with rc.exe. build.rs links data/app.res, so building needs no rc.exe.
@@ -21,6 +21,22 @@ public static class IndexedPng {
     BE(s, (uint)data.Length); var t = new byte[4 + data.Length];
     for (int i = 0; i < 4; i++) t[i] = (byte)type[i]; Array.Copy(data, 0, t, 4, data.Length);
     s.Write(t, 0, t.Length); BE(s, Crc(t, 0, t.Length));
+  }
+  // Snaps every pixel to a mix of two of the icon's colours (premultiplied BGRA keys) in `steps`
+  // steps: the anti-aliasing keeps its shape with a handful of palette entries instead of ~130.
+  public static void Snap(byte[] pbgra, int[] ikeys, int steps) {
+    var keys = Array.ConvertAll(ikeys, k => (uint)k);
+    for (int o = 0; o < pbgra.Length; o += 4) {
+      double best = double.MaxValue; int bi = 0, bj = 0; double bt = 0;
+      for (int i = 0; i < keys.Length; i++) for (int j = i + 1; j < keys.Length; j++) {
+        double num = 0, den = 0, err = 0;
+        for (int c = 0; c < 4; c++) { double a = (keys[i] >> (8 * c)) & 255, b = (keys[j] >> (8 * c)) & 255; num += (pbgra[o + c] - a) * (b - a); den += (b - a) * (b - a); }
+        double t = den == 0 ? 0 : Math.Round(Math.Max(0, Math.Min(1, num / den)) * steps) / steps;
+        for (int c = 0; c < 4; c++) { double a = (keys[i] >> (8 * c)) & 255, b = (keys[j] >> (8 * c)) & 255, d = pbgra[o + c] - (a + (b - a) * t); err += d * d; }
+        if (err < best) { best = err; bi = i; bj = j; bt = t; }
+      }
+      for (int c = 0; c < 4; c++) { double a = (keys[bi] >> (8 * c)) & 255, b = (keys[bj] >> (8 * c)) & 255; pbgra[o + c] = (byte)Math.Round(a + (b - a) * bt); }
+    }
   }
   // pbgra: premultiplied BGRA rows. Returns null if there are more than 256 colours.
   public static byte[] Encode(byte[] pbgra, int w, int h) {
@@ -47,36 +63,51 @@ public static class IndexedPng {
 }
 '@
 $brush = { param($hex) $b = [Windows.Media.SolidColorBrush]::new([Windows.Media.ColorConverter]::ConvertFromString($hex)); $b.Freeze(); $b }
-# The Markdownr Windows (Store) app's logo: a white rounded rectangle with "M" and the down arrow
-# cut out, in 48x48 units. The Store app draws it white on transparent with #9a00f5 as its
-# colour; a desktop icon needs to show on light backgrounds too, so it sits on a #9a00f5 plate.
-$plate = & $brush "#9a00f5"
+# The Markdownr iOS app's icon (pke/markdownr scripts/icon.svg), in 48x48 units: a #410065 square
+# with a #2d0047 rounded frame at 75 % holding a white "M" and down arrow. iOS masks the square
+# itself; on Windows it is a rounded plate.
+$plate = & $brush "#410065"
+$frame = & $brush "#2d0047"
 $white = & $brush "#ffffff"
-$logo = [Windows.Media.GeometryGroup]::new()
-$logo.FillRule = [Windows.Media.FillRule]::EvenOdd
-$logo.Children.Add([Windows.Media.RectangleGeometry]::new([Windows.Rect]::new(-0.003, 5.998, 48, 36), 3.5, 3.5))
-$logo.Children.Add([Windows.Media.Geometry]::Parse("M5.99699 34.4977V13.4979h5.99991l4.5 7.4999 4.4999-7.4999h5.9999v20.9998h-5.9999V23.9978l-4.4999 5.9999-4.5-5.9999v10.4999H5.99699Z"))
-$logo.Children.Add([Windows.Media.Geometry]::Parse("M35.9966 34.4977l-7.4999-10.4999h4.5046l-.0047-10.4999h5.9999v10.4999h4.5l-7.4999 10.4999Z"))
+$frameGeo = [Windows.Media.RectangleGeometry]::new([Windows.Rect]::new(-0.003, 5.998, 48, 36), 3.5, 3.5)
+$frameGeo.Freeze()
+$logo = [Windows.Media.Geometry]::Parse("M5.99699 34.4977V13.4979h5.99991l4.5 7.4999 4.4999-7.4999h5.9999v20.9998h-5.9999V23.9978l-4.4999 5.9999-4.5-5.9999v10.4999H5.99699ZM35.9966 34.4977l-7.4999-10.4999h4.5046l-.0047-10.4999h5.9999v10.4999h4.5l-7.4999 10.4999Z")
 $logo.Freeze()
 $sizes = 16, 24, 32, 48, 256   # Windows scales 20, 40, 64, ... down from the next larger one
+$steps = if ($env:ICON_STEPS) { [int]$env:ICON_STEPS } else { 4 }   # anti-aliasing steps at 256 px
+$small = if ($env:ICON_SMALL) { [int]$env:ICON_SMALL } else { 8 }   # and at 16..48 px
 $pngs = foreach ($size in $sizes) {
     $visual = [Windows.Media.DrawingVisual]::new()
     $dc = $visual.RenderOpen()
     $dc.PushTransform([Windows.Media.ScaleTransform]::new($size / 48, $size / 48))
     $corner = 48 * 0.2
     $dc.DrawRoundedRectangle($plate, $null, [Windows.Rect]::new(0, 0, 48, 48), $corner, $corner)
-    $dc.PushTransform([Windows.Media.MatrixTransform]::new(0.8, 0, 0, 0.8, 4.8, 4.8))   # logo at 80 %, centred
+    $dc.PushTransform([Windows.Media.MatrixTransform]::new(0.75, 0, 0, 0.75, 6, 6))   # as in icon.svg
+    $dc.DrawGeometry($frame, $null, $frameGeo)
     $dc.DrawGeometry($white, $null, $logo)
     $dc.Pop(); $dc.Pop(); $dc.Close()
     $bmp = [Windows.Media.Imaging.RenderTargetBitmap]::new($size, $size, 96, 96, [Windows.Media.PixelFormats]::Pbgra32)
     $bmp.Render($visual)
     $px = [byte[]]::new($size * $size * 4)
     $bmp.CopyPixels($px, $size * 4, 0)
+    [IndexedPng]::Snap($px, [int[]](0, 0xFF410065, 0xFF2D0047, 0xFFFFFFFF), $(if ($size -le 48) { $small } else { $steps }))
     $indexed = [IndexedPng]::Encode($px, $size, $size)
     if ($indexed) { , $indexed; continue }
     $enc = [Windows.Media.Imaging.PngBitmapEncoder]::new()
     $enc.Frames.Add([Windows.Media.Imaging.BitmapFrame]::Create($bmp))
     $ms = [IO.MemoryStream]::new(); $enc.Save($ms); , $ms.ToArray()
+}
+# oxipng (winget install oxipng) re-deflates with zopfli and picks the smallest PNG colour type:
+# about 15 % off. Without it the entries stay as encoded above.
+$oxipng = Get-Command oxipng -ErrorAction SilentlyContinue
+if ($oxipng) {
+    $tmp = [IO.Path]::GetTempFileName()
+    $pngs = foreach ($p in $pngs) {
+        [IO.File]::WriteAllBytes($tmp, $p)
+        & $oxipng.Source -q -o max -Z --strip all --alpha $tmp
+        , [IO.File]::ReadAllBytes($tmp)
+    }
+    Remove-Item $tmp
 }
 # ICO: header, one directory entry per size, then the PNGs.
 $ico = [IO.MemoryStream]::new(); $w = [IO.BinaryWriter]::new($ico)
@@ -91,6 +122,7 @@ for ($i = 0; $i -lt $sizes.Count; $i++) {
 foreach ($p in $pngs) { $w.Write($p) }
 $w.Flush()
 [IO.File]::WriteAllBytes("$root\assets\markdownr.ico", $ico.ToArray())
+[IO.File]::WriteAllBytes("$root\assets\markdownr-256.png", $pngs[-1])   # macOS bundle icon (scripts/mac-bundle.sh)
 "markdownr.ico: $($ico.Length) bytes (" + (($sizes | ForEach-Object { $_ }) -join ", ") + ")"
 $rc = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\rc.exe" | Sort-Object FullName | Select-Object -Last 1
 Set-Content "$root\data\app.rc" "1 ICON `"../assets/markdownr.ico`"" -Encoding ascii
