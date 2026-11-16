@@ -37,6 +37,7 @@ import {
 } from 'react-native-nitro-markdown';
 import * as Linking from 'expo-linking';
 import {Share} from 'react-native';
+import {BlurView} from 'expo-blur';
 import {GlassView, isLiquidGlassAvailable} from 'expo-glass-effect';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 
@@ -59,6 +60,9 @@ import {ThemeSuggestion} from './ThemeSuggestion';
 import {FileChangedBanner} from './FileChangedBanner';
 
 const isIOS = Platform.OS === 'ios';
+const isAndroid = Platform.OS === 'android';
+// Android 12 added the hardware-accelerated blur used by expo-blur.
+const supportsAndroidBlur = Platform.OS === 'android' && Platform.Version >= 31;
 // nitro-markdown only loads http(s) images by default; keep embedded data: images working
 const IMAGE_OPTIONS = {allowedProtocols: ['http:', 'https:', 'data:']};
 
@@ -322,7 +326,7 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
   const insets = useSafeAreaInsets();
   const {height: windowHeight} = useWindowDimensions();
   const navigation = useNavigation();
-  const {showFrontMatterSetting, theme, isDarkMode, colorMode, toggleDarkMode, themeName, cycleTheme} = React.useContext(MarkdownContext);
+  const {showFrontMatterSetting, theme, backgroundColor, isDarkMode, colorMode, toggleDarkMode, themeName, cycleTheme} = React.useContext(MarkdownContext);
 
   const menuOpacity = useSharedValue(1);
   const menuTranslateY = useSharedValue(0);
@@ -368,6 +372,19 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
   const glassAvailable = isLiquidGlassAvailable();
   const bgColor = surfaceColor + 'e6';
   const mainButtonBgColor = glassAvailable ? 'transparent' : bgColor;
+  const menuButton = (
+    <TouchableOpacity onPress={toggleMenu} activeOpacity={0.9} style={styles.menuItemTouchable} testID="mainMenuButton" accessible={true}>
+      {isIOS ? (
+        <SymbolView name={isMenuOpen ? 'chevron.down' : 'ellipsis'} size={18} tintColor={theme.colors.text} />
+      ) : (
+        <Text style={[
+          styles.mainMenuButtonText,
+          {color: theme.colors.text},
+          isAndroid && {textShadowColor: backgroundColor, textShadowRadius: 3},
+        ]}>{isMenuOpen ? '▼' : '…'}</Text>
+      )}
+    </TouchableOpacity>
+  );
 
   // Cap the expanded menu to the space above the FAB so items never render
   // off-screen (e.g. in landscape, where 6 stacked items exceed the height).
@@ -461,15 +478,25 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
           </SlideUpMenuItem>
         </ScrollView>
 
-        <GlassView glassEffectStyle="regular" isInteractive style={[styles.mainMenuButton, {backgroundColor: mainButtonBgColor}]}>
-          <TouchableOpacity onPress={toggleMenu} activeOpacity={0.9} style={styles.menuItemTouchable} testID="mainMenuButton" accessible={true}>
-            {isIOS ? (
-              <SymbolView name={isMenuOpen ? 'chevron.down' : 'ellipsis'} size={18} tintColor={theme.colors.text} />
-            ) : (
-              <Text style={[styles.mainMenuButtonText, {color: theme.colors.text}]}>{isMenuOpen ? '▼' : '…'}</Text>
+        {isAndroid ? (
+          <View style={[styles.mainMenuButton, styles.mainMenuButtonShadow]}>
+            {supportsAndroidBlur && isMenuVisible && (
+              <BlurView
+                pointerEvents="none"
+                style={styles.androidMenuButtonBlur}
+                experimentalBlurMethod="dimezisBlurView"
+                tint={isDarkMode ? 'dark' : 'light'}
+                intensity={18}
+                blurReductionFactor={1.5}
+              />
             )}
-          </TouchableOpacity>
-        </GlassView>
+            {menuButton}
+          </View>
+        ) : (
+          <GlassView glassEffectStyle="regular" isInteractive style={[styles.mainMenuButton, styles.mainMenuButtonShadow, {backgroundColor: mainButtonBgColor}]}>
+            {menuButton}
+          </GlassView>
+        )}
       </Animated.View>
     </>
   );
@@ -1271,6 +1298,13 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  androidMenuButtonBlur: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: '50%',
+    overflow: 'hidden',
+  },
+  mainMenuButtonShadow: {
     shadowColor: '#000',
     shadowOffset: {width: 0, height: 2},
     shadowOpacity: 0.3,
