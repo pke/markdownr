@@ -1634,13 +1634,13 @@ mod tests {
         };
         let now = Instant::now();
         // Right under the window's top: below the line.
-        let (_, y) = point_at(&v, "https://github.com/pke/markdownr", 0);
+        let (_, y) = point_at(&v, "https://markdownr.dudesoft.app", 0);
         v.scroll_by(y - 20.0);
-        let (x, y) = point_at(&v, "https://github.com/pke/markdownr", 0);
+        let (x, y) = point_at(&v, "https://markdownr.dudesoft.app", 0);
         v.mouse_move(x, y, now);
         v.ensure_layout(&mut Fake);
         assert!(v.tip_box.y > v.tip.as_ref().unwrap().bottom);
-        for (target, shown) in [("https://github.com/pke/markdownr", "https://github.com/pke/markdownr"), ("abbr:Abstract Syntax Tree", "Abstract Syntax Tree")] {
+        for (target, shown) in [("https://markdownr.dudesoft.app", "https://markdownr.dudesoft.app"), ("abbr:Abstract Syntax Tree", "Abstract Syntax Tree")] {
             let (_, y) = point_at(&v, target, 2);
             v.scroll_by(y - 300.0);
             let (x, y) = point_at(&v, target, 2);

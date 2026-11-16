@@ -12,7 +12,7 @@ and abbreviations like AST, SVG or GPU: point at them (or at a link) to see what
 
 ## Lists
 
-- First item with a [link](https://github.com/pke/markdownr)
+- First item with a [link](https://markdownr.dudesoft.app)
 - Second item
   - Nested item
   - Another nested item
