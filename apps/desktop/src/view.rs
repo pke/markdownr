@@ -168,6 +168,25 @@ enum Action {
     FindClose,
 }
 
+/// A tooltip over a link or abbreviation, anchored to the line it explains
+/// (window coordinates).
+struct Tip {
+    text: String,
+    x: f32,
+    top: f32,
+    bottom: f32,
+    /// The pointer is on the tooltip (its copy button shows).
+    hot: bool,
+    on_copy: bool,
+    copied: bool,
+}
+
+impl Tip {
+    fn new(text: String, x: f32, top: f32, bottom: f32) -> Self {
+        Tip { text, x, top, bottom, hot: false, on_copy: false, copied: false }
+    }
+}
+
 struct Find {
     query: String,
     matches: Vec<(usize, Range<usize>)>,
@@ -195,9 +214,15 @@ pub struct Viewer<P> {
     pub chrome_alpha: f32,
     /// Room left of the toolbar's buttons (macOS: the window buttons sit there).
     pub bar_inset: f32,
-    /// Abbreviation tooltip (text, window x, y) and its layout.
-    tip: Option<(String, f32, f32)>,
+    /// Link or abbreviation tooltip and its layout.
+    tip: Option<Tip>,
     pub tip_layout: DocLayout<P>,
+    /// The tooltip's box as drawn, its copy button (while pointed at) and the
+    /// box plus the gap to the link, where the pointer keeps it open.
+    tip_box: RectF,
+    tip_copy: RectF,
+    tip_zone: RectF,
+    pressed_tip: bool,
     pub particles: Option<Particles>,
     /// Bumped whenever `particles` is made anew.
     pub particles_gen: u32,
@@ -252,6 +277,16 @@ fn front_matter_of(doc: &Node) -> Vec<(String, String)> {
     doc.children.iter().find(|n| n.kind == Kind::FrontMatter).map(|n| front_matter_pairs(&n.text)).unwrap_or_default()
 }
 
+/// Hover text for a link target: an abbreviation's expansion, a link's URL
+/// (footnote references show none).
+fn tip_text(url: &str) -> Option<&str> {
+    match url.strip_prefix("abbr:") {
+        Some(title) => Some(title),
+        None if url.starts_with("#fn-") => None,
+        None => Some(url),
+    }
+}
+
 fn contains(r: &RectF, x: f32, y: f32) -> bool {
     x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
 }
@@ -280,6 +315,10 @@ impl<P: Paragraph> Viewer<P> {
             bar_inset: 0.0,
             tip: None,
             tip_layout: DocLayout::default(),
+            tip_box: RectF::default(),
+            tip_copy: RectF::default(),
+            tip_zone: RectF::default(),
+            pressed_tip: false,
             particles: None,
             particles_gen: 0,
             composited: false,
@@ -538,8 +577,12 @@ impl<P: Paragraph> Viewer<P> {
     }
 
     pub fn scroll_by(&mut self, dy: f32) {
+        let before = self.scroll;
         self.scroll += dy;
         self.clamp_scroll();
+        if self.scroll != before && self.tip.take().is_some() {
+            self.chrome_dirty = true; // the tooltip's line moved away
+        }
         if self.toc_open {
             self.chrome_dirty = true; // current-section highlight
         }
@@ -760,14 +803,46 @@ impl<P: Paragraph> Viewer<P> {
         }
         self.chrome = out;
         let mut tip_out: DocLayout<P> = DocLayout::default();
-        if let Some((text, tx, ty)) = &self.tip {
-            let (para, pw, ph) = label(ts, text, &style, 360.0);
-            let (bw, bh) = (pw + 20.0, ph + 12.0);
-            let bx = (tx - bw / 2.0).clamp(4.0, (self.view_w - bw - 4.0).max(4.0));
-            let by = if ty + 24.0 + bh < self.view_h { ty + 24.0 } else { ty - 12.0 - bh };
+        (self.tip_box, self.tip_copy, self.tip_zone) = Default::default();
+        if let Some(t) = &self.tip {
+            let (para, pw, ph) = label(ts, &t.text, &style, 360.0);
+            // Above the line it explains (below when there is no room), growing to the
+            // right by a copy button while pointed at.
+            let bh = ph + 12.0;
+            let btn = ph + 4.0;
+            let full_w = pw + 20.0 + btn + 2.0;
+            let bw = if t.hot { full_w } else { pw + 20.0 };
+            let bx = (t.x - (pw + 20.0) / 2.0).clamp(4.0, (self.view_w - full_w - 4.0).max(4.0));
+            let above = t.top - 6.0 - bh >= 4.0;
+            let by = if above { t.top - 6.0 - bh } else { t.bottom + 6.0 };
+            self.tip_box = RectF { x: bx, y: by, w: bw, h: bh };
+            self.tip_zone = if above {
+                RectF { x: bx, y: by, w: bw, h: t.top - by }
+            } else {
+                RectF { x: bx, y: t.bottom, w: bw, h: by + bh - t.bottom }
+            };
             tip_out.rects.push(Rect { r: RectF { x: bx - 1.0, y: by - 1.0, w: bw + 2.0, h: bh + 2.0 }, color: th.border, radius: 7.0 });
-            tip_out.rects.push(Rect { r: RectF { x: bx, y: by, w: bw, h: bh }, color: th.chrome_bg, radius: 6.0 });
-            place(&mut tip_out, para, text, bx + 10.0, by + 6.0, pw, ph);
+            tip_out.rects.push(Rect { r: self.tip_box, color: th.chrome_bg, radius: 6.0 });
+            place(&mut tip_out, para, &t.text, bx + 10.0, by + 6.0, pw, ph);
+            if t.hot {
+                let r = RectF { x: bx + pw + 16.0, y: by + 4.0, w: btn, h: btn };
+                self.tip_copy = r;
+                let bg = if t.on_copy { th.chrome_hover } else { th.chrome_bg };
+                tip_out.rects.push(Rect { r, color: bg, radius: 4.0 });
+                let (cx, cy) = (r.x + btn / 2.0, r.y + btn / 2.0);
+                if t.copied {
+                    let (para, cw, ch) = label(ts, "✓", &BaseStyle { color: th.link, ..style }, 100.0);
+                    place(&mut tip_out, para, "✓", cx - cw / 2.0, cy - ch / 2.0, cw, ch);
+                } else {
+                    // Copy icon: two overlapping outlined squares.
+                    let s = (btn * 0.42).round();
+                    let o = (s * 0.4).round();
+                    for (x, y) in [(cx - (s + o) / 2.0, cy - (s + o) / 2.0), (cx - (s + o) / 2.0 + o, cy - (s + o) / 2.0 + o)] {
+                        tip_out.rects.push(Rect { r: RectF { x, y, w: s, h: s }, color: th.chrome_text, radius: 2.5 });
+                        tip_out.rects.push(Rect { r: RectF { x: x + 1.5, y: y + 1.5, w: s - 3.0, h: s - 3.0 }, color: bg, radius: 1.5 });
+                    }
+                }
+            }
         }
         if self.help {
             (tip_out, self.help_reveal) = self.build_help(ts);
@@ -896,8 +971,7 @@ impl<P: Paragraph> Viewer<P> {
             }
             Action::TocEntry(i) => {
                 if let Some(e) = self.layout.toc.get(i) {
-                    self.scroll = e.y - self.font_size;
-                    self.clamp_scroll();
+                    self.scroll_by(e.y - self.font_size - self.scroll);
                     self.selection = None;
                 }
                 if self.view_w < 900.0 {
@@ -991,8 +1065,7 @@ impl<P: Paragraph> Viewer<P> {
         let block = &self.layout.blocks[*b];
         let y = block.para.range_rects(r.clone()).first().map_or(block.y, |rr| block.y + rr.y);
         if y < self.scroll + BAR_H + 8.0 || y > self.scroll + self.view_h - self.font_size * 3.0 {
-            self.scroll = y - self.view_h / 3.0;
-            self.clamp_scroll();
+            self.scroll_by(y - self.view_h / 3.0 - self.scroll);
         }
     }
 
@@ -1112,8 +1185,9 @@ impl<P: Paragraph> Viewer<P> {
             self.pressed_chrome = false;
             return;
         }
+        self.pressed_tip = self.over_tip(x, y);
         self.pressed_chrome = self.over_chrome(x, y);
-        if self.pressed_chrome {
+        if self.pressed_tip || self.pressed_chrome {
             return;
         }
         let (dx, dy) = self.doc_point(x, y);
@@ -1147,12 +1221,21 @@ impl<P: Paragraph> Viewer<P> {
                 self.show_chrome(now);
                 repaint |= !was;
             }
-            let (dx, dy) = self.doc_point(x, y);
-            let tip = if self.over_chrome(x, y) { None } else { self.layout.link_at(dx, dy).and_then(|u| u.strip_prefix("abbr:")).map(str::to_string) };
-            if tip.as_deref() != self.tip.as_ref().map(|t| t.0.as_str()) {
-                self.tip = tip.map(|t| (t, x, y));
-                self.chrome_dirty = true;
-                repaint = true;
+            if let Some(t) = self.tip.as_mut().filter(|_| contains(&self.tip_zone, x, y) || contains(&self.tip_box, x, y)) {
+                // On the tooltip or on the way to it: it stays, with its copy button.
+                let (hot, on_copy) = (contains(&self.tip_box, x, y), contains(&self.tip_copy, x, y));
+                if (hot, on_copy) != (t.hot, t.on_copy) {
+                    (t.hot, t.on_copy) = (hot, on_copy);
+                    self.chrome_dirty = true;
+                    repaint = true;
+                }
+            } else {
+                let tip = if self.over_chrome(x, y) { None } else { self.tip_at(x, y) };
+                if tip.as_ref().map(|t| (&t.text, t.top)) != self.tip.as_ref().map(|t| (&t.text, t.top)) {
+                    self.tip = tip;
+                    self.chrome_dirty = true;
+                    repaint = true;
+                }
             }
             let hover = self.chrome_hit(x, y);
             if hover != self.hover {
@@ -1175,9 +1258,20 @@ impl<P: Paragraph> Viewer<P> {
     }
 
     pub fn mouse_leave(&mut self) {
-        if self.hover.take().is_some() {
+        if self.hover.take().is_some() | self.tip.take().is_some() {
             self.chrome_dirty = true;
         }
+    }
+
+    /// The tooltip for the link or abbreviation at window point (x, y).
+    fn tip_at(&self, x: f32, y: f32) -> Option<Tip> {
+        let (dx, dy) = self.doc_point(x, y);
+        let (url, top, bottom) = self.layout.link_line_at(dx, dy)?;
+        Some(Tip::new(tip_text(url)?.to_string(), x, top - self.scroll, bottom - self.scroll))
+    }
+
+    fn over_tip(&self, x: f32, y: f32) -> bool {
+        self.tip.is_some() && contains(&self.tip_box, x, y)
     }
 
     /// `tap` is true for touch input: a tap on the page toggles the chrome.
@@ -1194,6 +1288,15 @@ impl<P: Paragraph> Viewer<P> {
             return None;
         }
         let moved = (x - self.press.0).abs() > 3.0 || (y - self.press.1).abs() > 3.0;
+        if self.pressed_tip {
+            // The tooltip takes clicks; its copy button copies the text.
+            self.pressed_tip = false;
+            self.pressed_chrome = false;
+            let t = self.tip.as_mut().filter(|_| !moved && contains(&self.tip_copy, x, y))?;
+            t.copied = true;
+            self.chrome_dirty = true;
+            return Some(Effect::Copy(t.text.clone()));
+        }
         if self.pressed_chrome {
             self.pressed_chrome = false;
             if moved {
@@ -1219,8 +1322,9 @@ impl<P: Paragraph> Viewer<P> {
             }
             return None;
         };
-        if let Some(title) = url.strip_prefix("abbr:") {
-            self.tip = Some((title.to_string(), x, y));
+        if url.starts_with("abbr:") {
+            // Touch has no hover: a tap shows the expansion, with its copy button.
+            self.tip = self.tip_at(x, y).map(|t| Tip { hot: tap, ..t });
             self.chrome_dirty = true;
             return None;
         }
@@ -1228,8 +1332,7 @@ impl<P: Paragraph> Viewer<P> {
             let target = self.layout.toc.iter().find(|e| e.id == id).map(|e| e.y - self.font_size)
                 .or_else(|| self.layout.anchors.iter().find(|(a, _)| a == id).map(|(_, ay)| *ay));
             if let Some(ty) = target {
-                self.scroll = ty;
-                self.clamp_scroll();
+                self.scroll_by(ty - self.scroll);
                 self.selection = None;
             }
             None
@@ -1239,7 +1342,7 @@ impl<P: Paragraph> Viewer<P> {
     }
 
     pub fn over_link(&self, x: f32, y: f32) -> bool {
-        if self.help || self.over_chrome(x, y) {
+        if self.help || self.over_chrome(x, y) || self.over_tip(x, y) {
             return false;
         }
         let (dx, dy) = self.doc_point(x, y);
@@ -1248,7 +1351,11 @@ impl<P: Paragraph> Viewer<P> {
 
     /// Cursor hint: true over chrome buttons.
     pub fn over_button(&self, x: f32, y: f32) -> bool {
-        if self.help { contains(&self.help_reveal, x, y) } else { self.chrome_hit(x, y).is_some() }
+        if self.help {
+            contains(&self.help_reveal, x, y)
+        } else {
+            self.over_tip(x, y) && contains(&self.tip_copy, x, y) || self.chrome_hit(x, y).is_some()
+        }
     }
 
     pub fn over_chrome_area(&self, x: f32, y: f32) -> bool {
@@ -1338,6 +1445,70 @@ mod tests {
         assert!(v.tip_layout.blocks.len() > closed_blocks, "advanced sections shown");
         v.release(5.0, 5.0, false, now);
         assert!(!v.help);
+    }
+
+    #[test]
+    fn link_tooltips() {
+        assert_eq!(tip_text("https://example.com/a?b"), Some("https://example.com/a?b"));
+        assert_eq!(tip_text("#install"), Some("#install"));
+        assert_eq!(tip_text("abbr:HyperText Markup Language"), Some("HyperText Markup Language"));
+        assert_eq!(tip_text("#fn-1"), None);
+
+        // Pointing at the sample's link and at its AST abbreviation shows URL and expansion.
+        let mut v = viewer(900.0);
+        v.ensure_layout(&mut Fake);
+        v.finish_layout(&mut Fake);
+        // The document holds the sample several times: `nth` picks the copy.
+        let point_at = |v: &Viewer<FakePara>, target: &str, nth: usize| {
+            let b = v.layout.blocks.iter().filter(|b| b.links.iter().any(|(_, u)| u == target)).nth(nth).unwrap();
+            let r = &b.links.iter().find(|(_, u)| u == target).unwrap().0;
+            (b.x + b.text[..r.start].chars().count() as f32 * 10.0 + 10.0, b.y + 5.0 - v.scroll)
+        };
+        let now = Instant::now();
+        // Right under the window's top: below the line.
+        let (_, y) = point_at(&v, "https://github.com/pke/markdownr", 0);
+        v.scroll_by(y - 20.0);
+        let (x, y) = point_at(&v, "https://github.com/pke/markdownr", 0);
+        v.mouse_move(x, y, now);
+        v.ensure_layout(&mut Fake);
+        assert!(v.tip_box.y > v.tip.as_ref().unwrap().bottom);
+        for (target, shown) in [("https://github.com/pke/markdownr", "https://github.com/pke/markdownr"), ("abbr:Abstract Syntax Tree", "Abstract Syntax Tree")] {
+            let (_, y) = point_at(&v, target, 2);
+            v.scroll_by(y - 300.0);
+            let (x, y) = point_at(&v, target, 2);
+            assert!(v.mouse_move(x, y, now));
+            assert_eq!(v.tip.as_ref().map(|t| t.text.as_str()), Some(shown));
+            v.ensure_layout(&mut Fake);
+            assert!(v.tip_layout.blocks.iter().any(|b| b.text == shown));
+            // Above the line, no copy button until pointed at.
+            let (b, top) = (v.tip_box, v.tip.as_ref().unwrap().top);
+            assert!(b.y + b.h < top && top < y, "{b:?} {top} {y}");
+            assert_eq!(v.tip_copy, RectF::default());
+        }
+        // Up through the gap onto the tooltip: it stays and shows its copy button.
+        let b = v.tip_box;
+        v.mouse_move(b.x + 5.0, b.y + b.h + 3.0, now);
+        v.mouse_move(b.x + 5.0, b.y + b.h / 2.0, now);
+        v.ensure_layout(&mut Fake);
+        assert!(v.tip.as_ref().is_some_and(|t| t.hot));
+        let c = v.tip_copy;
+        assert!(c.w > 0.0 && v.tip_box.w > b.w);
+        assert!(v.over_button(c.x + c.w / 2.0, c.y + c.h / 2.0));
+        assert!(!v.over_link(b.x + 5.0, b.y + b.h / 2.0));
+        v.press(c.x + c.w / 2.0, c.y + c.h / 2.0, Mods::default(), Duration::from_millis(500));
+        assert!(matches!(v.release(c.x + c.w / 2.0, c.y + c.h / 2.0, false, now), Some(Effect::Copy(t)) if t == "Abstract Syntax Tree"));
+        assert!(v.selection.is_none() && v.tip.as_ref().is_some_and(|t| t.copied));
+        // Away from link and tooltip, and out of the window: gone.
+        v.mouse_move(b.x + 5.0, b.y - 40.0, now);
+        assert!(v.tip.is_none());
+        let (x, y) = point_at(&v, "abbr:Abstract Syntax Tree", 2);
+        v.mouse_move(x, y, now);
+        v.scroll_by(10.0);
+        assert!(v.tip.is_none(), "scrolling hides it");
+        v.mouse_move(x, y - 10.0, now);
+        assert!(v.tip.is_some());
+        v.mouse_leave();
+        assert!(v.tip.is_none());
     }
 
     #[test]

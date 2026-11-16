@@ -6,13 +6,16 @@
 #
 #   tools/mdr-shot.ps1 -Exe target/release/markdownr.exe -Doc assets/sample.md -Out shot.png `
 #       [-Settings perf.ini] [-Locale de-DE] [-Language ja] [-TimeMs 1234] [-Scroll 650] [-Keys Ctrl+T,F1] `
-#       [-Type 'suche'] [-TopBar] [-OnScreen]
+#       [-Type 'suche'] [-TopBar] [-Hover '120,340;120,310'] [-OnScreen]
 #
 # -Scroll   DIPs to scroll down (mouse wheel messages; one notch is 3 x the font size, -FontSize)
 # -Keys     keys posted in order: F1, Esc, Enter, Home, End, PageDown, PageUp, Up, Down, Left,
 #           Right, Space, a letter or digit, each optionally with Ctrl+ / Shift+
 # -Type     text typed after the keys (WM_CHAR)
 # -TopBar   moves the (posted) mouse to the top edge, which shows the toolbar
+# -Hover    "x,y[;x,y...]": moves the (posted) mouse to these client points in pixels, one after the
+#           other, after the first layout
+#           (link and abbreviation tooltips)
 # -OnScreen keeps the window where the app put it (default: moved beyond all monitors)
 # -SettleMs / -StableMs  wait before the first picture / at most this long for a still one
 #           (seasonal particles are composition visuals and appear in the picture, animated;
@@ -31,6 +34,7 @@ param(
     [string[]]$Keys = @(),
     [string]$Type,
     [switch]$TopBar,
+    [string]$Hover,
     [switch]$OnScreen,
     [int]$SettleMs = 1500,
     [int]$StableMs = 4000,
@@ -248,6 +252,14 @@ try {
     }
     if ($Type) { foreach ($c in $Type.ToCharArray()) { [void][MdrShot]::PostMessageW($h, 0x0102, [IntPtr][int]$c, [IntPtr]1) } }
     if ($TopBar) { [void][MdrShot]::PostMessageW($h, 0x0200, [IntPtr]::Zero, [MdrShot]::Point(300, 5)) }   # WM_MOUSEMOVE
+    if ($Hover) {   # after the first layout
+        Start-Sleep -Milliseconds 800
+        foreach ($p in $Hover -split ';') {
+            $hx, $hy = $p -split ','
+            [void][MdrShot]::PostMessageW($h, 0x0200, [IntPtr]::Zero, [MdrShot]::Point([int]$hx, [int]$hy))
+            Start-Sleep -Milliseconds 150
+        }
+    }
 
     # Settle: at least SettleMs (images load, fades end), then until three pictures in a row agree,
     # for at most StableMs more (falling particles never stand still; they are in the picture).

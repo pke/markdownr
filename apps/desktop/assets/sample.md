@@ -8,6 +8,7 @@ This is the **Direct2D + DirectWrite** prototype (ClearType): pulldown-cmark →
 Select text across ~~one~~ several paragraphs with the mouse and press `Ctrl+C`. :rocket:
 
 Extra syntax from transforms: ==marked text==, ++inserted text++, x^2^ and H~2~O, emoticons :)
+and abbreviations like AST, SVG or GPU: point at them (or at a link) to see what they stand for.
 
 ## Lists
 
@@ -115,3 +116,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a 
 Vestibulum id ligula porta felis euismod semper. Maecenas faucibus mollis interdum. Nullam quis risus eget urna mollis ornare vel eu leo. Curabitur blandit tempus porttitor.
 
 Sed posuere consectetur est at lobortis. Aenean eu leo quam. Pellentesque ornare sem lacinia quam venenatis vestibulum. Etiam porta sem malesuada magna mollis euismod.
+
+*[AST]: Abstract Syntax Tree
+*[SVG]: Scalable Vector Graphics
+*[GPU]: Graphics Processing Unit

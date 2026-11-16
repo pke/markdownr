@@ -847,12 +847,19 @@ impl<P: Paragraph> DocLayout<P> {
     }
 
     pub fn link_at(&self, x: f32, y: f32) -> Option<&str> {
+        self.link_line_at(x, y).map(|(u, _, _)| u)
+    }
+
+    /// The link under (x, y) with the top and bottom of its line there.
+    pub fn link_line_at(&self, x: f32, y: f32) -> Option<(&str, f32, f32)> {
         let pos = self.hit(x, y)?;
         let b = &self.blocks[pos.block];
         if y < b.y || y > b.y + b.h || x < b.x || x > b.x + b.w {
             return None;
         }
-        b.links.iter().find(|(r, _)| r.contains(&pos.byte)).map(|(_, u)| u.as_str())
+        let (r, url) = b.links.iter().find(|(r, _)| r.contains(&pos.byte))?;
+        let line = b.para.range_rects(r.clone()).into_iter().find(|q| y >= b.y + q.y && y <= b.y + q.y + q.h);
+        Some((url, line.map_or(b.y, |q| b.y + q.y), line.map_or(b.y + b.h, |q| b.y + q.y + q.h)))
     }
 }
 
