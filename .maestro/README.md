@@ -7,9 +7,9 @@ menu, and the landscape regression we just fixed.
 
 This folder already contained the screenshot-automation flows
 (`screenshots-*.yaml`, `ipad-screenshots-*.yaml`, run via `fastlane upload_screenshots`).
-The `01`–`05` flows are the new **test** flows and follow the same conventions:
-`appId: dev.dudesoft.markdownr.dev` (the dev variant) and liberal
-`waitForAnimationToEnd` between steps.
+The numbered flows are the UI tests. They default to the development app.
+Fastlane's `ios release_tests` lane runs them against the production Release
+app and runs the [native XCUITests](../modules/ui-tests/README.md).
 
 ## Install Maestro
 
@@ -36,8 +36,8 @@ maestro --version
 # just the test flows
 maestro test .maestro/01-launch-and-render.yaml
 maestro test .maestro/02-toc-drawer.yaml
-# ...or a whole run (this also picks up the screenshot flows):
-maestro test .maestro/
+# Recents requires a fixture when running the development build:
+bash .maestro/recents-setup.sh
 
 # interactive selector explorer (great while writing flows)
 maestro studio
@@ -59,11 +59,9 @@ Screenshots (`takeScreenshot`) land in the working directory.
 | `08-search` | Open Search, type a query, submit, land on the first match (`1/N` counter) |
 | `10-source-view` | Source/rendered toggle (FAB label flips Source ↔ Rendered) |
 | `11-frontmatter-toggle` | Front-matter card show (ⓘ) / hide |
-| `09-recents` | Recent-files list + delete (needs `recents-setup.sh`; see below) |
+| `09-recents` | Recent-files list and Clear All |
 
-The flows lean on the app's built-in content (welcome page, Ocean sample) and
-`testID`s, so they need **no external fixtures** and **never touch the native
-file picker** — which is deliberately hard to automate.
+Most flows use the app's built-in content and `testID`s.
 
 ## Assumptions & tips
 
@@ -80,12 +78,9 @@ file picker** — which is deliberately hard to automate.
 
 ## Known gaps (hard to automate)
 
-- **Recent files** (`09-recents`) need seeding, since creating a recent requires
-  a real `openFile` (native picker or `file://` deep link — neither automates:
-  `simctl openurl file://…` routes to the iOS Files "Save" sheet). A DEBUG-only
-  hook in App.tsx seeds recents when a sentinel file is present; run the flow via
-  **`recents-setup.sh`** (drops the sentinel, then runs the flow). It is NOT part
-  of a plain `maestro test .maestro/` run.
+- **Recent files** (`09-recents`) need seeding. The development helper
+  `recents-setup.sh` uses the debug seed hook. Fastlane seeds the Release app
+  by opening Markdown files through iOS.
 - **Swipe-to-delete** on the recents list can't be driven by Maestro — the
   `ReanimatedSwipeable` pan (gesture-handler) isn't recognized and the touch
   falls through to the row's tap. `09-recents` deletes via "Clear All" instead;

@@ -62,11 +62,23 @@ platform :ios do
     )
   end
 
-  desc "Submit the current version for App Store review"
-  lane :submit_review do
+  desc "Run all iOS E2E tests on Apple's latest public standard iPhone Simulator runtime"
+  lane :release_tests do |options|
+    version = read_version
+    Dir.chdir(PROJECT_ROOT) do
+      sh("bash", "modules/ui-tests/run-release-tests.sh", options[:runtime_build].to_s, version[:version], version[:build_number])
+    end
+  end
+
+  desc "Run the iOS E2E suite and submit the current build for review"
+  lane :submit_review do |options|
+    release_tests(runtime_build: options[:runtime_build])
+    version = read_version
     deliver(
       api_key: asc_api_key,
       app_identifier: APP_IDENTIFIER,
+      app_version: version[:version],
+      build_number: version[:build_number],
       skip_metadata: true,
       skip_screenshots: true,
       skip_binary_upload: true,
@@ -149,8 +161,8 @@ platform :ios do
     UI.important("Then run: bundle exec fastlane ios release")
   end
 
-  desc "Full release: prebuild, build, upload to TestFlight, upload metadata, and submit for review"
-  lane :release do
+  desc "Test, archive, upload, and submit for review"
+  lane :release do |options|
     v = read_version
     version = v[:version]
     build_number = v[:build_number]
@@ -171,23 +183,22 @@ platform :ios do
       UI.user_error!("Git working directory is not clean. Commit or stash changes first.\n#{status}")
     end
 
-    # Step 1: Expo prebuild for production
-    UI.header("Step 1/5: Expo prebuild")
-    Dir.chdir(PROJECT_ROOT) do
-      sh("npx expo prebuild --clean 2>&1")
-    end
+    UI.header("Step 1/5: Clean iOS prebuild and full E2E suite")
+    release_tests(runtime_build: options[:runtime_build])
 
     # Step 2: Build
     UI.header("Step 2/5: Building Markdownr v#{version}")
-    build_app(
-      workspace: File.join(PROJECT_ROOT, "ios/Markdownr.xcworkspace"),
-      scheme: "Markdownr",
-      configuration: "Release",
-      export_method: "app-store",
-      export_team_id: "K9VADMGRA7",
-      output_directory: File.join(PROJECT_ROOT, "ios/build"),
-      xcargs: "-allowProvisioningUpdates"
-    )
+    FastlaneCore::Helper.with_env_values("APP_VARIANT" => "production", "WITH_UITESTS" => "0") do
+      build_app(
+        workspace: File.join(PROJECT_ROOT, "ios/Markdownr.xcworkspace"),
+        scheme: "Markdownr",
+        configuration: "Release",
+        export_method: "app-store",
+        export_team_id: "K9VADMGRA7",
+        output_directory: File.join(PROJECT_ROOT, "ios/build"),
+        xcargs: "-allowProvisioningUpdates"
+      )
+    end
 
     # Step 3: Upload to TestFlight (internal + Public Beta, so the public
     # link stays open — it closes when the group has no unexpired build)
@@ -218,6 +229,8 @@ platform :ios do
     deliver(
       api_key: asc_api_key,
       app_identifier: APP_IDENTIFIER,
+      app_version: version,
+      build_number: build_number,
       skip_metadata: true,
       skip_screenshots: true,
       skip_binary_upload: true,

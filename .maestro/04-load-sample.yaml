@@ -1,6 +1,6 @@
 # Loading different content through an in-app markdownr: link — no native file
 # picker needed. Proves navigation + re-render of a new document.
-appId: dev.dudesoft.markdownr.dev
+appId: '${typeof MARKDOWNR_APP_ID === "undefined" ? "dev.dudesoft.markdownr.dev" : MARKDOWNR_APP_ID}'
 ---
 - stopApp
 - launchApp:

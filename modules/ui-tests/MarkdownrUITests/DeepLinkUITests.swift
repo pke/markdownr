@@ -9,13 +9,11 @@ import XCTest
 /// so its Documents folder is browsable in Files and opening a `.md` there hands
 /// the file URL to Markdownr.
 final class DeepLinkUITests: XCTestCase {
-  private let appId = "dev.dudesoft.markdownr.dev"
-
   override func setUpWithError() throws {
     continueAfterFailure = false
   }
 
-  /// Sanity gate: the app builds, launches against Metro, and renders its UI.
+  /// Sanity gate: the app starts and renders its UI.
   /// Asserts the always-present FAB (testID `mainMenuButton`) rather than any
   /// specific content — the app may reopen the last file instead of the welcome
   /// screen. If this fails, the native-test pipeline itself is broken.
@@ -29,7 +27,7 @@ final class DeepLinkUITests: XCTestCase {
     let fab = app.descendants(matching: .any)["mainMenuButton"].firstMatch
     XCTAssertTrue(
       fab.waitForExistence(timeout: 90),
-      "the FAB menu should render (JS bundle loaded from Metro)"
+      "the FAB menu should render"
     )
   }
 
@@ -47,11 +45,19 @@ final class DeepLinkUITests: XCTestCase {
   /// owning app all vary by release. `simctl openurl` reproduces the exact OS
   /// document handoff without any of that fragility.
   func testDeepLinkRendersOpenedFile() throws {
-    let app = XCUIApplication(bundleIdentifier: appId)
+    assertOpenedDocument(heading: "Deep Link Heading")
+  }
+
+  func testWarmDeepLinkRendersOpenedFile() throws {
+    assertOpenedDocument(heading: "Warm Deep Link Heading")
+  }
+
+  private func assertOpenedDocument(heading: String) {
+    let app = XCUIApplication()
     app.activate()
     XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), "app should be foreground")
     XCTAssertTrue(
-      app.staticTexts["Deep Link Heading"].waitForExistence(timeout: 30),
+      app.staticTexts[heading].waitForExistence(timeout: 30),
       "the openurl-delivered fixture heading should be rendered"
     )
   }

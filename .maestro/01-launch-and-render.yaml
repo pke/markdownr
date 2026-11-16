@@ -1,6 +1,6 @@
 # Smoke test: the app launches and the welcome markdown actually renders.
 # clearState wipes MMKV so we always start on the welcome page (no recent file).
-appId: dev.dudesoft.markdownr.dev
+appId: '${typeof MARKDOWNR_APP_ID === "undefined" ? "dev.dudesoft.markdownr.dev" : MARKDOWNR_APP_ID}'
 ---
 - stopApp
 - launchApp:

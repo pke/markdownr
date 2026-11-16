@@ -3,7 +3,7 @@
 # surfaces the suggestion banner. Tapping Apply activates the Ocean theme, which
 # consumes the suggestion (the banner clears). Colors aren't assertable, so the
 # banner lifecycle is the behavioural proof, plus before/after screenshots.
-appId: dev.dudesoft.markdownr.dev
+appId: '${typeof MARKDOWNR_APP_ID === "undefined" ? "dev.dudesoft.markdownr.dev" : MARKDOWNR_APP_ID}'
 ---
 - stopApp
 - launchApp:

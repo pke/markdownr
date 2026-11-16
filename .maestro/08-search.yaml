@@ -2,7 +2,7 @@
 # match in the viewer (the match counter, e.g. "1/3", confirms it worked).
 # The submit path is used because Maestro's inputText into the native iOS
 # search bar doesn't reliably drive React's onChangeText.
-appId: dev.dudesoft.markdownr.dev
+appId: '${typeof MARKDOWNR_APP_ID === "undefined" ? "dev.dudesoft.markdownr.dev" : MARKDOWNR_APP_ID}'
 ---
 - stopApp
 - launchApp:

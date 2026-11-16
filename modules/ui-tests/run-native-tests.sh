@@ -34,5 +34,6 @@ xcodebuild test-without-building \
   -workspace ios/MarkdownrDev.xcworkspace -scheme MarkdownrDev \
   -destination "platform=iOS Simulator,id=$SIM" \
   -derivedDataPath ios/build \
-  -only-testing:MarkdownrUITests/DeepLinkUITests \
+  -only-testing:MarkdownrUITests/DeepLinkUITests/testAppLaunchesAndRendersUI \
+  -only-testing:MarkdownrUITests/DeepLinkUITests/testDeepLinkRendersOpenedFile \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO

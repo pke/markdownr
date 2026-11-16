@@ -1,6 +1,6 @@
 # Source / rendered toggle. The FAB item label flips between "Source" and
 # "Rendered", which is a clean signal that the view actually switched.
-appId: dev.dudesoft.markdownr.dev
+appId: '${typeof MARKDOWNR_APP_ID === "undefined" ? "dev.dudesoft.markdownr.dev" : MARKDOWNR_APP_ID}'
 ---
 - stopApp
 - launchApp:

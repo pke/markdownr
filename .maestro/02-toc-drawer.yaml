@@ -1,6 +1,6 @@
 # The auto-generated Table of Contents drawer opens from the welcome page's
 # "☰ Table of Contents" link and lists the document's headings.
-appId: dev.dudesoft.markdownr.dev
+appId: '${typeof MARKDOWNR_APP_ID === "undefined" ? "dev.dudesoft.markdownr.dev" : MARKDOWNR_APP_ID}'
 ---
 - stopApp
 - launchApp:

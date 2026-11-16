@@ -4,8 +4,8 @@ import XCTest
 /// swipe-to-delete gesture on the Recent Files list (react-native-gesture-handler
 /// pans need a real continuous touch, which XCUITest produces and Maestro doesn't).
 ///
-/// Recents are seeded by the DEBUG hook in App.tsx via the `-uitestSeedRecents`
-/// launch argument (iOS surfaces it through NSUserDefaults / RN Settings).
+/// The release harness opens real files before this test. A debug build can
+/// seed recents via the `-uitestSeedRecents` argument.
 final class RecentsUITests: XCTestCase {
   override func setUpWithError() throws {
     continueAfterFailure = false

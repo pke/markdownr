@@ -4,7 +4,7 @@
 # overlay not in the view tree), so this is a layout/smoke guard — it ensures the
 # drawer opens and its items are present in landscape.
 # No PORTRAIT reset (double-rotation glitches layout); gate on load, then rotate.
-appId: dev.dudesoft.markdownr.dev
+appId: '${typeof MARKDOWNR_APP_ID === "undefined" ? "dev.dudesoft.markdownr.dev" : MARKDOWNR_APP_ID}'
 ---
 - stopApp
 - launchApp:
@@ -15,8 +15,10 @@ appId: dev.dudesoft.markdownr.dev
 - setOrientation: LANDSCAPE_LEFT
 - waitForAnimationToEnd
 - waitForAnimationToEnd
-# Open the drawer via the welcome page's Table-of-Contents link.
-- tapOn: ".*Table of Contents.*"
+# The accessibility element spans the whole line, but the link sits at its start.
+- tapOn:
+    text: ".*Table of Contents.*"
+    point: "10%,50%"
 - waitForAnimationToEnd
 - waitForAnimationToEnd
 - assertVisible: "Contents"

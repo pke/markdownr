@@ -15,6 +15,14 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 ## iOS
 
+### ios update_age_rating
+
+```sh
+[bundle exec] fastlane ios update_age_rating
+```
+
+Answer the age-rating questionnaire (incl. the 2026 social-media questions)
+
 ### ios upload_metadata
 
 ```sh
@@ -23,13 +31,21 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 Upload metadata to App Store Connect (without screenshots)
 
+### ios release_tests
+
+```sh
+[bundle exec] fastlane ios release_tests
+```
+
+Run all iOS E2E tests on Apple's latest public standard iPhone Simulator runtime
+
 ### ios submit_review
 
 ```sh
 [bundle exec] fastlane ios submit_review
 ```
 
-Submit the current version for App Store review
+Run the iOS E2E suite and submit the current build for review
 
 ### ios upload_beta
 
@@ -61,7 +77,7 @@ Generate release notes from git commits since last tag. Review and edit before r
 [bundle exec] fastlane ios release
 ```
 
-Full release: prebuild, build, upload to TestFlight, upload metadata, and submit for review
+Test, archive, upload, and submit for review
 
 ----
 

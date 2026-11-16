@@ -1,7 +1,7 @@
 # The floating action button (⋯) opens the slide-up menu and its items are
 # reachable. Guards the fix that made the whole FAB tappable (not just the
 # ellipsis glyph).
-appId: dev.dudesoft.markdownr.dev
+appId: '${typeof MARKDOWNR_APP_ID === "undefined" ? "dev.dudesoft.markdownr.dev" : MARKDOWNR_APP_ID}'
 ---
 - stopApp
 - launchApp:

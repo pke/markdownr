@@ -4,7 +4,7 @@
 # Requires a Maestro version that supports `setOrientation`.
 # NOTE: no PORTRAIT reset here — rotating twice in quick succession glitches the
 # layout. Instead we gate on the app being fully loaded (portrait) before rotating.
-appId: dev.dudesoft.markdownr.dev
+appId: '${typeof MARKDOWNR_APP_ID === "undefined" ? "dev.dudesoft.markdownr.dev" : MARKDOWNR_APP_ID}'
 ---
 - stopApp
 - launchApp:

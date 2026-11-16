@@ -1,7 +1,7 @@
 # Front-matter show/hide. The welcome doc has front matter; it's hidden by
 # default, so the ⓘ info button is shown. Tapping it reveals the metadata card
 # (with its "hide" link); tapping "hide" collapses it back to the ⓘ button.
-appId: dev.dudesoft.markdownr.dev
+appId: '${typeof MARKDOWNR_APP_ID === "undefined" ? "dev.dudesoft.markdownr.dev" : MARKDOWNR_APP_ID}'
 ---
 - stopApp
 - launchApp:

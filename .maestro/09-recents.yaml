@@ -1,10 +1,7 @@
-# Recent files: list + swipe-to-delete.
-# Requires the seed sentinel to be placed first — run via recents-setup.sh,
-# which drops an empty sentinel into the app's documents dir. A DEBUG-only hook
-# in App.tsx then resets recents to three known files (Alpha, Beta, Gamma) on
-# launch. This is the one flow that needs external setup; the rest are
-# self-contained. clearState is false so the sentinel survives the launch.
-appId: dev.dudesoft.markdownr.dev
+# Recent files: list and Clear All.
+# Fastlane seeds real files (Alpha, Beta, Gamma). For the development build,
+# use recents-setup.sh. Keep app data so fixtures survive the launch.
+appId: '${typeof MARKDOWNR_APP_ID === "undefined" ? "dev.dudesoft.markdownr.dev" : MARKDOWNR_APP_ID}'
 ---
 - stopApp
 - launchApp:
