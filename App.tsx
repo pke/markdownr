@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useCallback, useMemo, useRef} from 'react';
-import {AppState, StatusBar, useColorScheme, Platform, View, ScrollView, Settings as RNSettings} from 'react-native';
+import {AppState, StatusBar, useColorScheme, useWindowDimensions, Platform, View, ScrollView, Settings as RNSettings} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {NavigationContainer, createNavigationContainerRef} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
@@ -33,6 +33,7 @@ const navigationRef = createNavigationContainerRef();
 
 export default function App() {
   const systemColorScheme = useColorScheme();
+  const {width: windowWidth} = useWindowDimensions();
   const [colorMode, setColorMode] = useState<string>(() =>
     Settings.getString(SettingsKeys.COLOR_MODE, 'system')
   );
@@ -362,7 +363,7 @@ export default function App() {
                   width: 280,
                 },
                 swipeEnabled: true,
-                swipeEdgeWidth: 50,
+                swipeEdgeWidth: Platform.OS === 'android' ? windowWidth * 0.2 : 50,
               }}>
               <Drawer.Screen name="Main">
                 {() => (
