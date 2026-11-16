@@ -58,6 +58,7 @@ import {getWelcomeMarkdown, OCEAN_THEMED_SAMPLE} from './example';
 import {getAboutMarkdown} from './about';
 import {ThemeSuggestion} from './ThemeSuggestion';
 import {FileChangedBanner} from './FileChangedBanner';
+import {AndroidMenuIcon, useMenuIconProgress} from './AndroidMenuIcon';
 
 const isIOS = Platform.OS === 'ios';
 const isAndroid = Platform.OS === 'android';
@@ -315,18 +316,19 @@ function SlideUpMenuItem({isMenuOpen, delay, children}: SlideUpMenuItemProps) {
 type FloatingMenuProps = {
   isMenuVisible: boolean;
   isMenuOpen: boolean;
+  iconProgress: ReturnType<typeof useMenuIconProgress>;
   setIsMenuOpen: (open: boolean) => void;
   setShowFrontMatter: (show: boolean) => void;
   showSource: boolean;
   toggleSource: () => void;
 };
 
-function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMatter, showSource, toggleSource}: FloatingMenuProps) {
+function FloatingMenu({isMenuVisible, isMenuOpen, iconProgress, setIsMenuOpen, setShowFrontMatter, showSource, toggleSource}: FloatingMenuProps) {
   const {t} = useTranslation();
   const insets = useSafeAreaInsets();
   const {height: windowHeight} = useWindowDimensions();
   const navigation = useNavigation();
-  const {showFrontMatterSetting, theme, backgroundColor, isDarkMode, colorMode, toggleDarkMode, themeName, cycleTheme} = React.useContext(MarkdownContext);
+  const {showFrontMatterSetting, theme, isDarkMode, colorMode, toggleDarkMode, themeName, cycleTheme} = React.useContext(MarkdownContext);
 
   const menuOpacity = useSharedValue(1);
   const menuTranslateY = useSharedValue(0);
@@ -373,15 +375,23 @@ function FloatingMenu({isMenuVisible, isMenuOpen, setIsMenuOpen, setShowFrontMat
   const bgColor = surfaceColor + 'e6';
   const mainButtonBgColor = glassAvailable ? 'transparent' : bgColor;
   const menuButton = (
-    <TouchableOpacity onPress={toggleMenu} activeOpacity={0.9} style={styles.menuItemTouchable} testID="mainMenuButton" accessible={true}>
-      {isIOS ? (
+    <TouchableOpacity
+      onPress={toggleMenu}
+      activeOpacity={0.9}
+      style={styles.menuItemTouchable}
+      testID="mainMenuButton"
+      accessibilityRole="button"
+      accessibilityLabel={t('menu.label')}
+      accessibilityState={{expanded: isMenuOpen}}>
+      {isAndroid ? (
+        <AndroidMenuIcon
+          progress={iconProgress}
+          color={theme.colors.text ?? (isDarkMode ? '#fff' : '#111827')}
+        />
+      ) : isIOS ? (
         <SymbolView name={isMenuOpen ? 'chevron.down' : 'ellipsis'} size={18} tintColor={theme.colors.text} />
       ) : (
-        <Text style={[
-          styles.mainMenuButtonText,
-          {color: theme.colors.text},
-          isAndroid && {textShadowColor: backgroundColor, textShadowRadius: 3},
-        ]}>{isMenuOpen ? '▼' : '…'}</Text>
+        <Text style={[styles.mainMenuButtonText, {color: theme.colors.text}]}>{isMenuOpen ? '▼' : '…'}</Text>
       )}
     </TouchableOpacity>
   );
@@ -680,6 +690,7 @@ export function ViewerScreen() {
   // Local state for menu visibility (only used in this screen)
   const [isMenuVisible, setIsMenuVisible] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const iconProgress = useMenuIconProgress(isAndroid && isMenuOpen);
   const [showSource, setShowSource] = useState(false);
   const toggleSource = useCallback(() => setShowSource(s => !s), []);
   const sourceProgress = useSharedValue(0);
@@ -1200,6 +1211,7 @@ export function ViewerScreen() {
         <FloatingMenu
           isMenuVisible={isMenuVisible}
           isMenuOpen={isMenuOpen}
+          iconProgress={iconProgress}
           setIsMenuOpen={setIsMenuOpen}
           setShowFrontMatter={setShowFrontMatter}
           showSource={showSource}

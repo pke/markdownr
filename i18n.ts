@@ -11,7 +11,7 @@ import {getLocales} from 'expo-localization';
 export const en = {
   mode: {auto: 'Auto', dark: 'Dark', light: 'Light'},
   view: {rendered: 'Rendered', source: 'Source'},
-  menu: {open: 'Open', openFolder: 'Open Folder', search: 'Search'},
+  menu: {label: 'Menu', open: 'Open', openFolder: 'Open Folder', search: 'Search'},
   frontMatter: {moreInfo: 'More info', hide: 'hide'},
   // Welcome-page action suffixes (appended after the tappable link text)
   suffix: {
@@ -58,7 +58,7 @@ type Translations<T> = {[K in keyof T]: T[K] extends string ? string : Translati
 const de: Translations<typeof en> = {
   mode: {auto: 'Auto', dark: 'Dunkel', light: 'Hell'},
   view: {rendered: 'Gerendert', source: 'Quelltext'},
-  menu: {open: 'Öffnen', openFolder: 'Ordner öffnen', search: 'Suchen'},
+  menu: {label: 'Menü', open: 'Öffnen', openFolder: 'Ordner öffnen', search: 'Suchen'},
   frontMatter: {moreInfo: 'Mehr Infos', hide: 'ausblenden'},
   suffix: {
     toDarkMode: ' Dunkelmodus 🌙',
@@ -99,7 +99,7 @@ const de: Translations<typeof en> = {
 const ru: Translations<typeof en> = {
   mode: {auto: 'Авто', dark: 'Тёмная', light: 'Светлая'},
   view: {rendered: 'Просмотр', source: 'Исходник'},
-  menu: {open: 'Открыть', openFolder: 'Открыть папку', search: 'Поиск'},
+  menu: {label: 'Меню', open: 'Открыть', openFolder: 'Открыть папку', search: 'Поиск'},
   frontMatter: {moreInfo: 'Подробнее', hide: 'скрыть'},
   suffix: {
     toDarkMode: ' тёмный режим 🌙',
