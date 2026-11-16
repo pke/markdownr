@@ -83,6 +83,16 @@ pub struct Frame<'a, P> {
     pub tip: &'a DocLayout<P>,
     /// Animation clock for time-based effects (quote crossfades), ms.
     pub now_ms: f32,
+    /// Images of the document fading in after they loaded (the others are opaque).
+    pub image_fades: &'a [ImageFade],
+}
+
+/// An image that arrived: transparent until its fade starts (when it first shows), then
+/// fading in.
+pub struct ImageFade {
+    pub url: String,
+    pub alpha: f32,
+    pub start: Option<std::time::Instant>,
 }
 
 pub fn frame<C: Canvas>(c: &mut C, f: &Frame<C::Para>) {
@@ -90,14 +100,14 @@ pub fn frame<C: Canvas>(c: &mut C, f: &Frame<C::Para>) {
     let doc_m = translate(f.doc_x, -f.scroll);
     c.transform(doc_m);
     c.clear(f.theme.background);
-    layout(c, f.doc, f.selection, f.finds, f.theme, f.scroll, f.view_h, f.now_ms, doc_m);
+    layout(c, f.doc, f.selection, f.finds, f.image_fades, f.theme, f.scroll, f.view_h, f.now_ms, doc_m);
     // The page leaving beside it, on its own background (its theme may differ).
     if let Some((doc, theme, scroll, x)) = f.leaving {
         c.transform(IDENTITY);
         c.fill(RectF { x, y: 0.0, w: f.view_w, h: f.view_h }, theme.background, 0.0);
         let m = translate(x, -scroll);
         c.transform(m);
-        layout(c, doc, None, &[], theme, scroll, f.view_h, f.now_ms, m);
+        layout(c, doc, None, &[], &[], theme, scroll, f.view_h, f.now_ms, m);
     }
     c.transform(IDENTITY);
     if let Some((ps, sprites)) = f.particles {
@@ -113,11 +123,11 @@ pub fn frame<C: Canvas>(c: &mut C, f: &Frame<C::Para>) {
     }
     if let Some((chrome, alpha)) = f.chrome {
         c.push_opacity(alpha);
-        layout(c, chrome, None, &[], f.theme, 0.0, f.view_h, f.now_ms, IDENTITY);
+        layout(c, chrome, None, &[], &[], f.theme, 0.0, f.view_h, f.now_ms, IDENTITY);
         c.pop_opacity();
     }
     if !f.tip.rects.is_empty() {
-        layout(c, f.tip, None, &[], f.theme, 0.0, f.view_h, f.now_ms, IDENTITY);
+        layout(c, f.tip, None, &[], &[], f.theme, 0.0, f.view_h, f.now_ms, IDENTITY);
     }
 }
 
@@ -152,7 +162,7 @@ fn hat<C: Canvas>(c: &mut C, x: f32, y: f32, size: f32, base: Affine) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn layout<C: Canvas>(c: &mut C, doc: &DocLayout<C::Para>, selection: Option<&DocSelection>, finds: &[(usize, Range<usize>, bool)], theme: &Theme, scroll: f32, view_h: f32, now_ms: f32, base: Affine) {
+fn layout<C: Canvas>(c: &mut C, doc: &DocLayout<C::Para>, selection: Option<&DocSelection>, finds: &[(usize, Range<usize>, bool)], image_fades: &[ImageFade], theme: &Theme, scroll: f32, view_h: f32, now_ms: f32, base: Affine) {
     let (top, bottom) = (scroll - 50.0, scroll + view_h + 50.0);
     let visible = |y: f32, h: f32| y + h >= top && y <= bottom;
     // `:::quotes` crossfade: opacity per quote's block and rect ranges (elsewhere 1;
@@ -186,8 +196,16 @@ fn layout<C: Canvas>(c: &mut C, doc: &DocLayout<C::Para>, selection: Option<&Doc
         }
     }
     for img in &doc.images {
-        if visible(img.r.y, img.r.h) {
-            c.image(&img.url, img.r);
+        let a = image_fades.iter().find(|f| f.url == img.url).map_or(1.0, |f| f.alpha);
+        if !visible(img.r.y, img.r.h) || a <= 0.0 {
+            continue;
+        }
+        if a < 1.0 {
+            c.push_opacity(a);
+        }
+        c.image(&img.url, img.r);
+        if a < 1.0 {
+            c.pop_opacity();
         }
     }
     for (i, block) in doc.blocks.iter().enumerate() {
@@ -235,6 +253,7 @@ fn layout<C: Canvas>(c: &mut C, doc: &DocLayout<C::Para>, selection: Option<&Doc
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::tests::FakePara;
 
     #[test]
     fn affine() {
@@ -244,5 +263,46 @@ mod tests {
         // (2, 1) rotated 90° clockwise (y down) around (1, 1) is (1, 2).
         let (x, y) = (r[0] * 2.0 + r[2] * 1.0 + r[4], r[1] * 2.0 + r[3] * 1.0 + r[5]);
         assert!((x - 1.0).abs() < 1e-5 && (y - 2.0).abs() < 1e-5, "{x} {y}");
+    }
+
+    /// Records the opacity and image calls.
+    #[derive(Default)]
+    struct Rec(Vec<String>);
+
+    impl Canvas for Rec {
+        type Para = FakePara;
+        fn clear(&mut self, _: Ink) {}
+        fn transform(&mut self, _: Affine) {}
+        fn fill(&mut self, _: RectF, _: Ink, _: f32) {}
+        fn fill_path(&mut self, _: &[(f32, f32)], _: Ink) {}
+        fn fill_ellipse(&mut self, _: f32, _: f32, _: f32, _: f32, _: Ink) {}
+        fn push_opacity(&mut self, a: f32) {
+            self.0.push(format!("opacity {a}"));
+        }
+        fn pop_opacity(&mut self) {
+            self.0.push("pop".into());
+        }
+        fn text(&mut self, _: &FakePara, _: f32, _: f32, _: Ink) {}
+        fn image(&mut self, url: &str, _: RectF) {
+            self.0.push(format!("image {url}"));
+        }
+        fn glyph(&mut self, _: u16, _: f32, _: f32, _: f32, _: Ink) {}
+        fn sprite(&mut self, _: &'static str, _: f32, _: Ink, _: f32, _: f32, _: f32, _: f32) {}
+    }
+
+    /// An image fading in is drawn with its opacity, one still waiting for its fade not at
+    /// all, the others as they are.
+    #[test]
+    fn images_fade_in() {
+        let mut doc = DocLayout::<FakePara>::default();
+        for url in ["a.png", "b.png", "c.png"] {
+            doc.images.push(crate::layout::ImagePlacement { url: url.into(), r: RectF { x: 0.0, y: 10.0, w: 50.0, h: 50.0 } });
+        }
+        let fades = [ImageFade { url: "a.png".into(), alpha: 0.5, start: None }, ImageFade { url: "b.png".into(), alpha: 0.0, start: None }];
+        let (theme, tip) = (Theme::light(), DocLayout::default());
+        let f = Frame { doc: &doc, selection: None, finds: &[], theme: &theme, scroll: 0.0, doc_x: 0.0, view_w: 400.0, view_h: 300.0, leaving: None, scroll_bar: None, chrome: None, particles: None, tip: &tip, now_ms: 0.0, image_fades: &fades };
+        let mut c = Rec::default();
+        frame(&mut c, &f);
+        assert_eq!(c.0, ["opacity 0.5", "image a.png", "pop", "image c.png"]);
     }
 }

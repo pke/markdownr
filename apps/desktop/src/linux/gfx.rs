@@ -299,6 +299,10 @@ impl Typesetter for Gfx {
         self.images.size(url)
     }
 
+    fn load_image(&mut self, url: &str) {
+        self.images.load(url);
+    }
+
     fn math_font(&self) -> Option<&MathFont> {
         self.math.as_ref().map(|m| &m.font)
     }

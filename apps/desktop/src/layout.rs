@@ -81,11 +81,13 @@ pub trait Paragraph {
 pub trait Typesetter {
     type Para: Paragraph;
     fn paragraph(&mut self, text: &str, spans: &[(Range<usize>, Span)], base: &BaseStyle, max_width: f32) -> Self::Para;
-    /// Pixel size of an image, if it is already loaded. Platforms load images
-    /// asynchronously and request a relayout once they arrive.
+    /// Pixel size of an image, if it is loaded (this starts no load).
     fn image_size(&self, _url: &str) -> Option<(f32, f32)> {
         None
     }
+    /// Start loading an image (once; asking again does nothing). Platforms load images
+    /// asynchronously and request a relayout once they arrive.
+    fn load_image(&mut self, _url: &str) {}
     /// The OpenType MATH font used for formulas, if the platform has one.
     fn math_font(&self) -> Option<&MathFont> {
         None
@@ -158,6 +160,8 @@ pub struct DocLayout<P> {
     pub rects: Vec<Rect>,
     pub math: Vec<MathPlacement>,
     pub images: Vec<ImagePlacement>,
+    /// Images not loaded (yet), at their placeholders: they load once the view comes near.
+    pub pending: Vec<ImagePlacement>,
     /// Santa hats on headings (Christmas theme): (x, y, size), top-left corner.
     pub hats: Vec<(f32, f32, f32)>,
     /// Jump targets besides headings: (id, y).
@@ -173,7 +177,7 @@ pub struct DocLayout<P> {
 
 impl<P> Default for DocLayout<P> {
     fn default() -> Self {
-        DocLayout { blocks: Vec::new(), rects: Vec::new(), math: Vec::new(), images: Vec::new(), hats: Vec::new(), anchors: Vec::new(), cycles: Vec::new(), toc: Vec::new(), front_matter: None, height: 0.0, tops: Vec::new() }
+        DocLayout { blocks: Vec::new(), rects: Vec::new(), math: Vec::new(), images: Vec::new(), pending: Vec::new(), hats: Vec::new(), anchors: Vec::new(), cycles: Vec::new(), toc: Vec::new(), front_matter: None, height: 0.0, tops: Vec::new() }
     }
 }
 
@@ -196,6 +200,8 @@ struct Inline {
     objects: Vec<(usize, Obj, String)>,
     /// (byte, anchor id) — jump targets inside the paragraph (footnote references).
     anchors: Vec<(usize, String)>,
+    /// Images not loaded yet (their alt text stands in).
+    pending: Vec<String>,
 }
 
 impl Inline {
@@ -311,6 +317,7 @@ impl<T: Typesetter> Layouter<'_, T> {
         }
         let h = self.base * 6.0;
         let w = ctx.width.min(self.base * 24.0);
+        out.pending.push(ImagePlacement { url: url.to_string(), r: RectF { x: ctx.x, y: *y, w, h } });
         out.rects.push(Rect { r: RectF { x: ctx.x, y: *y, w, h }, color: self.theme.code_bg, radius: 8.0 });
         let label = ["🖼 ", if alt.is_empty() { url } else { alt }].concat();
         let style = BaseStyle { color: self.theme.muted, size: ctx.style.size * 0.9, ..ctx.style };
@@ -638,6 +645,7 @@ impl<T: Typesetter> Layouter<'_, T> {
                     out.objects.push((start, Obj::Image(url.clone(), w, h), ["![", alt.as_str(), "](", url.as_str(), ")"].concat()));
                 }
                 Kind::Image { url } => {
+                    out.pending.push(url.clone());
                     let alt: String = node.children.iter().map(Node::plain_text).collect();
                     out.text.push_str("🖼 ");
                     out.text.push_str(if alt.is_empty() { url.as_str() } else { alt.as_str() });
@@ -714,6 +722,9 @@ impl<T: Typesetter> Layouter<'_, T> {
             object_sources.push((byte, source));
         }
         let (w, h) = para.size();
+        for url in inline.pending {
+            out.pending.push(ImagePlacement { url, r: RectF { x, y, w, h } });
+        }
         for (b, id) in &inline.anchors {
             let ry = para.range_rects(*b..*b + 1).first().map_or(0.0, |r| r.y);
             out.anchors.push((id.clone(), y + ry - self.base * 2.0));

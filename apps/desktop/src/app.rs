@@ -237,9 +237,10 @@ impl<G: Gfx, H: Host> App<G, H> {
 
     /// Paint the frame laid out by `layout`.
     pub fn draw(&mut self) {
-        if !self.chrome_timer || self.viewer.scroll_moved() {
-            // The layout just made may animate (particles, quote crossfades), or the view
-            // scrolled (the scroll bar shows): arm the timer now rather than at the next input.
+        if !self.chrome_timer || self.viewer.scroll_moved() || self.viewer.image_fade_waiting() {
+            // The layout just made may animate (particles, quote crossfades, an image that
+            // arrived fading in), or the view scrolled (the scroll bar shows): arm the timer
+            // now rather than at the next input.
             self.schedule();
         }
         let v = &self.viewer;
@@ -262,6 +263,7 @@ impl<G: Gfx, H: Host> App<G, H> {
             particles: v.particles.as_ref().map(|p| (p, sprites.as_slice())),
             tip: &v.tip_layout,
             now_ms: (Instant::now() - v.anim_start).as_secs_f32() * 1000.0,
+            image_fades: &v.image_fades,
         };
         if !self.gfx.draw(&frame) {
             self.viewer.invalidate();

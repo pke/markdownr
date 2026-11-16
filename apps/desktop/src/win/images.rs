@@ -34,7 +34,7 @@ unsafe extern "system" {
 }
 
 unsafe extern "system" fn run_job(_instance: *mut core::ffi::c_void, ctx: *mut core::ffi::c_void) {
-    // SAFETY: ctx is the Box<Job> leaked in Images::size.
+    // SAFETY: ctx is the Box<Job> leaked in Images::load.
     let mut job = unsafe { Box::from_raw(ctx as *mut Job) };
     job.decoded = job.source.take().and_then(|s| unsafe { load(&s) });
     let hwnd = HWND(job.hwnd as *mut _);
@@ -67,13 +67,18 @@ impl Images {
         self.map.borrow_mut().clear();
     }
 
-    /// Size in pixels if decoded; otherwise starts loading (once) and returns None.
+    /// Size in pixels if decoded.
     pub fn size(&self, url: &str) -> Option<(f32, f32)> {
-        if let Some(state) = self.map.borrow().get(url) {
-            return match state {
-                State::Ready { w, h, .. } => Some((*w as f32, *h as f32)),
-                _ => None,
-            };
+        match self.map.borrow().get(url)? {
+            State::Ready { w, h, .. } => Some((*w as f32, *h as f32)),
+            _ => None,
+        }
+    }
+
+    /// Start loading `url` on the thread pool, once.
+    pub fn load(&self, url: &str) {
+        if self.map.borrow().contains_key(url) {
+            return;
         }
         self.map.borrow_mut().insert(url.to_string(), State::Loading);
         let source = crate::util::image_source(url, self.base.borrow().as_deref());
@@ -83,7 +88,6 @@ impl Images {
             drop(unsafe { Box::from_raw(job) });
             self.map.borrow_mut().insert(url.to_string(), State::Failed);
         }
-        None
     }
 
     /// Takes a finished load from WM_IMAGE_LOADED's lParam; true if an image became available.

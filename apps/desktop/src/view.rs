@@ -8,6 +8,7 @@
 
 use crate::ast::{Kind, Node};
 use crate::layout::{BaseStyle, DocLayout, DocPos, DocSelection, Join, Layouter, Paragraph, Rect, RectF, Resume, TextBlock, Typesetter};
+use crate::paint::ImageFade;
 use crate::particles::{Particles, Sprite};
 use crate::util::num;
 use crate::theme::{Ink, Theme, ThemeChoice, front_matter_pairs, seasonal_theme};
@@ -28,6 +29,8 @@ const GLIDE: f32 = 0.15; // seconds
 /// The overlay scroll bar stays this long after the last scroll, then fades out.
 const BAR_FOR: Duration = Duration::from_millis(800);
 const BAR_FADE_IN: f32 = 0.1; // seconds
+/// An image that loaded fades in over this time as it first shows (ease-out).
+const IMAGE_FADE: f32 = 0.25; // seconds
 const BAR_FADE_OUT: f32 = 0.3;
 /// A page change of the history: both pages slide sideways, speeding up then slowing down.
 const SLIDE: f32 = 0.35; // seconds
@@ -282,6 +285,10 @@ pub struct Viewer<P> {
     bar_seen: f32,
     /// A page change of the history sliding sideways: the page leaving.
     pub slide: Option<Slide<P>>,
+    /// Images asked for (near the view) and not placed yet: they fade in once they are.
+    asked: Vec<String>,
+    /// Images that arrived, fading in.
+    pub image_fades: Vec<ImageFade>,
 }
 
 /// The page leaving as it was drawn, sliding out while the new one slides in from the
@@ -392,9 +399,70 @@ impl<P: Paragraph> Viewer<P> {
             bar_until: None,
             bar_seen: 0.0,
             slide: None,
+            asked: Vec::new(),
+            image_fades: Vec::new(),
         };
         v.title = v.display_title(title);
         v
+    }
+
+    /// An image's opacity: below 1 while it fades in after it arrived.
+    #[cfg(test)]
+    pub fn image_alpha(&self, url: &str) -> f32 {
+        self.image_fades.iter().find(|f| f.url == url).map_or(1.0, |f| f.alpha)
+    }
+
+    /// Whether an image of the document is in view.
+    fn image_in_view(&self, url: &str) -> bool {
+        self.layout.images.iter().any(|i| i.url == url && i.r.y + i.r.h > self.scroll && i.r.y < self.scroll + self.view_h)
+    }
+
+    /// An image that arrived is in view and waits for its fade to start (in `tick`).
+    pub fn image_fade_waiting(&self) -> bool {
+        self.image_fades.iter().any(|f| f.start.is_none() && self.image_in_view(&f.url))
+    }
+
+    /// Load the images within a screen above and below the view (the platform starts each
+    /// once); those asked for that have been placed since fade in.
+    fn ask_images<T: Typesetter<Para = P>>(&mut self, ts: &mut T) {
+        let (top, bottom) = (self.scroll - self.view_h, self.scroll + 2.0 * self.view_h);
+        for p in self.layout.pending.iter().filter(|p| p.r.y + p.r.h >= top && p.r.y <= bottom) {
+            ts.load_image(&p.url);
+            if !self.asked.contains(&p.url) {
+                self.asked.push(p.url.clone());
+            }
+        }
+        let images = &self.layout.images;
+        let mut arrived = Vec::new();
+        self.asked.retain(|url| {
+            let placed = images.iter().any(|i| &i.url == url);
+            if placed {
+                arrived.push(url.clone());
+            }
+            !placed
+        });
+        if !self.reduce_motion {
+            self.image_fades.extend(arrived.into_iter().map(|url| ImageFade { url, alpha: 0.0, start: None }));
+        }
+    }
+
+    /// Start the fades of arrived images that came into view, advance the others; true
+    /// while one is fading.
+    fn step_image_fades(&mut self, now: Instant) -> bool {
+        let mut fades = std::mem::take(&mut self.image_fades);
+        for f in &mut fades {
+            if f.start.is_none() && self.image_in_view(&f.url) {
+                f.start = Some(now);
+            }
+            if let Some(s) = f.start {
+                let t = (now.saturating_duration_since(s).as_secs_f32() / IMAGE_FADE).min(1.0);
+                f.alpha = 1.0 - (1.0 - t) * (1.0 - t);
+            }
+        }
+        let fading = fades.iter().any(|f| f.start.is_some());
+        fades.retain(|f| f.alpha < 1.0);
+        self.image_fades = fades;
+        fading
     }
 
     /// Plain text of the document's first heading (any level, document order), if any.
@@ -427,6 +495,8 @@ impl<P: Paragraph> Viewer<P> {
             self.toc_scroll = 0.0;
         }
         self.selection = None;
+        self.asked.clear();
+        self.image_fades.clear();
         self.find = self.find.take().map(|f| Find { matches: Vec::new(), current: 0, ..f });
         self.dirty = true;
         self.chrome_dirty = true;
@@ -543,6 +613,7 @@ impl<P: Paragraph> Viewer<P> {
         if self.resume.is_some_and(|at| at.y <= self.scroll + self.view_h) {
             self.extend_layout(ts, self.scroll + self.view_h * 2.0, None);
         }
+        self.ask_images(ts);
         if self.chrome_dirty {
             self.chrome_dirty = false;
             self.build_chrome(ts);
@@ -788,7 +859,9 @@ impl<P: Paragraph> Viewer<P> {
                 self.slide = None;
             }
         }
-        let animating = chrome_fading || bar_fading || self.glide.is_some() || self.slide.is_some();
+        let images_fading = self.step_image_fades(now);
+        repaint |= images_fading;
+        let animating = chrome_fading || bar_fading || images_fading || self.glide.is_some() || self.slide.is_some();
         if !animating {
             self.last_tick = None;
         }
@@ -1885,6 +1958,163 @@ mod tests {
         short.tick(t0);
         short.tick(ms(200));
         assert!(short.scroll_bar().is_none());
+    }
+
+    /// The fake typesetter with images: the `ready` ones have a size (400×200), `asked`
+    /// lists the loads started, in order, each once.
+    #[derive(Default)]
+    struct Pics {
+        ready: Vec<String>,
+        asked: Vec<String>,
+    }
+
+    impl Typesetter for Pics {
+        type Para = FakePara;
+        fn paragraph(&mut self, text: &str, spans: &[(Range<usize>, crate::layout::Span)], base: &BaseStyle, w: f32) -> FakePara {
+            Fake.paragraph(text, spans, base, w)
+        }
+        fn image_size(&self, url: &str) -> Option<(f32, f32)> {
+            self.ready.iter().any(|u| u == url).then_some((400.0, 200.0))
+        }
+        fn load_image(&mut self, url: &str) {
+            if !self.asked.iter().any(|u| u == url) {
+                self.asked.push(url.to_string());
+            }
+        }
+    }
+
+    /// near.png at the top, far.png some 35 screens further down, an inline one after it.
+    fn pictures() -> Viewer<FakePara> {
+        let src = ["![n](near.png)\n\n", &"Absatz\n\n".repeat(600), "![f](far.png)\n\n", &"Absatz\n\n".repeat(40), "Text ![i](inline.png) Text\n\n", &"Absatz\n\n".repeat(40)].concat();
+        let mut v = Viewer::new("t".into(), String::new(), crate::app::parse(&src));
+        v.resize(900.0, 600.0);
+        v
+    }
+
+    fn pending_y(v: &Viewer<FakePara>, url: &str) -> f32 {
+        v.layout.pending.iter().find(|p| p.url == url).unwrap_or_else(|| panic!("{url} waits")).r.y
+    }
+
+    fn scroll_to(v: &mut Viewer<FakePara>, ts: &mut Pics, y: f32) {
+        v.scroll_by(y - v.scroll);
+        v.ensure_layout(ts);
+    }
+
+    #[test]
+    fn images_load_only_once_the_view_comes_near() {
+        let mut v = pictures();
+        let mut ts = Pics::default();
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        v.ensure_layout(&mut ts);
+        assert_eq!(ts.asked, ["near.png"], "the one in view, not those far below (the whole document is laid out)");
+        let h = v.view_h;
+        let far = pending_y(&v, "far.png");
+        scroll_to(&mut v, &mut ts, far - 3.0 * h);
+        assert_eq!(ts.asked, ["near.png"], "two screens above it: not yet");
+        scroll_to(&mut v, &mut ts, far - 1.8 * h);
+        assert_eq!(ts.asked, ["near.png", "far.png"], "within a screen below the view: now");
+        let inline = pending_y(&v, "inline.png");
+        scroll_to(&mut v, &mut ts, inline + 1.5 * h);
+        assert_eq!(ts.asked.len(), 2, "1.5 screens below it: not yet");
+        scroll_to(&mut v, &mut ts, inline + 0.8 * h);
+        assert_eq!(ts.asked, ["near.png", "far.png", "inline.png"], "an inline image within a screen above the view");
+    }
+
+    #[test]
+    fn a_loaded_image_fades_in() {
+        let mut v = pictures();
+        let mut ts = Pics::default();
+        v.ensure_layout(&mut ts);
+        assert_eq!(ts.asked, ["near.png"]);
+        let t0 = Instant::now();
+        let ms = |n: u64| t0 + Duration::from_millis(n);
+        ts.ready.push("near.png".into());
+        v.invalidate(); // the platform's "an image arrived"
+        v.ensure_layout(&mut ts);
+        assert!(v.layout.images.iter().any(|i| i.url == "near.png") && v.layout.pending.iter().all(|p| p.url != "near.png"));
+        assert_eq!(v.image_alpha("near.png"), 0.0, "not shown before its fade starts");
+        let (repaint, next) = v.tick(t0);
+        assert!(repaint && next == Some(FRAME), "frames while it fades in");
+        assert_eq!(v.image_alpha("near.png"), 0.0, "it starts transparent");
+        v.tick(ms(120));
+        let a = v.image_alpha("near.png");
+        assert!(a > 0.3 && a < 0.95, "halfway: {a}");
+        let (repaint, _) = v.tick(ms(260));
+        assert!(repaint);
+        assert_eq!(v.image_alpha("near.png"), 1.0, "in within 260 ms");
+        assert_eq!(v.tick(ms(280)).1, None, "and no more frames");
+        // Relayouts (another image arrived, a resize) do not fade it again.
+        v.invalidate();
+        v.resize(800.0, 600.0);
+        v.ensure_layout(&mut ts);
+        assert_eq!(v.image_alpha("near.png"), 1.0);
+        assert_eq!(v.tick(ms(300)).1, None);
+    }
+
+    #[test]
+    fn an_image_loaded_already_shows_at_once() {
+        let mut v = pictures();
+        let mut ts = Pics { ready: vec!["near.png".into()], ..Default::default() };
+        v.ensure_layout(&mut ts);
+        assert!(ts.asked.is_empty(), "nothing to load");
+        assert_eq!(v.image_alpha("near.png"), 1.0);
+        assert_eq!(v.tick(Instant::now()), (false, None));
+    }
+
+    #[test]
+    fn with_reduced_motion_a_loaded_image_shows_at_once() {
+        let mut v = pictures();
+        v.reduce_motion = true;
+        let mut ts = Pics::default();
+        v.ensure_layout(&mut ts);
+        ts.ready.push("near.png".into());
+        v.invalidate();
+        v.ensure_layout(&mut ts);
+        assert_eq!(v.image_alpha("near.png"), 1.0);
+        assert_eq!(v.tick(Instant::now()).1, None);
+    }
+
+    /// Loaded ahead (a screen below the view), it fades in when it comes into view.
+    #[test]
+    fn an_image_loaded_ahead_fades_in_as_it_comes_into_view() {
+        let mut v = pictures();
+        let mut ts = Pics::default();
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        let h = v.view_h;
+        let far = pending_y(&v, "far.png");
+        scroll_to(&mut v, &mut ts, far - 1.5 * h);
+        assert!(ts.asked.iter().any(|u| u == "far.png"));
+        ts.ready.push("far.png".into());
+        v.invalidate();
+        v.ensure_layout(&mut ts);
+        v.finish_layout(&mut ts);
+        let t0 = Instant::now();
+        v.tick(t0);
+        v.tick(t0 + Duration::from_millis(1000));
+        assert_eq!(v.image_alpha("far.png"), 0.0, "no fade out of view");
+        let far = v.layout.images.iter().find(|i| i.url == "far.png").expect("placed").r.y;
+        scroll_to(&mut v, &mut ts, far - h + 50.0);
+        let t1 = t0 + Duration::from_millis(1500);
+        v.tick(t1);
+        assert_eq!(v.image_alpha("far.png"), 0.0, "its fade starts as it shows");
+        v.tick(t1 + Duration::from_millis(120));
+        assert!(v.image_alpha("far.png") > 0.3);
+        v.tick(t1 + Duration::from_millis(260));
+        assert_eq!(v.image_alpha("far.png"), 1.0);
+    }
+
+    /// A new document starts afresh: its images load near the view again.
+    #[test]
+    fn a_new_document_asks_again() {
+        let mut v = pictures();
+        let mut ts = Pics::default();
+        v.ensure_layout(&mut ts);
+        ts.asked.clear(); // the platform dropped its images with the new document
+        v.set_document("n".into(), String::new(), crate::app::parse("![n](near.png)"), false);
+        v.ensure_layout(&mut ts);
+        assert_eq!(ts.asked, ["near.png"]);
     }
 }
 

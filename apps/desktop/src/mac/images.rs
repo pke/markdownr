@@ -43,12 +43,18 @@ impl Images {
         }
     }
 
+    /// Size in pixels if decoded.
     pub fn size(&self, url: &str) -> Option<(f32, f32)> {
-        if let Some(state) = self.map.borrow().get(url) {
-            return match state {
-                State::Ready(_, w, h) => Some((*w as f32, *h as f32)),
-                _ => None,
-            };
+        match self.map.borrow().get(url)? {
+            State::Ready(_, w, h) => Some((*w as f32, *h as f32)),
+            _ => None,
+        }
+    }
+
+    /// Start loading `url` on a worker thread, once.
+    pub fn load(&self, url: &str) {
+        if self.map.borrow().contains_key(url) {
+            return;
         }
         self.map.borrow_mut().insert(url.to_string(), State::Loading);
         let source = crate::util::image_source(url, self.base.borrow().as_deref());
@@ -63,7 +69,6 @@ impl Images {
         if spawned.is_err() {
             self.map.borrow_mut().insert(url.to_string(), State::Failed);
         }
-        None
     }
 
     /// Takes finished loads; true if an image became available.
