@@ -24,7 +24,7 @@ const FADE_OUT: f32 = 0.35;
 /// Animation frames while something moves (a display link may pace them instead).
 pub const FRAME: Duration = Duration::from_millis(16);
 /// Wheel notches glide to their target in this time (ease-out).
-const GLIDE: f32 = 0.18; // seconds
+const GLIDE: f32 = 0.15; // seconds
 /// The overlay scroll bar stays this long after the last scroll, then fades out.
 const BAR_FOR: Duration = Duration::from_millis(800);
 const BAR_FADE_IN: f32 = 0.1; // seconds
@@ -658,7 +658,10 @@ impl<P: Paragraph> Viewer<P> {
             _ => self.scroll,
         };
         let to = (base + dy).clamp(0.0, self.max_scroll());
-        self.glide = (to != self.scroll).then_some(Glide { from: self.scroll, to, start: now, at: self.scroll });
+        // A frame ahead: the frame painted for the notch right away already moves (else each
+        // notch of a fast spin left one frame standing still).
+        let start = now.checked_sub(FRAME).unwrap_or(now);
+        self.glide = (to != self.scroll).then_some(Glide { from: self.scroll, to, start, at: self.scroll });
         if self.glide.is_some() && self.tip.take().is_some() {
             self.chrome_dirty = true; // the tooltip's line moves away
         }
@@ -1786,6 +1789,30 @@ mod tests {
         v.reduce_motion = true;
         change_page(&mut v, true, t0);
         assert!(v.slide.is_none() && v.slide_x(t0).is_none());
+    }
+
+    /// Measured on Windows: each notch of a fast spin restarted the glide at its own time, so
+    /// the frame painted for it at once barely moved (32.1 → 32.3 px) and the view lagged.
+    #[test]
+    fn a_notch_moves_the_view_in_its_own_frame_even_while_gliding() {
+        let mut v = laid_out();
+        let t0 = Instant::now();
+        let ms = |n: u64| t0 + Duration::from_millis(n);
+        v.wheel(48.0, Mods::default(), 400.0, 300.0, Some(t0));
+        v.tick(t0);
+        assert!(v.scroll >= 0.2 * 48.0, "the first frame answers the notch: {}", v.scroll);
+        // Notches every 30 ms: every frame painted for one moves on (at least half the
+        // average speed of the spin, 48 px / 30 ms).
+        let mut last = v.scroll;
+        for n in 1..10u64 {
+            v.tick(ms(n * 30 - 15));
+            v.wheel(48.0, Mods::default(), 400.0, 300.0, Some(ms(n * 30)));
+            v.tick(ms(n * 30));
+            let step = v.scroll - last;
+            assert!(step >= 0.5 * 48.0 / 2.0, "notch {n}: {last} → {} in its 15 ms", v.scroll);
+            last = v.scroll;
+        }
+        assert!(480.0 - v.scroll <= 2.0 * 48.0, "at most two notches behind the wheel: {}", v.scroll);
     }
 
     #[test]
