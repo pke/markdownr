@@ -533,11 +533,8 @@ impl<P: Paragraph> Viewer<P> {
     fn resolve_theme(&self) -> Theme {
         let fm = self.front_matter.iter().find(|(k, _)| k == "theme").map(|(_, v)| v.as_str());
         let auto = self.theme_choice.0.is_none();
-        let base = match fm {
-            Some(name) if auto => Theme::named(name, self.dark),
-            _ => Theme::named(self.theme_choice.name(), self.dark),
-        };
-        if auto { base.with_overrides(&self.front_matter) } else { base }
+        let name = fm.filter(|_| auto).unwrap_or(self.theme_choice.name());
+        if auto { Theme::for_page(name, self.dark, &self.front_matter) } else { Theme::named(name, self.dark) }
     }
 
     /// Top-level layout step at the top of the view: (node index, its y).

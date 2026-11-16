@@ -235,10 +235,12 @@ impl Win {
     }
 
     /// Title bar in the theme's colours after each layout, set again only when they change
-    /// (`Theme::caption`; theme button, front matter, history, system mode): background, title
-    /// and dark caption buttons on a dark background. Windows 10 knows only the last one.
+    /// (`Theme::caption`; theme button, front matter, history, system mode, the toolbar fading
+    /// in and out): background, title and dark caption buttons on a dark background. Windows 10
+    /// knows only the last one.
     fn apply_caption(&mut self) {
-        let c = self.app.viewer.theme.caption();
+        let v = &self.app.viewer;
+        let c = v.theme.caption(if self.full.is_some() { 0.0 } else { v.chrome_alpha });
         if self.caption == Some(c) {
             return;
         }

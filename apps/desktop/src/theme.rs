@@ -9,6 +9,10 @@ impl Ink {
     pub const fn rgba(hex: u32, a: u8) -> Self {
         Ink([(hex >> 16) as u8, (hex >> 8) as u8, hex as u8, a])
     }
+    /// Brightness 0 to 255 (Rec. 601 weights); below 128 counts as dark.
+    pub fn luma(self) -> i32 {
+        (299 * self.0[0] as i32 + 587 * self.0[1] as i32 + 114 * self.0[2] as i32) / 1000
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -156,14 +160,27 @@ impl Theme {
     /// the heading colour for the title (the text colour, or black or white, if that one is
     /// too close to the background, as front matter colours can make it), and caption buttons
     /// for a dark background if it is darker than mid grey.
-    pub fn caption(&self) -> Caption {
-        let luma = |i: Ink| (299 * i.0[0] as i32 + 587 * i.0[1] as i32 + 114 * i.0[2] as i32) / 1000;
-        let bg = luma(self.background);
+    /// `bar`: how far the toolbar has faded in (0 to 1); the caption fades with it to the
+    /// toolbar's colour, so title bar and toolbar read as one.
+    pub fn caption(&self, bar: f32) -> Caption {
+        let (from, to) = (self.background.0, self.chrome_bg.0);
+        let mix = |i: usize| (from[i] as f32 + (to[i] as f32 - from[i] as f32) * bar.clamp(0.0, 1.0)).round() as u8;
+        let background = Ink([mix(0), mix(1), mix(2), 255]);
+        let bg = background.luma();
         let dark = bg < 128;
-        let readable = |i: Ink| if dark { luma(i) - bg >= 100 } else { bg - luma(i) >= 100 };
+        let readable = |i: Ink| if dark { i.luma() - bg >= 100 } else { bg - i.luma() >= 100 };
         let plain = Ink::rgb(if dark { 0xffffff } else { 0x000000 });
-        let text = [self.heading, self.text].into_iter().find(|&i| readable(i)).unwrap_or(plain);
-        Caption { background: self.background, text, dark }
+        let text = [self.heading, self.text, self.chrome_text].into_iter().find(|&i| readable(i)).unwrap_or(plain);
+        Caption { background, text, dark }
+    }
+
+    /// The theme of a page following its front matter (`theme:` and colours): a background of
+    /// its own picks the theme's light or dark colours to fit it, not the system's mode, so a
+    /// light page in dark mode gets dark text.
+    pub fn for_page(name: &str, dark: bool, pairs: &[(String, String)]) -> Self {
+        let background = pairs.iter().filter(|(k, _)| k == "background" || k == "background-color").find_map(|(_, v)| parse_color(v));
+        let dark = background.map_or(dark, |b| b.luma() < 128);
+        Theme::named(name, dark).with_overrides(pairs)
     }
 
     /// Apply simple overrides from front matter (`background: #fff`, `color:`, `link:`).
@@ -422,9 +439,15 @@ mod tests {
         assert_eq!(seen.last(), Some(&"default")); // wrapped through auto
     }
 
-    fn luma(i: Ink) -> i32 {
-        let [r, g, b, _] = i.0;
-        (299 * r as i32 + 587 * g as i32 + 114 * b as i32) / 1000
+    fn pairs(p: &[(&str, &str)]) -> Vec<(String, String)> {
+        p.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    /// Dark title on a light caption, light on a dark one, well apart; buttons for the background.
+    fn assert_readable(c: Caption, what: &str) {
+        let (bg, fg) = (c.background.luma(), c.text.luma());
+        assert_eq!(c.dark, bg < 128, "{what}: buttons for the background");
+        assert!(if c.dark { fg - bg >= 100 } else { bg - fg >= 100 }, "{what}: title {fg} on {bg}");
     }
 
     #[test]
@@ -433,12 +456,9 @@ mod tests {
         for name in names {
             for dark in [false, true] {
                 let t = Theme::named(name, dark);
-                let c = t.caption();
+                let c = t.caption(0.0);
                 assert_eq!(c.background, t.background, "{name} {dark}");
-                assert_eq!(c.dark, luma(t.background) < 128, "{name} {dark}: buttons for the background");
-                // Dark title on a light caption, light on a dark one, well apart.
-                let (bg, fg) = (luma(c.background), luma(c.text));
-                assert!(if c.dark { fg - bg >= 100 } else { bg - fg >= 100 }, "{name} {dark}: title {fg} on {bg}");
+                assert_readable(c, &format!("{name} {dark}"));
                 // A theme's own colours are kept: its heading colour.
                 assert_eq!(c.text, t.heading, "{name} {dark}");
             }
@@ -446,19 +466,58 @@ mod tests {
     }
 
     #[test]
+    fn caption_takes_the_toolbar_colour_as_the_toolbar_fades_in() {
+        let names = THEMES.iter().map(|t| t.name).chain(["light", "dark"]);
+        for name in names {
+            for dark in [false, true] {
+                let t = Theme::named(name, dark);
+                assert_eq!(t.caption(1.0).background, t.chrome_bg, "{name} {dark}: toolbar shown");
+                for bar in [0.25, 0.5, 0.75, 1.0] {
+                    assert_readable(t.caption(bar), &format!("{name} {dark} toolbar {bar}"));
+                }
+            }
+        }
+        // Half faded in: half way between page and toolbar.
+        let t = Theme::named("default", false).with_overrides(&pairs(&[("background", "#000000")]));
+        let half = t.caption(0.5).background.0;
+        let [r, g, b, _] = t.chrome_bg.0;
+        assert_eq!(&half[..3], &[r.div_ceil(2), g.div_ceil(2), b.div_ceil(2)]);
+    }
+
+    #[test]
     fn caption_title_stays_readable_with_front_matter_colours() {
-        let pairs = |p: &[(&str, &str)]| p.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<Vec<_>>();
-        // A light background brought by the front matter in dark mode: dark buttons, dark title.
-        let t = Theme::named("default", true).with_overrides(&pairs(&[("background", "#fafafa")]));
-        let c = t.caption();
-        assert!(!c.dark);
-        assert_eq!(c.text, Ink::rgb(0x000000), "light theme heading on a light background: black instead");
         // A heading colour that does not fit, a text colour that does: the text colour.
         let t = Theme::named("default", false).with_overrides(&pairs(&[("background", "#202020"), ("text", "#eeeeee"), ("heading", "#303030")]));
-        let c = t.caption();
+        let c = t.caption(0.0);
         assert!(c.dark);
         assert_eq!(c.text, Ink::rgb(0xeeeeee));
+        // Neither fits: the toolbar's text colour, else black on light, white on dark.
+        let light = pairs(&[("background", "#ffffff"), ("text", "#eeeeee")]);
+        let t = Theme::named("default", false).with_overrides(&light);
+        assert_eq!(t.caption(0.0).text, t.chrome_text);
+        assert_eq!(Theme::named("default", true).with_overrides(&light).caption(0.0).text, Ink::rgb(0x000000));
+        let dark = pairs(&[("background", "#000000"), ("text", "#111111")]);
+        assert_eq!(Theme::named("default", false).with_overrides(&dark).caption(0.0).text, Ink::rgb(0xffffff));
         // Mid grey is light enough for dark buttons.
-        assert!(!Theme::named("default", false).with_overrides(&pairs(&[("background", "#808080")])).caption().dark);
+        assert!(!Theme::named("default", false).with_overrides(&pairs(&[("background", "#808080")])).caption(0.0).dark);
+    }
+
+    #[test]
+    fn a_front_matter_background_picks_the_palette_that_fits_it() {
+        // A light background in dark mode: the theme's light colours, dark text on it.
+        let fm = pairs(&[("background", "#fafafa")]);
+        for name in ["default", "ocean", "sepia"] {
+            let t = Theme::for_page(name, true, &fm);
+            assert_eq!(t.background, Ink::rgb(0xfafafa));
+            assert_eq!(t.text, Theme::named(name, false).text, "{name}");
+            assert_eq!(t.chrome_bg, Theme::named(name, false).chrome_bg, "{name}");
+        }
+        // And a dark one in light mode: the dark colours.
+        let t = Theme::for_page("default", false, &pairs(&[("background", "#101010")]));
+        assert_eq!(t.text, Theme::named("default", true).text);
+        // Without a background the system's mode decides; colours of its own stay.
+        assert_eq!(Theme::for_page("ocean", true, &pairs(&[("link", "#ff0000")])).text, Theme::named("ocean", true).text);
+        let t = Theme::for_page("default", true, &pairs(&[("background", "#fafafa"), ("text", "#333333")]));
+        assert_eq!(t.text, Ink::rgb(0x333333));
     }
 }
