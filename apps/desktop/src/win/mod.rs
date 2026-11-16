@@ -105,8 +105,8 @@ struct Win {
     overlay: Option<comp::Overlay>,
     overlay_failed: bool,
     painted: bool,
-    /// Title bar colours set last (caption, text; COLORREF).
-    caption: Option<(u32, u32)>,
+    /// Title bar colours set last.
+    caption: Option<crate::theme::Caption>,
     /// Still hidden from the screen until the first frame (see `uncloak`).
     cloaked: bool,
 }
@@ -227,34 +227,30 @@ fn from_touch() -> bool {
 }
 
 impl Win {
+    /// The system's light or dark mode picks the themes' palettes; the title bar follows the
+    /// theme with the next frame (`apply_caption`, set anew there), not the system.
     fn apply_dark(&mut self) {
-        let dark = system_dark();
-        self.app.set_dark(dark);
-        self.caption = None; // the next frame sets the title bar from the theme again
-        let v = BOOL::from(dark);
-        unsafe {
-            DwmSetWindowAttribute(self.hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &v as *const _ as _, 4).ok();
-        }
+        self.app.set_dark(system_dark());
+        self.caption = None;
     }
 
-    /// Title bar in the theme's colours (Windows 11; earlier versions ignore it):
-    /// background and text, and dark caption buttons on a dark background.
+    /// Title bar in the theme's colours after each layout, set again only when they change
+    /// (`Theme::caption`; theme button, front matter, history, system mode): background, title
+    /// and dark caption buttons on a dark background. Windows 10 knows only the last one.
     fn apply_caption(&mut self) {
-        let t = &self.app.viewer.theme;
-        let bgr = |ink: crate::theme::Ink| u32::from_le_bytes([ink.0[0], ink.0[1], ink.0[2], 0]);
-        let colours = (bgr(t.background), bgr(t.heading));
-        if self.caption == Some(colours) {
+        let c = self.app.viewer.theme.caption();
+        if self.caption == Some(c) {
             return;
         }
-        self.caption = Some(colours);
-        let [r, g, b, _] = t.background.0;
-        let dark = BOOL::from((r as u32 + g as u32 + b as u32) < 384);
+        self.caption = Some(c);
+        let bgr = |ink: crate::theme::Ink| u32::from_le_bytes([ink.0[0], ink.0[1], ink.0[2], 0]);
+        let (background, text, dark) = (bgr(c.background), bgr(c.text), BOOL::from(c.dark));
         unsafe {
             let set = |attr, v: *const core::ffi::c_void| DwmSetWindowAttribute(self.hwnd, attr, v, 4).ok();
             set(DWMWA_USE_IMMERSIVE_DARK_MODE, &dark as *const _ as _);
-            set(DWMWA_CAPTION_COLOR, &colours.0 as *const _ as _);
-            set(DWMWA_BORDER_COLOR, &colours.0 as *const _ as _);
-            set(DWMWA_TEXT_COLOR, &colours.1 as *const _ as _);
+            set(DWMWA_CAPTION_COLOR, &background as *const _ as _);
+            set(DWMWA_BORDER_COLOR, &background as *const _ as _);
+            set(DWMWA_TEXT_COLOR, &text as *const _ as _);
         }
     }
 

@@ -128,6 +128,14 @@ impl Theme {
     }
 }
 
+/// Title bar colours of a theme (`Theme::caption`); dark: caption buttons for a dark background.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Caption {
+    pub background: Ink,
+    pub text: Ink,
+    pub dark: bool,
+}
+
 impl Theme {
     /// Theme by name (front matter `theme:` or the user's choice): one of the
     /// ported iOS themes, or `light`/`dark`; anything else is the GitHub-like
@@ -142,6 +150,20 @@ impl Theme {
                 None => Theme::light(),
             },
         }
+    }
+
+    /// The title bar in this theme (Windows draws its caption with it): the page background,
+    /// the heading colour for the title (the text colour, or black or white, if that one is
+    /// too close to the background, as front matter colours can make it), and caption buttons
+    /// for a dark background if it is darker than mid grey.
+    pub fn caption(&self) -> Caption {
+        let luma = |i: Ink| (299 * i.0[0] as i32 + 587 * i.0[1] as i32 + 114 * i.0[2] as i32) / 1000;
+        let bg = luma(self.background);
+        let dark = bg < 128;
+        let readable = |i: Ink| if dark { luma(i) - bg >= 100 } else { bg - luma(i) >= 100 };
+        let plain = Ink::rgb(if dark { 0xffffff } else { 0x000000 });
+        let text = [self.heading, self.text].into_iter().find(|&i| readable(i)).unwrap_or(plain);
+        Caption { background: self.background, text, dark }
     }
 
     /// Apply simple overrides from front matter (`background: #fff`, `color:`, `link:`).
@@ -398,5 +420,45 @@ mod tests {
         }
         assert!(!seen.contains(&"dude"));
         assert_eq!(seen.last(), Some(&"default")); // wrapped through auto
+    }
+
+    fn luma(i: Ink) -> i32 {
+        let [r, g, b, _] = i.0;
+        (299 * r as i32 + 587 * g as i32 + 114 * b as i32) / 1000
+    }
+
+    #[test]
+    fn caption_is_the_page_background_with_readable_title_and_buttons() {
+        let names = THEMES.iter().map(|t| t.name).chain(["light", "dark"]);
+        for name in names {
+            for dark in [false, true] {
+                let t = Theme::named(name, dark);
+                let c = t.caption();
+                assert_eq!(c.background, t.background, "{name} {dark}");
+                assert_eq!(c.dark, luma(t.background) < 128, "{name} {dark}: buttons for the background");
+                // Dark title on a light caption, light on a dark one, well apart.
+                let (bg, fg) = (luma(c.background), luma(c.text));
+                assert!(if c.dark { fg - bg >= 100 } else { bg - fg >= 100 }, "{name} {dark}: title {fg} on {bg}");
+                // A theme's own colours are kept: its heading colour.
+                assert_eq!(c.text, t.heading, "{name} {dark}");
+            }
+        }
+    }
+
+    #[test]
+    fn caption_title_stays_readable_with_front_matter_colours() {
+        let pairs = |p: &[(&str, &str)]| p.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<Vec<_>>();
+        // A light background brought by the front matter in dark mode: dark buttons, dark title.
+        let t = Theme::named("default", true).with_overrides(&pairs(&[("background", "#fafafa")]));
+        let c = t.caption();
+        assert!(!c.dark);
+        assert_eq!(c.text, Ink::rgb(0x000000), "light theme heading on a light background: black instead");
+        // A heading colour that does not fit, a text colour that does: the text colour.
+        let t = Theme::named("default", false).with_overrides(&pairs(&[("background", "#202020"), ("text", "#eeeeee"), ("heading", "#303030")]));
+        let c = t.caption();
+        assert!(c.dark);
+        assert_eq!(c.text, Ink::rgb(0xeeeeee));
+        // Mid grey is light enough for dark buttons.
+        assert!(!Theme::named("default", false).with_overrides(&pairs(&[("background", "#808080")])).caption().dark);
     }
 }

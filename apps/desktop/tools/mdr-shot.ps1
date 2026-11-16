@@ -6,7 +6,7 @@
 #
 #   tools/mdr-shot.ps1 -Exe target/release/markdownr.exe -Doc assets/sample.md -Out shot.png `
 #       [-Settings perf.ini] [-Locale de-DE] [-Language ja] [-TimeMs 1234] [-Scroll 650] [-Keys Ctrl+T,F1] `
-#       [-Type 'suche'] [-TopBar] [-Hover '120,340;120,310'] [-OnScreen]
+#       [-Type 'suche'] [-TopBar] [-Hover '120,340;120,310'] [-Click '600,20'] [-OnScreen] [-Frame]
 #
 # -Scroll   DIPs to scroll down (mouse wheel messages; one notch is 3 x the font size, -FontSize)
 # -Keys     keys posted in order: F1, Esc, Enter, Home, End, PageDown, PageUp, Up, Down, Left,
@@ -16,6 +16,11 @@
 # -Hover    "x,y[;x,y...]": moves the (posted) mouse to these client points in pixels, one after the
 #           other, after the first layout
 #           (link and abbreviation tooltips)
+# -Click    "x,y[;x,y...]": left clicks (posted) at these client points in pixels, one after the
+#           other, after the first layout (toolbar buttons: together with -TopBar); "back" and
+#           "forward" press the mouse's back and forward buttons instead (history)
+# -Frame    the whole window with title bar and border (PrintWindow PW_RENDERFULLCONTENT, cut to
+#           DWMWA_EXTENDED_FRAME_BOUNDS), still that window only, instead of the client area
 # -OnScreen keeps the window where the app put it (default: moved beyond all monitors)
 # -SettleMs / -StableMs  wait before the first picture / at most this long for a still one
 #           (seasonal particles are composition visuals and appear in the picture, animated;
@@ -35,7 +40,9 @@ param(
     [string]$Type,
     [switch]$TopBar,
     [string]$Hover,
+    [string]$Click,
     [switch]$OnScreen,
+    [switch]$Frame,
     [int]$SettleMs = 1500,
     [int]$StableMs = 4000,
     [int]$TimeoutMs = 20000
@@ -94,6 +101,7 @@ public static class MdrShot {
     [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr o);
     [DllImport("gdi32.dll")] static extern IntPtr CreateDIBSection(IntPtr dc, ref BI bi, uint usage, out IntPtr bits, IntPtr sec, uint off);
     [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out int v, int size);
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out RC v, int size);
     [DllImport("user32.dll")] static extern bool AttachThreadInput(uint a, uint b, bool attach);
     [DllImport("user32.dll")] static extern bool GetKeyboardState(byte[] s);
     [DllImport("user32.dll")] static extern bool SetKeyboardState(byte[] s);
@@ -141,6 +149,30 @@ public static class MdrShot {
         Marshal.Copy(bits, px, 0, px.Length);
         SelectObject(dc, old); DeleteObject(bmp); DeleteDC(dc); ReleaseDC(IntPtr.Zero, screen);
         for (int i = 0; i < px.Length; i++) px[i] |= unchecked((int)0xFF000000);
+        return px;
+    }
+
+    // The whole window as DWM draws it, title bar and border included (PrintWindow,
+    // PW_RENDERFULLCONTENT), cut to its visible bounds (DWMWA_EXTENDED_FRAME_BOUNDS: without the
+    // invisible resize border), 0xAARRGGBB rows.
+    public static int[] Window(IntPtr h, out int w, out int ht) {
+        RC r, f; GetWindowRect(h, out r);
+        if (DwmGetWindowAttribute(h, 9, out f, 16) != 0) f = r;
+        int fw = r.R - r.L, fh = r.B - r.T, ox = f.L - r.L, oy = f.T - r.T;
+        w = f.R - f.L; ht = f.B - f.T;
+        var px = new int[Math.Max(0, w) * Math.Max(0, ht)];
+        if (px.Length == 0 || fw <= 0 || fh <= 0) return px;
+        var all = new int[fw * fh];
+        var bi = new BI { Size = 40, W = fw, H = -fh, Planes = 1, Bits = 32 };
+        IntPtr screen = GetDC(IntPtr.Zero), dc = CreateCompatibleDC(screen), bits;
+        IntPtr bmp = CreateDIBSection(dc, ref bi, 0, out bits, IntPtr.Zero, 0);
+        IntPtr old = SelectObject(dc, bmp);
+        PrintWindow(h, dc, 2);
+        Marshal.Copy(bits, all, 0, all.Length);
+        SelectObject(dc, old); DeleteObject(bmp); DeleteDC(dc); ReleaseDC(IntPtr.Zero, screen);
+        for (int y = 0; y < ht; y++)
+            for (int x = 0; x < w; x++)
+                px[y * w + x] = all[(y + oy) * fw + x + ox] | unchecked((int)0xFF000000);
         return px;
     }
 
@@ -261,6 +293,24 @@ try {
         }
     }
 
+    if ($Click) {   # after the first layout
+        Start-Sleep -Milliseconds 800
+        foreach ($p in $Click -split ';') {
+            if ($p -eq 'back' -or $p -eq 'forward') {   # the mouse's XBUTTON1 / XBUTTON2: WM_XBUTTONUP
+                $x = if ($p -eq 'back') { 1 } else { 2 }
+                [void][MdrShot]::PostMessageW($h, 0x020C, [IntPtr]($x -shl 16), [MdrShot]::Point(200, 300))
+                Start-Sleep -Milliseconds 600
+                continue
+            }
+            $cx, $cy = $p -split ','
+            $pt = [MdrShot]::Point([int]$cx, [int]$cy)
+            [void][MdrShot]::PostMessageW($h, 0x0200, [IntPtr]::Zero, $pt)   # WM_MOUSEMOVE
+            [void][MdrShot]::PostMessageW($h, 0x0201, [IntPtr]1, $pt)        # WM_LBUTTONDOWN (MK_LBUTTON)
+            [void][MdrShot]::PostMessageW($h, 0x0202, [IntPtr]::Zero, $pt)   # WM_LBUTTONUP
+            Start-Sleep -Milliseconds 300
+        }
+    }
+
     # Settle: at least SettleMs (images load, fades end), then until three pictures in a row agree,
     # for at most StableMs more (falling particles never stand still; they are in the picture).
     Start-Sleep -Milliseconds $SettleMs
@@ -277,6 +327,7 @@ try {
     # One colour all over is never a frame of the app (it always draws text): the display is off or
     # the window never painted. Fail instead of saving a picture that compares equal to anything.
     if ([MdrShot]::Blank($last)) { throw "blank capture (display off or window not painted); nothing saved" }
+    if ($Frame) { $last = [MdrShot]::Window($h, [ref]$w, [ref]$ht) }   # the settled client, now with its frame
     $outPath = if ([System.IO.Path]::IsPathRooted($Out)) { $Out } else { [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Out)) }
     [MdrShot]::SavePng($last, $w, $ht, $outPath)
     "shot: $outPath ($w x $ht)$(if ($same -lt 2) { ', still changing' })$(if ([MdrShot]::GetForegroundWindow() -eq $h) { ', WARNING: the window took the foreground' })"
