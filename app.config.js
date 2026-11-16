@@ -75,9 +75,16 @@ export default {
       },
     },
     android: {
+      versionCode: Number(buildNumber),
+      blockedPermissions: [
+        'android.permission.READ_MEDIA_AUDIO',
+        'android.permission.READ_MEDIA_IMAGES',
+        'android.permission.READ_MEDIA_VIDEO',
+        'android.permission.READ_MEDIA_VISUAL_USER_SELECTED',
+      ],
       package: IS_DEV
         ? 'dev.dudesoft.markdownr.dev'
-        : 'dev.dudesoft.markdownr',
+        : 'app.dudesoft.markdownr',
       adaptiveIcon: {
         foregroundImage: IS_DEV
           ? './assets/adaptive-icon-dev.png'

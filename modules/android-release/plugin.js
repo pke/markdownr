@@ -8,7 +8,7 @@ const { withAppBuildGradle, withGradleProperties } = require('@expo/config-plugi
 //    properly signed or Android refuses to install them; falls back to the
 //    debug key when the properties are absent (CI, other machines)
 //  - Eclipse/OSGi-style APK filename with a build-timestamp qualifier:
-//    dev.dudesoft.markdownr_1.11.0.v20260728-0430.apk
+//    app.dudesoft.markdownr_1.11.0.v20260728-0430.apk
 //
 // Distribution happens via GitHub Releases (tools/publish-android-release.sh
 // uploads the APK to the version tag; the website links the stable
