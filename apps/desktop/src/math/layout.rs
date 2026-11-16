@@ -174,7 +174,9 @@ pub struct MathFont {
     cache: core::cell::RefCell<Vec<(u64, (Box<str>, u32, bool), MathBox)>>,
     /// For a CFF font (no glyf boxes): the platform measures a glyph on first use (font units,
     /// y up; None for empty glyphs), cached here sorted by glyph id.
+    #[cfg(not(windows))]
     measure: Option<Box<dyn Fn(u16) -> Option<[i16; 4]>>>,
+    #[cfg(not(windows))]
     boxes: core::cell::RefCell<Vec<(u16, Option<[i16; 4]>)>>,
 }
 
@@ -185,7 +187,15 @@ impl MathFont {
     /// Font file data and face offset (see [`super::otf::faces`]); leaked once per process.
     pub fn new(data: Vec<u8>, face: usize) -> Option<Self> {
         let face = Font::new(data, face)?;
-        Some(MathFont { upem: face.upem, face, cache: Default::default(), measure: None, boxes: Default::default() })
+        Some(MathFont {
+            upem: face.upem,
+            face,
+            cache: Default::default(),
+            #[cfg(not(windows))]
+            measure: None,
+            #[cfg(not(windows))]
+            boxes: Default::default(),
+        })
     }
 
     /// Whether the font lacks glyf outlines (CFF), so the platform must measure the glyphs.
@@ -196,23 +206,27 @@ impl MathFont {
 
     /// The platform's glyph measurer for a CFF font (see `needs_bboxes`). Measuring all of
     /// STIX Two Math's 6760 glyphs up front takes ~40 ms; a document needs a few dozen.
-    #[cfg_attr(windows, allow(dead_code))]
+    #[cfg(not(windows))]
     pub fn set_measure(&mut self, f: Box<dyn Fn(u16) -> Option<[i16; 4]>>) {
         self.measure = Some(f);
     }
 
     /// (x_min, y_min, x_max, y_max) of glyph `g` in font units; None for empty glyphs.
     fn bbox(&self, g: u16) -> Option<[i16; 4]> {
-        let Some(measure) = &self.measure else { return self.face.bbox(g) };
-        let mut boxes = self.boxes.borrow_mut();
-        match boxes.binary_search_by_key(&g, |e| e.0) {
-            Ok(i) => boxes[i].1,
-            Err(i) => {
-                let b = measure(g);
-                boxes.insert(i, (g, b));
-                b
-            }
+        // Windows' math font (Cambria Math) has glyf boxes.
+        #[cfg(not(windows))]
+        if let Some(measure) = &self.measure {
+            let mut boxes = self.boxes.borrow_mut();
+            return match boxes.binary_search_by_key(&g, |e| e.0) {
+                Ok(i) => boxes[i].1,
+                Err(i) => {
+                    let b = measure(g);
+                    boxes.insert(i, (g, b));
+                    b
+                }
+            };
         }
+        self.face.bbox(g)
     }
 
     #[cfg_attr(windows, allow(dead_code))]
