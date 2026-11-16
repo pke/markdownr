@@ -24,18 +24,15 @@ appId: dev.dudesoft.markdownr.dev
     visible: ".*Gamma.*"
     timeout: 10000
 - takeScreenshot: 09-recents-drawer
-# Open the full list and swipe-delete an entry.
-- tapOn: ".*Show All.*"
+# Open the full list from the drawer.
+- tapOn: "Manage"
 - waitForAnimationToEnd
 - waitForAnimationToEnd
 - extendedWaitUntil:
     visible: ".*Alpha.*"
     timeout: 10000
 - takeScreenshot: 09-recents-list
-# NOTE: the per-row swipe-to-delete (ReanimatedSwipeable / gesture-handler pan)
-# is NOT reliably drivable by Maestro — synthetic swipes fall through to the
-# row's tap handler and open the file instead. We verify the delete path via
-# "Clear All" instead; the swipe gesture would need native (XCUITest) coverage.
+# This flow verifies Clear All. RecentsUITests covers the per-row swipe.
 - tapOn: "Clear All"
 - waitForAnimationToEnd
 - waitForAnimationToEnd

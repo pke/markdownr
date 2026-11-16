@@ -90,16 +90,18 @@ export function TocDrawerContent({navigation}: DrawerContentComponentProps) {
                 </View>
               </TouchableOpacity>
             ))}
-            {recentFiles.length > 2 && (
-              <TouchableOpacity
-                style={styles.showAllButton}
-                onPress={() => { stackNavigation.navigate('RecentFiles' as never); navigation.closeDrawer(); }}
-                activeOpacity={0.7}>
-                <Text style={[styles.showAllText, {color: theme.colors.link}]}>
-                  {t('drawer.showAll')} ({recentFiles.length})
-                </Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={styles.manageButton}
+              onPress={() => {
+                stackNavigation.navigate('RecentFiles' as never);
+                navigation.closeDrawer();
+              }}
+              accessibilityRole="button"
+              activeOpacity={0.7}>
+              <Text style={[styles.manageText, {color: theme.colors.link}]}>
+                {t('drawer.manage')}
+              </Text>
+            </TouchableOpacity>
           </>
         )}
         <View style={styles.aboutContainer}>
@@ -181,11 +183,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 1,
   },
-  showAllButton: {
+  manageButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  showAllText: {
+  manageText: {
     fontSize: 14,
     fontWeight: '500',
   },
