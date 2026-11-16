@@ -172,6 +172,10 @@ pub struct MathFont {
     /// repeats formulas (big.md: 1480, 36 distinct) and every relayout (resize, zoom back,
     /// idle completion) needs them all again.
     cache: core::cell::RefCell<Vec<(u64, (Box<str>, u32, bool), MathBox)>>,
+    /// For a CFF font (no glyf boxes): the platform measures a glyph on first use (font units,
+    /// y up; None for empty glyphs), cached here sorted by glyph id.
+    measure: Option<Box<dyn Fn(u16) -> Option<[i16; 4]>>>,
+    boxes: core::cell::RefCell<Vec<(u16, Option<[i16; 4]>)>>,
 }
 
 /// Entries kept at most; beyond that the cache starts over.
@@ -181,7 +185,7 @@ impl MathFont {
     /// Font file data and face offset (see [`super::otf::faces`]); leaked once per process.
     pub fn new(data: Vec<u8>, face: usize) -> Option<Self> {
         let face = Font::new(data, face)?;
-        Some(MathFont { upem: face.upem, face, cache: Default::default() })
+        Some(MathFont { upem: face.upem, face, cache: Default::default(), measure: None, boxes: Default::default() })
     }
 
     /// Whether the font lacks glyf outlines (CFF), so the platform must measure the glyphs.
@@ -190,10 +194,25 @@ impl MathFont {
         self.face.bbox_source_missing()
     }
 
-    /// Glyph bounding boxes measured by the platform, for a CFF font (see `needs_bboxes`).
+    /// The platform's glyph measurer for a CFF font (see `needs_bboxes`). Measuring all of
+    /// STIX Two Math's 6760 glyphs up front takes ~40 ms; a document needs a few dozen.
     #[cfg_attr(windows, allow(dead_code))]
-    pub fn set_bboxes(&mut self, b: Vec<[i16; 4]>) {
-        self.face.set_bboxes(Box::leak(b.into_boxed_slice()));
+    pub fn set_measure(&mut self, f: Box<dyn Fn(u16) -> Option<[i16; 4]>>) {
+        self.measure = Some(f);
+    }
+
+    /// (x_min, y_min, x_max, y_max) of glyph `g` in font units; None for empty glyphs.
+    fn bbox(&self, g: u16) -> Option<[i16; 4]> {
+        let Some(measure) = &self.measure else { return self.face.bbox(g) };
+        let mut boxes = self.boxes.borrow_mut();
+        match boxes.binary_search_by_key(&g, |e| e.0) {
+            Ok(i) => boxes[i].1,
+            Err(i) => {
+                let b = measure(g);
+                boxes.insert(i, (g, b));
+                b
+            }
+        }
     }
 
     #[cfg_attr(windows, allow(dead_code))]
@@ -384,7 +403,7 @@ impl Ctx<'_> {
         let face = &self.f.face;
         let k = size / self.f.upem;
         let adv = face.advance(id).unwrap_or(0) as f32 * k;
-        let (asc, desc) = face.bbox(id).map_or((0.0, 0.0), |r| (r[3] as f32 * k, -(r[1] as f32) * k));
+        let (asc, desc) = self.f.bbox(id).map_or((0.0, 0.0), |r| (r[3] as f32 * k, -(r[1] as f32) * k));
         let italic = face.italic_correction(id).map_or(0.0, |v| v as f32 * k);
         B { w: adv, asc, desc, italic, items: vec![Item::Glyph { id, x: 0.0, y: 0.0, size, color: None }], glyph: Some(id) }
     }
@@ -817,7 +836,7 @@ impl Ctx<'_> {
         // Centre the accent's ink over the attachment point.
         let acc_center = match acc.glyph {
             Some(id) => attach_of(id).unwrap_or_else(|| {
-                self.f.face.bbox(id).map_or(acc.w / 2.0, |r| (r[0] as f32 + r[2] as f32) / 2.0 * k)
+                self.f.bbox(id).map_or(acc.w / 2.0, |r| (r[0] as f32 + r[2] as f32) / 2.0 * k)
             }),
             None => acc.w / 2.0,
         };

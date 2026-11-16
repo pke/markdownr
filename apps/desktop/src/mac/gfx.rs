@@ -242,17 +242,16 @@ fn load_math_face() -> Option<MathFace> {
                 continue;
             }
             let ct = CTFontCreateWithGraphicsFont(cg, 16.0, core::ptr::null(), core::ptr::null());
-            // STIX Two Math has CFF outlines (no glyf table): Core Text measures the glyphs, at
-            // the em size so the boxes come out in font units.
+            // STIX Two Math has CFF outlines (no glyf table): Core Text measures each glyph on
+            // first use, at the em size so the boxes come out in font units.
             if font.needs_bboxes() {
                 let upem = CTFontCreateWithGraphicsFont(cg, font.upem() as CGFloat, core::ptr::null(), core::ptr::null());
-                let n = CTFontGetGlyphCount(upem).max(0) as usize;
-                let glyphs: Vec<CGGlyph> = (0..n as u32).map(|g| g as CGGlyph).collect();
-                let mut rects = vec![CGRect::default(); n];
-                CTFontGetBoundingRectsForGlyphs(upem, 0, glyphs.as_ptr(), rects.as_mut_ptr(), n as CFIndex);
-                CFRelease(upem);
-                let b = |v: CGFloat| v.round() as i16;
-                font.set_bboxes(rects.iter().map(|r| if r.size.width <= 0.0 || r.size.height <= 0.0 { [0; 4] } else { [b(r.origin.x), b(r.origin.y), b(r.origin.x + r.size.width), b(r.origin.y + r.size.height)] }).collect());
+                font.set_measure(Box::new(move |g: u16| {
+                    let mut r = CGRect::default();
+                    CTFontGetBoundingRectsForGlyphs(upem, 0, &g, &mut r, 1);
+                    let b = |v: CGFloat| v.round() as i16;
+                    (r.size.width > 0.0 && r.size.height > 0.0).then(|| [b(r.origin.x), b(r.origin.y), b(r.origin.x + r.size.width), b(r.origin.y + r.size.height)])
+                }));
             }
             CFRelease(cg);
             return Some(MathFace { font, ct, sized: VecMap::new() });

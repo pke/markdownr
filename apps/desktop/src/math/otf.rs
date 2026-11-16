@@ -12,8 +12,6 @@ pub struct Font {
     loca: usize,
     loca_long: bool,
     glyf: usize,
-    /// Bounding boxes per glyph from the platform, for fonts without glyf (CFF outlines).
-    bboxes: &'static [[i16; 4]],
     consts: usize,
     glyph_info: usize,
     variants: usize,
@@ -120,7 +118,6 @@ impl Font {
             loca: table(d, face, b"loca").unwrap_or(0),
             loca_long: u16_at(d, head + 50)? == 1,
             glyf: table(d, face, b"glyf").unwrap_or(0),
-            bboxes: &[],
             consts: math + u16_at(d, math + 4)? as usize,
             glyph_info: math + u16_at(d, math + 6)? as usize,
             variants: math + u16_at(d, math + 8)? as usize,
@@ -179,21 +176,17 @@ impl Font {
         self.u16(self.hmtx + 4 * i)
     }
 
-    /// Bounding boxes the platform measured (font units, by glyph id; all zero for empty
-    /// glyphs), used when the font has CFF outlines and so no glyf table.
-    pub fn set_bboxes(&mut self, b: &'static [[i16; 4]]) {
-        self.bboxes = b;
-    }
-
+    /// No glyf table: CFF outlines, which this reader does not measure.
+    #[cfg_attr(windows, allow(dead_code))]
     pub fn bbox_source_missing(&self) -> bool {
         self.glyf == 0
     }
 
-    /// (x_min, y_min, x_max, y_max) from the glyf header (or the platform's boxes for a CFF
-    /// font); None for empty glyphs.
+    /// (x_min, y_min, x_max, y_max) from the glyf header; None for empty glyphs (or a CFF font,
+    /// see `MathFont::set_measure`).
     pub fn bbox(&self, g: u16) -> Option<[i16; 4]> {
         if self.glyf == 0 {
-            return self.bboxes.get(g as usize).copied().filter(|b| *b != [0; 4]);
+            return None;
         }
         let g = g as usize;
         let (a, b) = if self.loca_long {

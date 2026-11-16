@@ -186,9 +186,27 @@ fn load_math_face() -> Option<MathFace> {
                 if let Some(data) = crate::util::fs::read(&path) {
                     let offs = crate::math::otf::faces(&data);
                     if let Some(&off) = offs.get(index.max(0) as usize).filter(|&&o| crate::math::otf::has_math(&data, o)) {
-                        if let Some(font) = MathFont::new(data, off) {
+                        if let Some(mut font) = MathFont::new(data, off) {
                             let face = cairo_ft_font_face_create_for_pattern(m);
                             FcPatternDestroy(m);
+                            // OpenType math fonts are mostly CFF (no glyf boxes): cairo measures
+                            // each glyph on first use, unhinted at the em size, so in font units.
+                            if font.needs_bboxes() {
+                                let em = font.upem() as f64;
+                                let opts = cairo_font_options_create();
+                                cairo_font_options_set_hint_metrics(opts, 1); // off
+                                cairo_font_options_set_hint_style(opts, 1); // none
+                                let scale = cairo_matrix_t { xx: em, yx: 0.0, xy: 0.0, yy: em, x0: 0.0, y0: 0.0 };
+                                let ident = cairo_matrix_t { xx: 1.0, yx: 0.0, xy: 0.0, yy: 1.0, x0: 0.0, y0: 0.0 };
+                                let sf = cairo_scaled_font_create(face, &scale, &ident, opts);
+                                font.set_measure(Box::new(move |g: u16| {
+                                    let mut e = cairo_text_extents_t::default();
+                                    cairo_scaled_font_glyph_extents(sf, &cairo_glyph_t { index: g as _, x: 0.0, y: 0.0 }, 1, &mut e);
+                                    let b = |v: f64| v.round() as i16;
+                                    // cairo's y grows downwards.
+                                    (e.width > 0.0 && e.height > 0.0).then(|| [b(e.x_bearing), b(-(e.y_bearing + e.height)), b(e.x_bearing + e.width), b(-e.y_bearing)])
+                                }));
+                            }
                             return Some(MathFace { font, face });
                         }
                     }

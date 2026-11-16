@@ -162,6 +162,7 @@ pub type cairo_t = c_void;
 pub type cairo_surface_t = c_void;
 pub type cairo_pattern_t = c_void;
 pub type cairo_font_face_t = c_void;
+pub type cairo_scaled_font_t = c_void;
 pub type cairo_font_options_t = c_void;
 
 #[repr(C)]
@@ -172,6 +173,17 @@ pub struct cairo_matrix_t {
     pub yy: c_double,
     pub x0: c_double,
     pub y0: c_double,
+}
+
+#[repr(C)]
+#[derive(Default)]
+pub struct cairo_text_extents_t {
+    pub x_bearing: c_double,
+    pub y_bearing: c_double,
+    pub width: c_double,
+    pub height: c_double,
+    pub x_advance: c_double,
+    pub y_advance: c_double,
 }
 
 #[repr(C)]
@@ -226,6 +238,8 @@ unsafe extern "C" {
     pub fn cairo_set_font_size(cr: *mut cairo_t, size: c_double);
     pub fn cairo_show_glyphs(cr: *mut cairo_t, glyphs: *const cairo_glyph_t, n: c_int);
     pub fn cairo_ft_font_face_create_for_pattern(pattern: *mut FcPattern) -> *mut cairo_font_face_t;
+    pub fn cairo_scaled_font_create(face: *mut cairo_font_face_t, font_matrix: *const cairo_matrix_t, ctm: *const cairo_matrix_t, options: *const cairo_font_options_t) -> *mut cairo_scaled_font_t;
+    pub fn cairo_scaled_font_glyph_extents(f: *mut cairo_scaled_font_t, glyphs: *const cairo_glyph_t, n: c_int, extents: *mut cairo_text_extents_t);
     pub fn cairo_font_options_create() -> *mut cairo_font_options_t;
     pub fn cairo_font_options_set_hint_metrics(o: *mut cairo_font_options_t, v: c_int);
     pub fn cairo_font_options_set_hint_style(o: *mut cairo_font_options_t, v: c_int);
