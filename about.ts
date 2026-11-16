@@ -7,7 +7,9 @@ theme: dude
 ---
 # About Markdownr
 
-Markdownr is a fast, lean, focused Markdown viewer for **iPhone** and **iPad**.
+Markdownr is a fast, focused Markdown viewer for **Android**, **iPhone**, and **iPad**.
+
+[Privacy policy](https://markdownr.dudesoft.app/privacy)
 
 ## Features
 
@@ -44,7 +46,7 @@ Made with care & joy for markdown lovers everywhere.
 > "Smokey, this is not HTML. This is Markdown. There are rules."
 > — Walter
 
-> "Am I the only one around here who gives a shit about proper headings?!"
+> "Am I the only one around here who cares about proper headings?!"
 > — Walter
 
 > "My markdown has been commended as being strongly formatted."
@@ -71,7 +73,9 @@ theme: dude
 ---
 # Über Markdownr
 
-Markdownr ist ein schneller, kleiner, fokussierter Markdown-Viewer für **iPhone** und **iPad**.
+Markdownr ist ein schlanker, schneller Markdown-Viewer für **Android**, **iPhone** und **iPad**.
+
+[Datenschutzerklärung](https://markdownr.dudesoft.app/de/privacy)
 
 ## Funktionen
 
@@ -135,7 +139,9 @@ theme: dude
 ---
 # О приложении Markdownr
 
-Markdownr — это быстрый, лёгкий и сфокусированный просмотрщик Markdown для **iPhone** и **iPad**.
+Markdownr — быстрый и лёгкий просмотрщик Markdown для **Android**, **iPhone** и **iPad**.
+
+[Политика конфиденциальности](https://markdownr.dudesoft.app/privacy)
 
 ## Возможности
 
@@ -172,7 +178,7 @@ Markdownr — это быстрый, лёгкий и сфокусированн�
 > «Смоуки, это не HTML. Это Markdown. Тут есть правила.»
 > — Уолтер
 
-> «Я тут единственный, кому не наплевать на правильные заголовки?!»
+> «Я тут единственный, кому важны правильные заголовки?!»
 > — Уолтер
 
 > «Мой markdown хвалили за строгое форматирование.»
