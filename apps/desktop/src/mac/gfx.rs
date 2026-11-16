@@ -228,7 +228,7 @@ fn load_math_face() -> Option<MathFace> {
     for p in PATHS {
         let Some(data) = crate::util::fs::read(std::path::Path::new(p)) else { continue };
         let Some(&off) = crate::math::otf::faces(&data).iter().find(|&&o| crate::math::otf::has_math(&data, o)) else { continue };
-        let Some(font) = MathFont::new(data, off) else { continue };
+        let Some(mut font) = MathFont::new(data, off) else { continue };
         unsafe {
             let url = CFURLCreateFromFileSystemRepresentation(kCFAllocatorDefault, p.as_ptr(), p.len() as CFIndex, false);
             let provider = CGDataProviderCreateWithURL(url);
@@ -242,6 +242,18 @@ fn load_math_face() -> Option<MathFace> {
                 continue;
             }
             let ct = CTFontCreateWithGraphicsFont(cg, 16.0, core::ptr::null(), core::ptr::null());
+            // STIX Two Math has CFF outlines (no glyf table): Core Text measures the glyphs, at
+            // the em size so the boxes come out in font units.
+            if font.needs_bboxes() {
+                let upem = CTFontCreateWithGraphicsFont(cg, font.upem() as CGFloat, core::ptr::null(), core::ptr::null());
+                let n = CTFontGetGlyphCount(upem).max(0) as usize;
+                let glyphs: Vec<CGGlyph> = (0..n as u32).map(|g| g as CGGlyph).collect();
+                let mut rects = vec![CGRect::default(); n];
+                CTFontGetBoundingRectsForGlyphs(upem, 0, glyphs.as_ptr(), rects.as_mut_ptr(), n as CFIndex);
+                CFRelease(upem);
+                let b = |v: CGFloat| v.round() as i16;
+                font.set_bboxes(rects.iter().map(|r| if r.size.width <= 0.0 || r.size.height <= 0.0 { [0; 4] } else { [b(r.origin.x), b(r.origin.y), b(r.origin.x + r.size.width), b(r.origin.y + r.size.height)] }).collect());
+            }
             CFRelease(cg);
             return Some(MathFace { font, ct, sized: VecMap::new() });
         }
@@ -563,12 +575,11 @@ impl Canvas for CgCanvas<'_> {
         let font = *m.sized.or_insert_with(size.to_bits(), || unsafe { CTFontCreateCopyWithAttributes(ct, size as f64, core::ptr::null(), core::ptr::null()) });
         self.fill_color(ink);
         let c = self.ctx;
+        // The text matrix is already flipped for the flipped context; its translation is the text
+        // position, so the glyph goes there at the origin of text space.
         unsafe {
-            CGContextSaveGState(c);
-            CGContextTranslateCTM(c, x as f64, y as f64);
-            CGContextScaleCTM(c, 1.0, -1.0);
+            CGContextSetTextPosition(c, x as f64, y as f64);
             CTFontDrawGlyphs(font, &id, &CGPoint::default(), 1, c);
-            CGContextRestoreGState(c);
         }
     }
 

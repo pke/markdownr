@@ -21,6 +21,20 @@ impl Default for Settings {
     }
 }
 
+/// The start page's line of shortcuts, in the platform's keys.
+#[cfg(target_os = "macos")]
+const START_KEYS: &str = "Auch per Drag & Drop oder `⌘O`. `⌃⌘F` Vollbild, `⌘F` Suchen, `⌘T` Inhalt, `F1` alle Tastenkürzel.\n\n";
+#[cfg(not(target_os = "macos"))]
+const START_KEYS: &str = "Auch per Drag & Drop oder `Strg+O`. `F11` Vollbild, `Strg+F` Suchen, `Strg+T` Inhalt, `F1` alle Tastenkürzel.\n\n";
+
+/// The settings file's usual place as the help names it.
+#[cfg(windows)]
+pub const PATH_HINT: &str = r"%APPDATA%\Markdownr\settings.ini";
+#[cfg(target_os = "macos")]
+pub const PATH_HINT: &str = "~/Library/Application Support/Markdownr/settings.ini";
+#[cfg(not(any(windows, target_os = "macos")))]
+pub const PATH_HINT: &str = "~/.config/markdownr/settings.ini";
+
 /// Where the settings live: %APPDATA%\Markdownr (Windows), ~/Library/Application Support/Markdownr
 /// (macOS), $XDG_CONFIG_HOME/markdownr or ~/.config/markdownr (Linux).
 pub fn default_path() -> PathBuf {
@@ -90,7 +104,8 @@ impl Settings {
 
     /// Start page shown without a file: open button, recent files, sample.
     pub fn start_page(&self) -> String {
-        let mut s = String::from("---\ntitle: Markdownr\n---\n# Markdownr\n\nEin schneller, schlanker Markdown-Reader.\n\n[Datei öffnen …](markdownr:open) · [Beispieldokument](markdownr:sample)\n\nAuch per Drag & Drop oder `Strg+O`. `F11` Vollbild, `Strg+F` Suchen, `Strg+T` Inhalt, `F1` alle Tastenkürzel.\n\n");
+        let mut s = String::from("---\ntitle: Markdownr\n---\n# Markdownr\n\nEin schneller, schlanker Markdown-Reader.\n\n[Datei öffnen …](markdownr:open) · [Beispieldokument](markdownr:sample)\n\n");
+        s.push_str(START_KEYS);
         let recent: Vec<_> = self.recent.iter().filter(|p| crate::util::fs::is_file(p)).collect();
         if !recent.is_empty() {
             s.push_str("## Zuletzt geöffnet\n\n");

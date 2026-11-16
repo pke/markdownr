@@ -29,7 +29,7 @@ Rétablir la taille du texte
 Plein écran activé / désactivé
 Cette aide
 Variables d’environnement
-Paramètres de ce fichier au lieu de %APPDATA%\Markdownr\settings.ini
+Paramètres de ce fichier au lieu de {path}
 Afficher le document d’exemple sans fichier
 Guillemets de cette langue au lieu de ceux du système
-Aide dans cette langue au lieu de la langue d’affichage de Windows
+Aide dans cette langue au lieu de la langue du système

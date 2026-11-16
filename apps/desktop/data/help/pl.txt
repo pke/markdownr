@@ -29,7 +29,7 @@ Przywróć rozmiar czcionki
 Pełny ekran wł. / wył.
 Ta pomoc
 Zmienne środowiskowe
-Ustawienia z tego pliku zamiast %APPDATA%\Markdownr\settings.ini
+Ustawienia z tego pliku zamiast {path}
 Bez pliku pokaż przykładowy dokument
 Cudzysłowy tego języka zamiast systemowych
-Pomoc w tym języku zamiast języka wyświetlania Windows
+Pomoc w tym języku zamiast języka systemu

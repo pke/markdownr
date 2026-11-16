@@ -184,6 +184,23 @@ impl MathFont {
         Some(MathFont { upem: face.upem, face, cache: Default::default() })
     }
 
+    /// Whether the font lacks glyf outlines (CFF), so the platform must measure the glyphs.
+    #[cfg_attr(windows, allow(dead_code))]
+    pub fn needs_bboxes(&self) -> bool {
+        self.face.bbox_source_missing()
+    }
+
+    /// Glyph bounding boxes measured by the platform, for a CFF font (see `needs_bboxes`).
+    #[cfg_attr(windows, allow(dead_code))]
+    pub fn set_bboxes(&mut self, b: Vec<[i16; 4]>) {
+        self.face.set_bboxes(Box::leak(b.into_boxed_slice()));
+    }
+
+    #[cfg_attr(windows, allow(dead_code))]
+    pub fn upem(&self) -> f32 {
+        self.upem
+    }
+
     /// `src` laid out at `size` (display or inline style); repeated formulas come from the cache.
     pub fn layout(&self, src: &str, size: f32, display: bool) -> MathBox {
         let key = src.bytes().chain(size.to_bits().to_le_bytes()).chain([display as u8]).fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3));

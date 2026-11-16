@@ -99,6 +99,7 @@ fn with_app<R>(f: impl FnOnce(&mut Mac) -> R) -> Option<R> {
 
 const CMD: usize = 1 << 20;
 const SHIFT: usize = 1 << 17;
+const CTRL: usize = 1 << 18;
 
 fn mods(event: Id) -> Mods {
     let flags = msg!(event, c"modifierFlags" => usize);
@@ -114,7 +115,9 @@ fn point(view: Id, event: Id) -> (f32, f32) {
 
 fn key_from_event(event: Id) -> Option<Key> {
     let code = msg!(event, c"keyCode" => u16);
+    let flags = msg!(event, c"modifierFlags" => usize);
     Some(match code {
+        3 if flags & (CTRL | CMD) == CTRL | CMD => Key::F11, // ⌃⌘F, the Mac's full screen key
         121 => Key::PageDown,
         116 => Key::PageUp,
         49 => Key::Space,
@@ -191,6 +194,9 @@ extern "C" fn draw_rect(view: Id, _: Sel, _dirty: CGRect) {
         m.app.layout();
         m.app.draw();
         m.app.gfx.ctx = core::ptr::null_mut();
+        if !m.app.fullscreen {
+            place_window_buttons(m.app.host.window, m.app.viewer.chrome_alpha);
+        }
     });
 }
 
@@ -211,6 +217,18 @@ extern "C" fn key_down(view: Id, _: Sel, event: Id) {
 
 extern "C" fn mouse_down(view: Id, _: Sel, event: Id) {
     let (x, y) = point(view, event);
+    // The toolbar stands in for the hidden title bar: its empty parts move the window, a double
+    // click zooms it.
+    let window = msg!(view, c"window" => Id);
+    let on_bar = with_app(|a| !a.app.fullscreen && y < crate::view::BAR_H && a.app.viewer.over_chrome_area(x, y) && !a.app.viewer.over_button(x, y));
+    if on_bar == Some(true) {
+        if msg!(event, c"clickCount" => isize) == 2 {
+            msg!(window, c"performZoom:", core::ptr::null_mut::<c_void>());
+        } else {
+            msg!(window, c"performWindowDragWithEvent:", event);
+        }
+        return;
+    }
     let dbl = msg!(class(c"NSEvent"), c"doubleClickInterval" => f64);
     with_app(|a| a.app.press(x, y, mods(event), Duration::from_secs_f64(dbl)));
 }
@@ -285,17 +303,40 @@ extern "C" fn did_resize(_: Id, _: Sel, _note: Id) {
 }
 
 extern "C" fn did_enter_full(_: Id, _: Sel, _note: Id) {
-    with_app(|a| a.app.set_fullscreen(true));
+    with_app(|a| {
+        a.app.viewer.bar_inset = 0.0; // the window buttons are in the menu bar's strip now
+        a.app.set_fullscreen(true);
+    });
 }
 
 extern "C" fn did_exit_full(_: Id, _: Sel, _note: Id) {
-    with_app(|a| a.app.set_fullscreen(false));
+    with_app(|a| {
+        a.app.viewer.bar_inset = LIGHTS_INSET;
+        a.app.set_fullscreen(false);
+    });
 }
 
 /// Finder opened a document with us (double click, drop on the Dock icon).
 extern "C" fn open_file(_: Id, _: Sel, _app: Id, file: Id) -> bool {
     let path = PathBuf::from(string(file));
     with_app(|a| a.app.load(path)).is_some()
+}
+
+/// A file dragged over the window: offer to copy (open) it.
+extern "C" fn drag_entered(_: Id, _: Sel, _info: Id) -> usize {
+    1 // NSDragOperationCopy
+}
+
+/// A file dropped on the window opens.
+extern "C" fn perform_drag(_: Id, _: Sel, info: Id) -> bool {
+    let pb = msg!(info, c"draggingPasteboard" => Id);
+    let classes = msg!(class(c"NSArray"), c"arrayWithObject:", class(c"NSURL") => Id);
+    let urls = msg!(pb, c"readObjectsForClasses:options:", classes, core::ptr::null_mut::<c_void>() => Id);
+    if urls.is_null() || msg!(urls, c"count" => usize) == 0 {
+        return false;
+    }
+    let path = string(msg!(msg!(urls, c"objectAtIndex:", 0usize => Id), c"path" => Id));
+    !path.is_empty() && with_app(|a| a.app.load(PathBuf::from(path))).is_some()
 }
 
 /// Image results arrived (main queue, from images.rs).
@@ -336,6 +377,8 @@ fn view_class() -> Class {
         add(c"windowDidEnterFullScreen:", did_enter_full as *const c_void, c"v@:@");
         add(c"windowDidExitFullScreen:", did_exit_full as *const c_void, c"v@:@");
         add(c"application:openFile:", open_file as *const c_void, c"c@:@@");
+        add(c"draggingEntered:", drag_entered as *const c_void, c"Q@:@");
+        add(c"performDragOperation:", perform_drag as *const c_void, c"c@:@");
         objc_registerClassPair(cls);
         cls
     }
@@ -359,7 +402,11 @@ fn locale_id() -> Option<String> {
 
 /// ⌘ for Ctrl in the help (the shortcuts use Command on a Mac).
 fn key_name(vk: u16, _extended: bool) -> Option<String> {
-    (vk == 0x11).then(|| "⌘".to_string())
+    match vk {
+        0x11 => Some("⌘".into()),
+        0x7A => Some("⌃⌘F".into()), // full screen (F11 elsewhere)
+        _ => None,
+    }
 }
 
 pub fn run(path: Option<PathBuf>, sample: &'static str) {
@@ -369,8 +416,10 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
     msg!(app, c"setActivationPolicy:", 0isize => bool); // regular app (Dock, menu bar)
     let cls = view_class();
     let rect = CGRect::new(0.0, 0.0, 980.0, 820.0);
-    // titled | closable | miniaturizable | resizable
-    let window = msg!(msg!(class(c"NSWindow"), c"alloc" => Id), c"initWithContentRect:styleMask:backing:defer:", rect, 15usize, 2usize, false => Id);
+    // titled | closable | miniaturizable | resizable | full-size content (the title bar is hidden)
+    let window = msg!(msg!(class(c"NSWindow"), c"alloc" => Id), c"initWithContentRect:styleMask:backing:defer:", rect, 15usize | 1 << 15, 2usize, false => Id);
+    msg!(window, c"setTitlebarAppearsTransparent:", true);
+    msg!(window, c"setTitleVisibility:", 1isize); // hidden
     let view = msg!(msg!(cls, c"alloc" => Id), c"initWithFrame:", rect => Id);
     msg!(window, c"setContentView:", view);
     msg!(window, c"setDelegate:", view);
@@ -381,6 +430,8 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
     // Mouse moved / exited inside the view.
     let area = msg!(msg!(class(c"NSTrackingArea"), c"alloc" => Id), c"initWithRect:options:owner:userInfo:", CGRect::default(), 0x01usize | 0x02 | 0x80 | 0x200, view, core::ptr::null_mut::<c_void>() => Id);
     msg!(view, c"addTrackingArea:", area);
+    // Files dropped on the window open.
+    msg!(view, c"registerForDraggedTypes:", msg!(class(c"NSArray"), c"arrayWithObject:", unsafe { NSPasteboardTypeFileURL } => Id));
 
     let settings_path = crate::app::settings_path();
     let settings = Settings::load(&settings_path);
@@ -391,6 +442,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
     let gfx = Gfx::new(images::Images::new(images_ready));
     let host = MacHost { window, view, timers: [core::ptr::null_mut(); 2] };
     let mut a = App::new(host, gfx, path, doc, settings, settings_path, sample);
+    a.viewer.bar_inset = LIGHTS_INSET;
     let start_fullscreen = a.start_fullscreen();
     {
         let cal = msg!(class(c"NSCalendar"), c"currentCalendar" => Id);
@@ -416,17 +468,53 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
     msg!(app, c"run");
 }
 
-/// [view bounds]: a 32-byte struct, returned through memory on x86_64 (objc_msgSend_stret).
-fn bounds(view: Id) -> CGRect {
+/// A CGRect getter ([view bounds], [view frame]): a 32-byte struct, returned through memory on
+/// x86_64 (objc_msgSend_stret).
+fn rect_of(obj: Id, getter: &core::ffi::CStr) -> CGRect {
     #[cfg(target_arch = "x86_64")]
     {
         let f: unsafe extern "C" fn(*mut CGRect, Id, Sel) = unsafe { core::mem::transmute(objc_msgSend_stret as *const c_void) };
         let mut r = CGRect::default();
-        unsafe { f(&mut r, view, sel(c"bounds")) };
+        unsafe { f(&mut r, obj, sel(getter)) };
         r
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        msg!(view, c"bounds" => CGRect)
+        let f: unsafe extern "C" fn(Id, Sel) -> CGRect = unsafe { core::mem::transmute(objc_msgSend as *const c_void) };
+        unsafe { f(obj, sel(getter)) }
     }
+}
+
+fn bounds(view: Id) -> CGRect {
+    rect_of(view, c"bounds")
+}
+
+/// Room the window buttons take left of the toolbar.
+const LIGHTS_INSET: f32 = 70.0;
+
+/// The title bar is hidden (full-size content, transparent, no title): the window buttons sit
+/// centred in the app's toolbar instead, and fade in and out with it. Their container is
+/// stretched to the toolbar's height; AppKit lays it out again on resize, so this runs after
+/// every size change.
+fn place_window_buttons(window: Id, alpha: f32) {
+    let close = msg!(window, c"standardWindowButton:", 0usize => Id);
+    if close.is_null() {
+        return;
+    }
+    let container = msg!(msg!(close, c"superview" => Id), c"superview" => Id);
+    let bar = crate::view::BAR_H as f64;
+    let win_h = rect_of(window, c"frame").size.height;
+    let mut c = rect_of(container, c"frame");
+    if c.size.height != bar {
+        c.size.height = bar;
+        c.origin.y = win_h - bar;
+        msg!(container, c"setFrame:", c);
+    }
+    let size = rect_of(close, c"frame").size;
+    let step = size.width + 6.0;
+    for i in 0..3usize {
+        let b = msg!(window, c"standardWindowButton:", i => Id);
+        msg!(b, c"setFrameOrigin:", CGPoint { x: 14.0 + i as f64 * step, y: ((bar - size.height) / 2.0).round() });
+    }
+    msg!(container, c"setAlphaValue:", alpha as f64);
 }

@@ -31,13 +31,13 @@ const HELP: &[(usize, &[&str])] = &[
     (0, &["{Ctrl}+F   F3", "{Enter}   ⇧ {Enter}", "{Esc}"]),
     (0, &["{Ctrl}+O", "F5   {Ctrl}+R", "{Ctrl}+Q   {Ctrl}+W"]),
     (0, &["markdownr {#1}.md", "markdownr"]),
-    (1, &["{Ctrl}+T", "{Ctrl}+U", "{Ctrl}+D", "{Ctrl}++   {Ctrl}+−", "{Ctrl}+{#0}", "{Ctrl}+0", "F11   {Esc}", "F1"]),
+    (1, &["{Ctrl}+T", "{Ctrl}+U", "{Ctrl}+D", "{Ctrl}++   {Ctrl}+−", "{Ctrl}+{#0}", "{Ctrl}+0", "{Full}   {Esc}", "F1"]),
     (1, &["MARKDOWNR_SETTINGS={#1}", "MARKDOWNR_SAMPLE=1", "MARKDOWNR_LOCALE=de-DE", "MARKDOWNR_LANGUAGE=de"]),
 ];
 
 /// Keys of the help by name: (name in HELP, virtual-key code, extended key).
-const HELP_KEYS: [(&str, u16, bool); 8] =
-    [("Ctrl", 0x11, false), ("Esc", 0x1B, false), ("PgDn", 0x22, true), ("PgUp", 0x21, true), ("Home", 0x24, true), ("End", 0x23, true), ("Space", 0x20, false), ("Enter", 0x0D, false)];
+const HELP_KEYS: [(&str, u16, bool); 9] =
+    [("Ctrl", 0x11, false), ("Esc", 0x1B, false), ("PgDn", 0x22, true), ("PgUp", 0x21, true), ("Home", 0x24, true), ("End", 0x23, true), ("Space", 0x20, false), ("Enter", 0x0D, false), ("Full", 0x7A, false)];
 
 static LANGUAGE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 static KEY_NAMER: std::sync::OnceLock<fn(u16, bool) -> Option<String>> = std::sync::OnceLock::new();
@@ -67,7 +67,7 @@ fn help_keys(spec: &str, words: &[&str]) -> String {
         } else if let Some(&(_, vk, ext)) = HELP_KEYS.iter().find(|k| k.0 == name) {
             match KEY_NAMER.get().and_then(|f| f(vk, ext)) {
                 Some(s) => out.push_str(&s),
-                None => out.push_str(if name == "PgDn" { "Page Down" } else if name == "PgUp" { "Page Up" } else { name }),
+                None => out.push_str(match name { "PgDn" => "Page Down", "PgUp" => "Page Up", "Full" => "F11", _ => name }),
             }
         }
         rest = &rest[open + close + 1..];
@@ -157,6 +157,8 @@ pub struct Viewer<P> {
     /// Toolbar, drawer and find bar in window coordinates.
     pub chrome: DocLayout<P>,
     pub chrome_alpha: f32,
+    /// Room left of the toolbar's buttons (macOS: the window buttons sit there).
+    pub bar_inset: f32,
     /// Abbreviation tooltip (text, window x, y) and its layout.
     tip: Option<(String, f32, f32)>,
     pub tip_layout: DocLayout<P>,
@@ -235,6 +237,7 @@ impl<P: Paragraph> Viewer<P> {
             show_source: false,
             chrome: DocLayout::default(),
             chrome_alpha: 0.0,
+            bar_inset: 0.0,
             tip: None,
             tip_layout: DocLayout::default(),
             particles: None,
@@ -605,7 +608,7 @@ impl<P: Paragraph> Viewer<P> {
         };
 
         // Left group.
-        let mut x = 6.0;
+        let mut x = 6.0 + self.bar_inset;
         x += button(ts, &mut out, &mut buttons, "☰  Inhalt", Action::Toc, x, false, self.toc_open) + 2.0;
         x += button(ts, &mut out, &mut buttons, "Öffnen", Action::Open, x, false, false) + 2.0;
         let left_end = x;
@@ -761,11 +764,11 @@ impl<P: Paragraph> Viewer<P> {
             let mut y = if col_h[c] > 0.0 { col_h[c] + 14.0 } else { 0.0 };
             y += put(ts, next(), &head, x0, y, col_w).1 + 6.0;
             for &k in rows {
-                let d = next();
+                let d = next().replace("{path}", crate::settings::PATH_HINT);
                 let (kw, kh) = put(ts, &help_keys(k, &words), &keys, x0, y, col_w);
                 // Long keys (commands, variables) get the description on the next line.
                 let (dx, dy) = if kw + 12.0 <= key_w { (x0 + key_w, y) } else { (x0 + 16.0, y + kh) };
-                let dh = put(ts, d, &text, dx, dy, col_w - (dx - x0)).1;
+                let dh = put(ts, &d, &text, dx, dy, col_w - (dx - x0)).1;
                 y = (y + kh).max(dy + dh) + 5.0;
             }
             col_h[c] = y;

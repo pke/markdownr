@@ -29,7 +29,7 @@ Restablecer el tamaño del texto
 Pantalla completa sí / no
 Esta ayuda
 Variables de entorno
-Configuración de este archivo en lugar de %APPDATA%\Markdownr\settings.ini
+Configuración de este archivo en lugar de {path}
 Mostrar el documento de ejemplo si no se indica archivo
 Comillas de este idioma en lugar de las del sistema
-Ayuda en este idioma en lugar del idioma de Windows
+Ayuda en este idioma en lugar del idioma del sistema

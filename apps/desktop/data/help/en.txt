@@ -29,7 +29,7 @@ Reset text size
 Full screen on / off
 This help
 Environment variables
-Settings from this file instead of %APPDATA%\Markdownr\settings.ini
+Settings from this file instead of {path}
 Show the sample document when no file is given
 Quotation marks of this language instead of the system's
-Help in this language instead of Windows' display language
+Help in this language instead of the system language

@@ -164,6 +164,8 @@ unsafe extern "C" {
     pub fn CTFontCreateCopyWithAttributes(font: CTFontRef, size: CGFloat, matrix: *const CGAffineTransform, attrs: *const c_void) -> CTFontRef;
     pub fn CTFontCreateWithGraphicsFont(font: *const c_void, size: CGFloat, matrix: *const CGAffineTransform, attrs: *const c_void) -> CTFontRef;
     pub fn CTFontDrawGlyphs(font: CTFontRef, glyphs: *const CGGlyph, positions: *const CGPoint, n: usize, c: CGContextRef);
+    pub fn CTFontGetGlyphCount(font: CTFontRef) -> CFIndex;
+    pub fn CTFontGetBoundingRectsForGlyphs(font: CTFontRef, orientation: u32, glyphs: *const CGGlyph, rects: *mut CGRect, n: CFIndex) -> CGRect;
     pub fn CTFontGetAscent(font: CTFontRef) -> CGFloat;
     pub fn CTFontGetDescent(font: CTFontRef) -> CGFloat;
     pub fn CTTypesetterCreateWithAttributedString(s: CFAttributedStringRef) -> CTTypesetterRef;
@@ -199,6 +201,7 @@ unsafe extern "C" {
 #[link(name = "AppKit", kind = "framework")]
 unsafe extern "C" {
     pub static NSPasteboardTypeString: Id;
+    pub static NSPasteboardTypeFileURL: Id;
 }
 
 /// A selector by name (a C string literal).
