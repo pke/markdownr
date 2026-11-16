@@ -14,6 +14,7 @@ Nächster / vorheriger Treffer
 Suche schließen
 Datei
 Öffnen (auch per Drag & Drop)
+Ordner öffnen (auch per Drag & Drop)
 Neu laden (Änderungen lädt es auch von selbst)
 Beenden
 Kommandozeile
@@ -49,3 +50,5 @@ Datei öffnen …
 Beispieldokument
 Auch per Drag & Drop oder `{Ctrl}+O`. `{Full}` Vollbild, `{Ctrl}+F` Suchen, `{Ctrl}+T` Inhalt, `F1` alle Tastenkürzel.
 Zuletzt geöffnet
+Ordner öffnen …
+Keine Markdown-Dateien in diesem Ordner.

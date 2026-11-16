@@ -14,6 +14,7 @@
 
 mod app;
 mod ast;
+mod folder;
 mod highlight;
 mod layout;
 mod math;

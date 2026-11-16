@@ -325,6 +325,31 @@ pub mod fs {
             attributes(p).is_some_and(|a| a.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 == 0)
         }
 
+        pub fn is_dir(p: &Path) -> bool {
+            attributes(p).is_some_and(|a| a.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 != 0)
+        }
+
+        pub fn list(dir: &Path) -> Option<Vec<(std::ffi::OsString, bool)>> {
+            let mut pattern = wide(&crate::util::path::join(dir, Path::new("*")));
+            let mut data = WIN32_FIND_DATAW::default();
+            let h = unsafe { FindFirstFileExW(PCWSTR(pattern.as_mut_ptr()), FindExInfoBasic, &mut data as *mut _ as *mut _, FindExSearchNameMatch, None, FIND_FIRST_EX_LARGE_FETCH) }.ok()?;
+            let mut out = Vec::new();
+            loop {
+                // Hidden and system entries, links and junctions (which may lead out of the
+                // tree or round in a circle) are left out like the dot names.
+                let skip = FILE_ATTRIBUTE_HIDDEN.0 | FILE_ATTRIBUTE_SYSTEM.0 | FILE_ATTRIBUTE_REPARSE_POINT.0;
+                if data.dwFileAttributes & skip == 0 && data.cFileName[0] != b'.' as u16 {
+                    let n = data.cFileName.iter().position(|&c| c == 0).unwrap_or(data.cFileName.len());
+                    out.push((std::ffi::OsString::from_wide(&data.cFileName[..n]), data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 != 0));
+                }
+                if unsafe { FindNextFileW(h, &mut data) }.is_err() {
+                    break;
+                }
+            }
+            unsafe { FindClose(h).ok() };
+            Some(out)
+        }
+
         pub fn modified(p: &Path) -> Option<u64> {
             attributes(p).map(|a| (a.ftLastWriteTime.dwHighDateTime as u64) << 32 | a.ftLastWriteTime.dwLowDateTime as u64)
         }
@@ -357,6 +382,22 @@ pub mod fs {
         pub fn is_file(p: &Path) -> bool {
             p.is_file()
         }
+        pub fn is_dir(p: &Path) -> bool {
+            p.is_dir()
+        }
+        pub fn list(dir: &Path) -> Option<Vec<(std::ffi::OsString, bool)>> {
+            let mut out = Vec::new();
+            for e in std::fs::read_dir(dir).ok()?.flatten() {
+                let name = e.file_name();
+                // file_type does not follow symlinks: links (which may lead out of the tree or
+                // round in a circle) are left out like dot files.
+                let Ok(t) = e.file_type() else { continue };
+                if !name.as_encoded_bytes().starts_with(b".") && !t.is_symlink() {
+                    out.push((name, t.is_dir()));
+                }
+            }
+            Some(out)
+        }
         pub fn modified(p: &Path) -> Option<u64> {
             let t = std::fs::metadata(p).and_then(|m| m.modified()).ok()?;
             Some(t.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos() as u64)
@@ -385,6 +426,17 @@ pub mod fs {
         imp::is_file(p)
     }
 
+    pub fn is_dir(p: &Path) -> bool {
+        imp::is_dir(p)
+    }
+
+    /// The names in `dir` and whether each is a directory, without hidden entries (dot
+    /// names; on Windows also hidden and system ones) and symbolic links; None when it
+    /// cannot be read.
+    pub fn list(dir: &Path) -> Option<Vec<(std::ffi::OsString, bool)>> {
+        imp::list(dir)
+    }
+
     /// Last write time (opaque, for change detection).
     pub fn modified(p: &Path) -> Option<u64> {
         imp::modified(p)
@@ -404,6 +456,8 @@ pub mod fs {
             assert!(super::write(&p, b"hallo"));
             assert_eq!(super::read(&p).as_deref(), Some(&b"hallo"[..]));
             assert!(super::is_file(&p) && !super::is_file(&dir));
+            assert!(super::is_dir(&dir) && !super::is_dir(&p));
+            assert!(super::list(&dir).is_some_and(|l| l.iter().any(|(n, d)| n == "markdownr-fs-test.txt" && !d)));
             assert!(super::modified(&p).is_some());
             assert_eq!(super::canonical(&p), std::fs::canonicalize(&p).ok());
             let _ = std::fs::remove_file(&p);

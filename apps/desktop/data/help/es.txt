@@ -14,6 +14,7 @@ Coincidencia siguiente / anterior
 Cerrar la búsqueda
 Archivo
 Abrir (o arrastrar y soltar)
+Abrir una carpeta (o arrastrar y soltar)
 Recargar (los cambios también se cargan solos)
 Salir
 Línea de comandos
@@ -49,3 +50,5 @@ Abrir archivo …
 Documento de ejemplo
 También arrastrando y soltando o `{Ctrl}+O`. `{Full}` pantalla completa, `{Ctrl}+F` buscar, `{Ctrl}+T` contenido, `F1` todos los atajos.
 Abiertos recientemente
+Abrir carpeta …
+No hay archivos Markdown en esta carpeta.

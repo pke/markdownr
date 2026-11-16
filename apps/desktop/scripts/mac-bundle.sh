@@ -35,6 +35,10 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleTypeRole</key><string>Viewer</string>
   <key>LSItemContentTypes</key><array><string>net.daringfireball.markdown</string><string>public.plain-text</string></array>
   <key>CFBundleTypeExtensions</key><array><string>md</string><string>markdown</string><string>mdown</string><string>mkd</string></array>
+</dict><dict>
+  <key>CFBundleTypeName</key><string>Folder</string>
+  <key>CFBundleTypeRole</key><string>Viewer</string>
+  <key>LSItemContentTypes</key><array><string>public.folder</string></array>
 </dict></array>
 </dict></plist>
 PLIST

@@ -44,7 +44,7 @@ const SLIDE: f32 = 0.35; // seconds
 const HELP: &[(usize, bool, &[&str])] = &[
     (0, false, &["{PgDn}   →   {Space}", "{PgUp}   ←   ⇧ {Space}", "↓   ↑   {#0}", "{Home}   {End}", "{Ctrl}+A   {Ctrl}+C"]),
     (0, false, &["{Ctrl}+F   F3", "{Enter}   ⇧ {Enter}", "{Esc}"]),
-    (0, false, &["{Ctrl}+O", "F5   {Ctrl}+R", "{Ctrl}+Q   {Ctrl}+W"]),
+    (0, false, &["{Ctrl}+O", "{Ctrl}+⇧+O", "F5   {Ctrl}+R", "{Ctrl}+Q   {Ctrl}+W"]),
     (0, true, &["markdownr {#1}.md", "markdownr"]),
     (1, false, &["{Ctrl}+T", "{Ctrl}+U", "{Ctrl}+D", "{Ctrl}++   {Ctrl}+−", "{Ctrl}+{#0}", "{Ctrl}+0", "{Full}   {Esc}", "F1"]),
     (1, true, &["MARKDOWNR_SETTINGS={#1}", "MARKDOWNR_SAMPLE=1", "MARKDOWNR_LOCALE=de-DE", "MARKDOWNR_LANGUAGE=de"]),
@@ -69,8 +69,10 @@ pub enum Ui {
     Sample,
     StartKeys,
     Recent,
+    OpenFolder,
+    NoFiles,
 }
-const UI_COUNT: usize = Ui::Recent as usize + 1;
+const UI_COUNT: usize = Ui::NoFiles as usize + 1;
 
 /// The language's help and interface texts, line by line (`tables::help`).
 fn texts() -> &'static [&'static str] {
@@ -159,6 +161,9 @@ pub enum Effect {
     ExitFullscreen,
     OpenUrl(String),
     OpenDialog,
+    OpenFolderDialog,
+    /// Back to the opened folder's index page.
+    FolderIndex,
     Reload,
     Quit,
 }
@@ -167,6 +172,7 @@ pub enum Effect {
 enum Action {
     Toc,
     Open,
+    Folder,
     Search,
     FontDown,
     FontUp,
@@ -224,6 +230,9 @@ pub struct Viewer<P> {
     pub fullscreen: bool,
     pub remember_fullscreen: bool,
     pub show_source: bool,
+    /// The opened folder's name while one of its files shows (a toolbar button leads back
+    /// to its index page).
+    pub folder: Option<String>,
     /// Toolbar, drawer and find bar in window coordinates.
     pub chrome: DocLayout<P>,
     pub chrome_alpha: f32,
@@ -381,6 +390,7 @@ impl<P: Paragraph> Viewer<P> {
             show_until: None,
             last_tick: None,
             toc_open: false,
+            folder: None,
             toc_scroll: 0.0,
             help: false,
             help_advanced: false,
@@ -946,6 +956,12 @@ impl<P: Paragraph> Viewer<P> {
         let mut x = 6.0 + self.bar_inset;
         x += button(ts, &mut out, &mut buttons, &["☰  ", ui(Ui::Contents)].concat(), Action::Toc, x, false, self.toc_open) + 2.0;
         x += button(ts, &mut out, &mut buttons, ui(Ui::Open), Action::Open, x, false, false) + 2.0;
+        if let Some(name) = &self.folder {
+            // Back to the folder's index page, as mobile's "Back to …" (long names cut).
+            let short: String = name.chars().take(24).collect();
+            let label = ["↑  ", &short, if short.len() < name.len() { "…" } else { "" }].concat();
+            x += button(ts, &mut out, &mut buttons, &label, Action::Folder, x, false, false) + 2.0;
+        }
         let left_end = x;
 
         // Right group, laid out from the right edge.
@@ -1203,6 +1219,7 @@ impl<P: Paragraph> Viewer<P> {
         match action {
             Action::Toc => self.toc_open = !self.toc_open,
             Action::Open => return Some(Effect::OpenDialog),
+            Action::Folder => return Some(Effect::FolderIndex),
             Action::Search => self.open_find(),
             Action::FontDown => self.set_font_size(self.font_size - 1.0),
             Action::FontUp => self.set_font_size(self.font_size + 1.0),
@@ -1400,6 +1417,7 @@ impl<P: Paragraph> Viewer<P> {
                 't' => return self.act(Action::Toc, now),
                 'u' => return self.act(Action::Source, now),
                 'd' => return self.act(Action::Theme, now),
+                'o' if mods.shift => return Some(Effect::OpenFolderDialog),
                 'o' => return Some(Effect::OpenDialog),
                 'r' => return Some(Effect::Reload),
                 'q' | 'w' => return Some(Effect::Quit),

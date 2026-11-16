@@ -22,8 +22,10 @@ use std::time::Duration;
 struct MacHost {
     window: Id,
     view: Id,
-    /// The NSTimers of Timer::Chrome and Timer::Layout.
-    timers: [Id; 2],
+    /// The NSTimers of Timer::Chrome, Timer::Layout and Timer::Poll.
+    timers: [Id; 3],
+    /// FSEvents stream of what is watched (`Host::watch`), on the main queue; null for none.
+    events: *mut c_void,
     /// The view's display link (macOS 14+) for animation frames: they come in step with
     /// the display (120 Hz on ProMotion) instead of from a 16 ms timer. Null until needed
     /// or where there is none.
@@ -79,14 +81,16 @@ impl Host for MacHost {
             let selector = match timer {
                 Timer::Chrome => sel(c"chromeTick:"),
                 Timer::Layout => sel(c"layoutTick:"),
+                Timer::Poll => sel(c"watchTick:"),
             };
             *slot = msg!(class(c"NSTimer"), c"scheduledTimerWithTimeInterval:target:selector:userInfo:repeats:", d.as_secs_f64(), self.view, selector, core::ptr::null_mut::<c_void>(), true => Id);
         }
     }
 
-    fn open_dialog(&mut self) -> Option<PathBuf> {
+    fn open_dialog(&mut self, folder: bool) -> Option<PathBuf> {
         let panel = msg!(class(c"NSOpenPanel"), c"openPanel" => Id);
-        msg!(panel, c"setCanChooseDirectories:", false);
+        msg!(panel, c"setCanChooseDirectories:", folder);
+        msg!(panel, c"setCanChooseFiles:", !folder);
         msg!(panel, c"setAllowsMultipleSelection:", false);
         if msg!(panel, c"runModal" => isize) != 1 {
             return None;
@@ -112,6 +116,46 @@ impl Host for MacHost {
     fn minimized(&self) -> bool {
         msg!(self.window, c"isMiniaturized" => bool)
     }
+
+    fn watch(&mut self, dirs: &[PathBuf], _tree: bool) -> bool {
+        // The stream may be the one whose callback runs now (App::changed watches anew):
+        // it ends once that is over.
+        unsafe extern "C" fn end(stream: *mut c_void) {
+            unsafe {
+                FSEventStreamStop(stream);
+                FSEventStreamInvalidate(stream);
+                FSEventStreamRelease(stream);
+            }
+        }
+        let main = unsafe { &_dispatch_main_q as *const _ as *const c_void };
+        if !self.events.is_null() {
+            unsafe { dispatch_async_f(main, self.events, end) };
+            self.events = core::ptr::null_mut();
+        }
+        let Some(dir) = dirs.first() else { return true };
+        // FSEvents watches the whole tree below a directory, so the first is all it needs;
+        // its events name directories only, which is all App::changed asks.
+        let paths = msg!(class(c"NSArray"), c"arrayWithObject:", nsstring(&dir.to_string_lossy()) => Id);
+        let context = FSEventStreamContext { version: 0, info: core::ptr::null_mut(), retain: core::ptr::null(), release: core::ptr::null(), copy_description: core::ptr::null() };
+        unsafe {
+            let stream = FSEventStreamCreate(core::ptr::null(), fs_changed, &context, paths as CFTypeRef, kFSEventStreamEventIdSinceNow, 0.1, kFSEventStreamCreateFlagNoDefer);
+            if stream.is_null() {
+                return false;
+            }
+            FSEventStreamSetDispatchQueue(stream, main);
+            if !FSEventStreamStart(stream) {
+                end(stream);
+                return false;
+            }
+            self.events = stream;
+        }
+        true
+    }
+}
+
+/// Something changed where the app watches (FSEvents, on the main queue).
+unsafe extern "C" fn fs_changed(_: *mut c_void, _: *mut c_void, _: usize, _: *mut c_void, _: *const u32, _: *const u64) {
+    with_app(|a| a.app.changed());
 }
 
 struct Mac {
@@ -329,7 +373,7 @@ extern "C" fn layout_tick(_: Id, _: Sel, _timer: Id) {
 }
 
 extern "C" fn watch_tick(_: Id, _: Sel, _timer: Id) {
-    with_app(|a| a.app.watch());
+    with_app(|a| a.app.changed());
 }
 
 extern "C" fn appearance_changed(view: Id, _: Sel) {
@@ -365,7 +409,7 @@ extern "C" fn did_exit_full(_: Id, _: Sel, _note: Id) {
 /// Finder opened a document with us (double click, drop on the Dock icon).
 extern "C" fn open_file(_: Id, _: Sel, _app: Id, file: Id) -> bool {
     let path = PathBuf::from(string(file));
-    with_app(|a| a.app.load(path)).is_some()
+    with_app(|a| a.app.open(path)).is_some()
 }
 
 /// A file dragged over the window: offer to copy (open) it.
@@ -382,7 +426,7 @@ extern "C" fn perform_drag(_: Id, _: Sel, info: Id) -> bool {
         return false;
     }
     let path = string(msg!(msg!(urls, c"objectAtIndex:", 0usize => Id), c"path" => Id));
-    !path.is_empty() && with_app(|a| a.app.load(PathBuf::from(path))).is_some()
+    !path.is_empty() && with_app(|a| a.app.open(PathBuf::from(path))).is_some()
 }
 
 /// Image results arrived (main queue, from images.rs).
@@ -488,7 +532,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         None => crate::app::start_doc(&settings, sample),
     };
     let gfx = Gfx::new(images::Images::new(images_ready));
-    let host = MacHost { window, view, timers: [core::ptr::null_mut(); 2], link: core::ptr::null_mut() };
+    let host = MacHost { window, view, timers: [core::ptr::null_mut(); 3], events: core::ptr::null_mut(), link: core::ptr::null_mut() };
     let mut a = App::new(host, gfx, path, doc, settings, settings_path, sample);
     a.viewer.bar_inset = LIGHTS_INSET;
     let start_fullscreen = a.start_fullscreen();
@@ -506,7 +550,6 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
     a.set_dark(appearance.contains("Dark"));
     *APP.0.borrow_mut() = Some(Mac { app: a, appearance });
     with_app(|m| m.app.schedule());
-    msg!(class(c"NSTimer"), c"scheduledTimerWithTimeInterval:target:selector:userInfo:repeats:", 1.0f64, view, sel(c"watchTick:"), core::ptr::null_mut::<c_void>(), true => Id);
     msg!(window, c"makeKeyAndOrderFront:", core::ptr::null_mut::<c_void>());
     msg!(window, c"makeFirstResponder:", view => bool);
     msg!(app, c"activateIgnoringOtherApps:", true);

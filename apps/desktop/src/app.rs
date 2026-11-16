@@ -27,6 +27,8 @@ pub enum Timer {
     Chrome,
     /// Idle-time slices of a partial document layout.
     Layout,
+    /// Once a second: look for changes where the system cannot report them (`Host::watch`).
+    Poll,
 }
 
 /// What the app needs from the window system.
@@ -36,12 +38,19 @@ pub trait Host {
     fn set_title(&self, title: &str);
     /// Fire `timer` every `every` until it is set again, or stop it (None).
     fn set_timer(&mut self, timer: Timer, every: Option<Duration>);
-    /// The system's open-file dialog.
-    fn open_dialog(&mut self) -> Option<PathBuf>;
+    /// The system's open-file dialog, or with `folder` its choose-a-folder dialog.
+    fn open_dialog(&mut self, folder: bool) -> Option<PathBuf>;
     /// Hand a web or mail link, or a file that is not Markdown, to the system.
     fn open_external(&mut self, target: &str);
     /// While minimised no animation timers run.
     fn minimized(&self) -> bool {
+        false
+    }
+    /// Report changes in `dirs` (empty: stop) by calling `App::changed`: in each directory
+    /// itself, or with `tree` in the whole tree below the first (which the others are part
+    /// of, for systems that watch one directory at a time). False when the system cannot;
+    /// the app then polls.
+    fn watch(&mut self, _dirs: &[PathBuf], _tree: bool) -> bool {
         false
     }
 }
@@ -60,8 +69,12 @@ pub fn parse(text: &str) -> Node {
     doc
 }
 
-/// (title, source, document) of a file; an error page when it cannot be read.
+/// (title, source, document) of a file, or the index page of a folder; an error page when
+/// it cannot be read.
 pub fn read_doc(path: &Path) -> (String, String, Node) {
+    if crate::util::fs::is_dir(path) {
+        return folder_doc(path, &crate::folder::scan(path));
+    }
     let text = match crate::util::fs::read(path) {
         Some(bytes) => {
             let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
@@ -71,6 +84,18 @@ pub fn read_doc(path: &Path) -> (String, String, Node) {
     };
     let doc = parse(&text);
     (crate::util::path::file_name(path).to_string_lossy().into_owned(), text, doc)
+}
+
+fn folder_doc(path: &Path, listing: &crate::folder::Listing) -> (String, String, Node) {
+    let name = folder_name(path);
+    let text = crate::folder::index(&name, listing);
+    let doc = parse(&text);
+    (name, text, doc)
+}
+
+fn folder_name(path: &Path) -> String {
+    let name = crate::util::path::file_name(path).to_string_lossy().into_owned();
+    if name.is_empty() { path.to_string_lossy().into_owned() } else { name } // a drive or `/`
 }
 
 /// The document to show without a file: the sample (MARKDOWNR_SAMPLE) or the start page.
@@ -100,8 +125,15 @@ pub struct App<G: Gfx, H: Host> {
     pub host: H,
     pub gfx: G,
     pub viewer: Viewer<G::Para>,
+    /// The file shown, or the folder whose index page shows.
     pub path: Option<PathBuf>,
     modified: Option<u64>,
+    /// The folder opened (its index page or one of its files shows).
+    pub folder: Option<PathBuf>,
+    /// What is being watched: the directories and whether as a tree (`Host::watch`), and
+    /// whether the system could not and the app polls instead.
+    watched: (Vec<PathBuf>, bool),
+    polling: bool,
     chrome_timer: bool,
     /// While the window is being resized (until 150 ms after the last size change or the
     /// end of the drag) the idle layout waits: each size step would discard it.
@@ -142,8 +174,16 @@ impl<G: Gfx, H: Host> App<G, H> {
         if let Some(ms) = crate::util::env::string("MARKDOWNR_TIME_MS").and_then(|s| s.parse::<u64>().ok()) {
             viewer.anim_start = Instant::now() - Duration::from_millis(ms);
         }
-        gfx.set_image_base(path.as_deref().map(|p| crate::util::path::parent(p).to_path_buf()).or_else(crate::util::env::current_dir));
-        App { host, gfx, viewer, modified: path.as_deref().and_then(crate::util::fs::modified), path, chrome_timer: false, sizing_until: None, settings, settings_path, sample, fullscreen: false, mouse: (0.0, 0.0), back: Vec::new(), ahead: Vec::new() }
+        let dir = path.as_deref().is_some_and(crate::util::fs::is_dir);
+        gfx.set_image_base(path.as_deref().map(|p| if dir { p.to_path_buf() } else { crate::util::path::parent(p).to_path_buf() }).or_else(crate::util::env::current_dir));
+        let modified = path.as_deref().and_then(crate::util::fs::modified);
+        let folder = path.clone().filter(|_| dir);
+        let mut app = App { host, gfx, viewer, modified, path, folder, watched: (Vec::new(), false), polling: false, chrome_timer: false, sizing_until: None, settings, settings_path, sample, fullscreen: false, mouse: (0.0, 0.0), back: Vec::new(), ahead: Vec::new() };
+        app.rewatch(None);
+        if dir {
+            app.open_first();
+        }
+        app
     }
 
     /// Start in full screen: the last session ended there and that is to be remembered.
@@ -327,17 +367,87 @@ impl<G: Gfx, H: Host> App<G, H> {
         self.show_file(path);
     }
 
+    /// Open what the reader chose (dialog, drop, the system): a file, or a folder, which
+    /// starts at its first file when that is numbered or the only one (`Listing::first`).
+    pub fn open(&mut self, path: PathBuf) {
+        self.load(path);
+        self.open_first();
+    }
+
+    fn open_first(&mut self) {
+        let Some(root) = self.folder.clone().filter(|_| self.on_index()) else { return };
+        if let Some(first) = crate::folder::scan(&root).first() {
+            self.load(crate::util::path::join(&root, Path::new(&first)));
+        }
+    }
+
+    /// The opened folder's index page shows.
+    fn on_index(&self) -> bool {
+        matches!((&self.path, &self.folder), (Some(p), Some(f)) if p.as_os_str() == f.as_os_str())
+    }
+
+    /// The folder's index page, from one of its files.
+    pub fn folder_index(&mut self) {
+        if let Some(root) = self.folder.clone() {
+            self.load(root);
+        }
+    }
+
     fn show_file(&mut self, path: PathBuf) {
-        let (title, source, doc) = read_doc(&path);
+        self.show(path, true, None);
+    }
+
+    /// Show `path` (a file or a folder's index page), on the recent list with `recent`.
+    /// `listing`: of the folder `path`, when just read.
+    fn show(&mut self, path: PathBuf, recent: bool, listing: Option<crate::folder::Listing>) {
         let same = self.path.as_ref().is_some_and(|p| p.as_os_str() == path.as_os_str());
-        self.gfx.set_image_base(Some(crate::util::path::parent(&path).to_path_buf()));
+        let listing = listing.or_else(|| crate::util::fs::is_dir(&path).then(|| crate::folder::scan(&path)));
+        let (title, source, doc) = match &listing {
+            Some(l) => folder_doc(&path, l),
+            None => read_doc(&path),
+        };
+        // A folder's own files keep it open; anything else closes it.
+        if listing.is_some() {
+            self.folder = Some(path.clone());
+        } else if !self.folder.as_deref().is_some_and(|f| crate::folder::within(f, &path)) {
+            self.folder = None;
+        }
+        self.gfx.set_image_base(Some(if listing.is_some() { path.clone() } else { crate::util::path::parent(&path).to_path_buf() }));
         self.viewer.set_document(title, source, doc, same);
+        self.viewer.folder = self.folder.as_deref().filter(|_| listing.is_none()).map(folder_name);
         self.modified = crate::util::fs::modified(&path);
-        self.settings.add_recent(&path);
-        self.settings.save(&self.settings_path);
+        // A folder's files are not listed one by one: the folder is.
+        if recent && (listing.is_some() || self.folder.is_none()) {
+            self.settings.add_recent(&path);
+            self.settings.save(&self.settings_path);
+        }
         self.path = Some(path);
+        self.rewatch(listing);
         self.set_title();
         self.invalidate();
+    }
+
+    /// Watch what shows: a folder's whole tree while its index page shows (a file added,
+    /// removed or renamed anywhere in it changes the page), otherwise the shown file's
+    /// directory (an editor may save by replacing the file); nothing for the start page.
+    fn rewatch(&mut self, listing: Option<crate::folder::Listing>) {
+        let (dirs, tree) = match (&self.path, listing) {
+            (Some(_), Some(l)) => (l.dirs, true),
+            (Some(p), None) if crate::util::fs::is_dir(p) => (crate::folder::scan(p).dirs, true),
+            (Some(p), None) => (vec![crate::util::path::parent(p).to_path_buf()], false),
+            (None, _) => (Vec::new(), false),
+        };
+        let same = |a: &[PathBuf], b: &[PathBuf]| a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.as_os_str() == b.as_os_str());
+        if tree == self.watched.1 && same(&dirs, &self.watched.0) {
+            return;
+        }
+        let ok = self.host.watch(&dirs, tree);
+        let poll = !ok && !dirs.is_empty();
+        self.watched = (dirs, tree);
+        if poll != self.polling {
+            self.polling = poll;
+            self.host.set_timer(Timer::Poll, poll.then_some(Duration::from_secs(1)));
+        }
     }
 
     fn load_text(&mut self, title: &str, text: &str) {
@@ -348,6 +458,9 @@ impl<G: Gfx, H: Host> App<G, H> {
     fn show_text(&mut self, title: &str, text: &str) {
         self.path = None;
         self.modified = None;
+        self.folder = None;
+        self.viewer.folder = None;
+        self.rewatch(None);
         self.gfx.set_image_base(crate::util::env::current_dir());
         self.viewer.set_document(title.to_string(), text.to_string(), parse(text), false);
         self.set_title();
@@ -356,12 +469,7 @@ impl<G: Gfx, H: Host> App<G, H> {
 
     pub fn reload(&mut self) {
         match self.path.clone() {
-            Some(p) => {
-                let (title, source, doc) = read_doc(&p);
-                self.viewer.set_document(title, source, doc, true);
-                self.modified = crate::util::fs::modified(&p);
-                self.set_title();
-            }
+            Some(p) => self.show(p, false, None),
             None => {
                 let start = self.settings.start_page();
                 self.viewer.set_document("Markdownr".into(), start.clone(), parse(&start), true);
@@ -370,26 +478,36 @@ impl<G: Gfx, H: Host> App<G, H> {
         self.invalidate();
     }
 
-    /// Reload when the file changed on disk (polled once a second).
-    pub fn watch(&mut self) {
-        if let Some(p) = &self.path {
-            let now = crate::util::fs::modified(p);
+    /// Something changed where the app watches (`Host::watch`), or it is time to poll: reload
+    /// the file when it was written, the index page when the folder's files are others now.
+    pub fn changed(&mut self) {
+        let Some(p) = self.path.clone() else { return };
+        if crate::util::fs::is_dir(&p) {
+            let listing = crate::folder::scan(&p);
+            if crate::folder::index(&folder_name(&p), &listing) != self.viewer.source {
+                self.show(p, false, Some(listing));
+            } else {
+                self.rewatch(Some(listing)); // a new directory without Markdown files yet
+            }
+        } else {
+            let now = crate::util::fs::modified(&p);
             if now.is_some() && now != self.modified {
-                self.reload();
+                self.show(p, false, None);
             }
         }
     }
 
-    pub fn open_dialog(&mut self) {
-        if let Some(p) = self.host.open_dialog() {
-            self.load(p);
+    pub fn open_dialog(&mut self, folder: bool) {
+        if let Some(p) = self.host.open_dialog(folder) {
+            self.open(p);
         }
     }
 
     pub fn open_url(&mut self, url: &str) {
         let lower = url.to_ascii_lowercase();
         match lower.as_str() {
-            "markdownr:open" => return self.open_dialog(),
+            "markdownr:open" => return self.open_dialog(false),
+            "markdownr:open-folder" => return self.open_dialog(true),
             "markdownr:sample" => {
                 let sample = self.sample;
                 return self.load_text("Beispiel", sample);
@@ -408,15 +526,19 @@ impl<G: Gfx, H: Host> App<G, H> {
         let target = if crate::util::path::is_absolute(p) {
             p.to_path_buf()
         } else if let Some(doc) = &self.path {
-            crate::util::path::join(crate::util::path::parent(doc), p)
+            // From a folder's index page its links are relative to the folder itself.
+            let dir = if self.on_index() { doc.as_path() } else { crate::util::path::parent(doc) };
+            crate::util::path::join(dir, p)
         } else {
             return;
         };
+        if crate::util::fs::is_dir(&target) {
+            return self.load(target); // a recent folder from the start page
+        }
         if !crate::util::fs::is_file(&target) {
             return;
         }
-        let ext = crate::util::path::extension(&target);
-        if matches!(ext.as_str(), "md" | "markdown" | "mdown" | "mkd" | "txt") {
+        if crate::folder::is_markdown(&target) {
             self.load(target);
         } else {
             self.host.open_external(&target.to_string_lossy());
@@ -440,7 +562,15 @@ impl<G: Gfx, H: Host> App<G, H> {
                 None
             }
             Effect::OpenDialog => {
-                self.open_dialog();
+                self.open_dialog(false);
+                None
+            }
+            Effect::OpenFolderDialog => {
+                self.open_dialog(true);
+                None
+            }
+            Effect::FolderIndex => {
+                self.folder_index();
                 None
             }
             Effect::Reload => {
@@ -556,15 +686,29 @@ mod tests {
         }
     }
 
-    struct NoHost;
+    /// Records what it is asked to watch; `notify`: whether it can.
+    #[derive(Default)]
+    struct NoHost {
+        notify: bool,
+        watching: Option<(Vec<PathBuf>, bool)>,
+        poll: bool,
+    }
     impl Host for NoHost {
         fn invalidate(&self) {}
         fn set_title(&self, _: &str) {}
-        fn set_timer(&mut self, _: Timer, _: Option<Duration>) {}
-        fn open_dialog(&mut self) -> Option<PathBuf> {
+        fn set_timer(&mut self, t: Timer, every: Option<Duration>) {
+            if t == Timer::Poll {
+                self.poll = every.is_some();
+            }
+        }
+        fn open_dialog(&mut self, _: bool) -> Option<PathBuf> {
             None
         }
         fn open_external(&mut self, _: &str) {}
+        fn watch(&mut self, dirs: &[PathBuf], tree: bool) -> bool {
+            self.watching = Some((dirs.to_vec(), tree));
+            self.notify
+        }
     }
 
     /// A fresh directory with a.md (long, links to b.md), b.md and c.md.
@@ -584,7 +728,7 @@ mod tests {
             Some(p) => read_doc(p),
             None => start_doc(&Settings::default(), "# Beispiel\n"),
         };
-        let mut a = App::new(NoHost, Fake, path, doc, Settings::default(), dir.join("settings.ini"), "# Beispiel\n");
+        let mut a = App::new(NoHost { notify: true, ..NoHost::default() }, Fake, path, doc, Settings::default(), dir.join("settings.ini"), "# Beispiel\n");
         a.resize(800.0, 600.0, false);
         a.layout();
         a.settle();
@@ -640,6 +784,96 @@ mod tests {
         a.reload();
         a.open_url("a.md");
         assert!(!a.back());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A folder with a.md, b.md and sub/c.md (linking back up to a.md).
+    fn folder(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(["markdownr-folder-", name, "-", &std::process::id().to_string()].concat());
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("a.md"), "# A\n").unwrap();
+        std::fs::write(dir.join("b.md"), "# B\n").unwrap();
+        std::fs::write(dir.join("sub").join("c.md"), "# C\n\n[up](../a.md)\n").unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_folder_shows_its_index_and_its_files_lead_back() {
+        let dir = folder("index");
+        let mut a = app(&dir, None);
+        a.open(dir.clone());
+        assert_eq!(a.path.as_ref(), Some(&dir), "a.md and b.md are not numbered: the index page");
+        assert_eq!(a.viewer.source, "# markdownr\\-folder\\-index\\-".to_string() + &std::process::id().to_string() + "\n\n- [a](<a.md>)\n- [b](<b.md>)\n\n## sub\n\n- [c](<sub/c.md>)\n\n");
+        assert_eq!(a.viewer.folder, None, "no way back to the index on the index");
+        assert_eq!(a.host.watching, Some((vec![dir.clone(), dir.join("sub")], true)), "the whole tree while the index shows");
+
+        a.open_url("sub/c.md");
+        assert_eq!(at(&a).as_deref(), Some("c.md"));
+        assert!(a.viewer.folder.as_deref().is_some_and(|f| f.starts_with("markdownr-folder-index")));
+        assert_eq!(a.host.watching, Some((vec![dir.join("sub")], false)), "only the file's directory once a file shows");
+        a.open_url("../a.md");
+        assert_eq!(at(&a).as_deref(), Some("a.md"));
+        assert!(a.viewer.folder.is_some(), "still in the folder");
+
+        a.folder_index();
+        assert_eq!(a.path.as_ref(), Some(&dir));
+        assert_eq!(a.host.watching.as_ref().map(|w| w.1), Some(true));
+        assert!(a.back());
+        assert_eq!(at(&a).as_deref(), Some("a.md"));
+
+        // Only the folder goes on the recent list, not each of its files.
+        assert_eq!(a.settings.recent.len(), 1);
+        assert!(a.settings.start_page().contains("markdownr-folder-index"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_numbered_folder_starts_at_its_first_file() {
+        let dir = folder("numbered");
+        std::fs::write(dir.join("01 Intro.md"), "# Intro\n").unwrap();
+        let mut a = app(&dir, Some(dir.clone()));
+        assert_eq!(at(&a).as_deref(), Some("01 Intro.md"));
+        assert!(a.back(), "the index page is on the history");
+        assert_eq!(a.path.as_ref(), Some(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_index_follows_the_folder_and_a_file_its_changes() {
+        let dir = folder("changes");
+        let mut a = app(&dir, None);
+        a.open(dir.clone());
+        std::fs::create_dir_all(dir.join("new")).unwrap();
+        a.changed();
+        assert!(!a.viewer.source.contains("new"), "a directory without Markdown files is not listed");
+        assert_eq!(a.host.watching.as_ref().map(|w| w.0.len()), Some(3), "but watched");
+        std::fs::write(dir.join("new").join("d.md"), "# D\n").unwrap();
+        a.changed();
+        assert!(a.viewer.source.contains("[d](<new/d.md>)"));
+        std::fs::remove_file(dir.join("b.md")).unwrap();
+        a.changed();
+        assert!(!a.viewer.source.contains("b.md"));
+        assert_eq!(a.back.len(), 1, "only the start page before: a refreshed index is no new page");
+
+        a.open_url("a.md");
+        std::thread::sleep(Duration::from_millis(20));
+        std::fs::write(dir.join("a.md"), "# A2\n").unwrap();
+        a.changed();
+        assert_eq!(a.viewer.source, "# A2\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn without_notifications_the_app_polls() {
+        let dir = folder("poll");
+        let doc = start_doc(&Settings::default(), "");
+        let mut a = App::new(NoHost::default(), Fake, None, doc, Settings::default(), dir.join("settings.ini"), "");
+        assert!(!a.host.poll, "nothing to watch on the start page");
+        a.open(dir.join("a.md"));
+        assert!(a.host.poll);
+        a.open_url("markdownr:sample");
+        assert!(!a.host.poll);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

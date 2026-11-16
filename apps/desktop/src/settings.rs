@@ -96,22 +96,25 @@ impl Settings {
         self.recent.truncate(MAX_RECENT);
     }
 
-    /// Start page shown without a file: open button, recent files, sample; in the help's
+    /// Start page shown without a file: open buttons, recent files and folders, sample; in the help's
     /// language, with the platform's keys.
     pub fn start_page(&self) -> String {
         use crate::view::{Ui, ui};
         let keys = crate::view::help_keys(ui(Ui::StartKeys), &[]);
         let mut s = String::from("---\ntitle: Markdownr\n---\n# Markdownr\n\n");
-        for part in [ui(Ui::Tagline), "\n\n[", ui(Ui::OpenFile), "](markdownr:open) · [", ui(Ui::Sample), "](markdownr:sample)\n\n", &keys, "\n\n"] {
+        for part in [ui(Ui::Tagline), "\n\n[", ui(Ui::OpenFile), "](markdownr:open) · [", ui(Ui::OpenFolder), "](markdownr:open-folder) · [", ui(Ui::Sample), "](markdownr:sample)\n\n", &keys, "\n\n"] {
             s.push_str(part);
         }
-        let recent: Vec<_> = self.recent.iter().filter(|p| crate::util::fs::is_file(p)).collect();
+        let recent: Vec<_> = self.recent.iter().filter(|p| crate::util::fs::is_file(p) || crate::util::fs::is_dir(p)).collect();
         if !recent.is_empty() {
             for part in ["## ", ui(Ui::Recent), "\n\n"] {
                 s.push_str(part);
             }
             for p in recent {
-                let name = crate::util::path::file_name(p).to_string_lossy().into_owned();
+                let mut name = crate::util::path::file_name(p).to_string_lossy().into_owned();
+                if crate::util::fs::is_dir(p) {
+                    name.push('/'); // a folder
+                }
                 let dir = crate::util::path::parent(p).to_string_lossy().into_owned();
                 let url = p.to_string_lossy().replace('\\', "/").replace(' ', "%20");
                 for part in ["- [", &name.replace(['[', ']'], ""), "](<file:///", &url, ">) — ", &dir.replace('\\', "\\\\"), "\n"] {

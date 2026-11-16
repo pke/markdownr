@@ -129,7 +129,15 @@ unsafe extern "C" {
     pub fn poll(fds: *mut PollFd, n: c_ulong, timeout: c_int) -> c_int;
     pub fn time(t: *mut i64) -> i64;
     pub fn localtime_r(t: *const i64, tm: *mut Tm) -> *mut Tm;
+    pub fn inotify_init1(flags: c_int) -> c_int;
+    pub fn inotify_add_watch(fd: c_int, path: *const c_char, mask: u32) -> c_int;
 }
+
+pub const IN_NONBLOCK: c_int = 0o4000;
+pub const IN_CLOEXEC: c_int = 0o2000000;
+/// Written and closed, moved in or out, created, deleted: a file saved in place or by
+/// replacing it, and files coming and going.
+pub const IN_CHANGES: u32 = 0x8 | 0x40 | 0x80 | 0x100 | 0x200;
 
 pub const LC_CTYPE: c_int = 0;
 

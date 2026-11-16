@@ -199,6 +199,29 @@ unsafe extern "C" {
     pub fn dispatch_async_f(queue: *const c_void, context: *mut c_void, work: unsafe extern "C" fn(*mut c_void));
 }
 
+#[repr(C)]
+pub struct FSEventStreamContext {
+    pub version: CFIndex,
+    pub info: *mut c_void,
+    pub retain: *const c_void,
+    pub release: *const c_void,
+    pub copy_description: *const c_void,
+}
+
+pub type FSEventStreamCallback = unsafe extern "C" fn(stream: *mut c_void, info: *mut c_void, n: usize, paths: *mut c_void, flags: *const u32, ids: *const u64);
+pub const kFSEventStreamEventIdSinceNow: u64 = u64::MAX;
+pub const kFSEventStreamCreateFlagNoDefer: u32 = 0x02;
+
+#[link(name = "CoreServices", kind = "framework")]
+unsafe extern "C" {
+    pub fn FSEventStreamCreate(alloc: *const c_void, callback: FSEventStreamCallback, context: *const FSEventStreamContext, paths: CFTypeRef, since: u64, latency: f64, flags: u32) -> *mut c_void;
+    pub fn FSEventStreamSetDispatchQueue(stream: *mut c_void, queue: *const c_void);
+    pub fn FSEventStreamStart(stream: *mut c_void) -> bool;
+    pub fn FSEventStreamStop(stream: *mut c_void);
+    pub fn FSEventStreamInvalidate(stream: *mut c_void);
+    pub fn FSEventStreamRelease(stream: *mut c_void);
+}
+
 #[link(name = "AppKit", kind = "framework")]
 unsafe extern "C" {
     pub static NSPasteboardTypeString: Id;

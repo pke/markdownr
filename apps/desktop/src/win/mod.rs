@@ -30,14 +30,20 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{BOOL, HSTRING, PCWSTR, PWSTR, w};
 
 const TIMER_CHROME: usize = 1;
-const TIMER_WATCH: usize = 2;
+/// Polling for changes where no change notification could be set up (`Host::watch`).
+const TIMER_POLL: usize = 2;
 /// Idle-time slices of a partial document layout.
 const TIMER_LAYOUT: usize = 4;
+/// Once, a second after start: show the window even if no frame could be drawn.
+const TIMER_UNCLOAK: usize = 8;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 
 /// What the shared app asks of the window.
 struct WinHost {
     hwnd: HWND,
+    /// Change notification of the watched directory (`Host::watch`), waited for with the
+    /// messages in `run`.
+    change: Option<HANDLE>,
 }
 
 impl Host for WinHost {
@@ -53,6 +59,7 @@ impl Host for WinHost {
         let id = match timer {
             Timer::Chrome => TIMER_CHROME,
             Timer::Layout => TIMER_LAYOUT,
+            Timer::Poll => TIMER_POLL,
         };
         unsafe {
             match every {
@@ -64,7 +71,10 @@ impl Host for WinHost {
         }
     }
 
-    fn open_dialog(&mut self) -> Option<PathBuf> {
+    fn open_dialog(&mut self, folder: bool) -> Option<PathBuf> {
+        if folder {
+            return pick_folder(self.hwnd);
+        }
         let mut buf = [0u16; 2048];
         let filter: Vec<u16> = "Markdown (*.md;*.markdown;*.txt)\0*.md;*.markdown;*.mdown;*.mkd;*.txt\0Alle Dateien\0*.*\0\0".encode_utf16().collect();
         let mut ofn = OPENFILENAMEW {
@@ -83,12 +93,39 @@ impl Host for WinHost {
         Some(PathBuf::from(String::from_utf16_lossy(&buf[..n])))
     }
 
+    fn watch(&mut self, dirs: &[PathBuf], tree: bool) -> bool {
+        use windows::Win32::Storage::FileSystem::*;
+        if let Some(h) = self.change.take() {
+            unsafe { FindCloseChangeNotification(h).ok() };
+        }
+        let Some(dir) = dirs.first() else { return true };
+        // The index page shows names only; a file is reloaded when written, also by replacing it.
+        let filter = if tree { FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME } else { FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE };
+        self.change = unsafe { FindFirstChangeNotificationW(&HSTRING::from(dir.as_path()), tree, filter) }.ok();
+        self.change.is_some()
+    }
+
     fn open_external(&mut self, target: &str) {
         unsafe { ShellExecuteW(Some(self.hwnd), w!("open"), &HSTRING::from(target), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
     }
 
     fn minimized(&self) -> bool {
         unsafe { IsIconic(self.hwnd) }.as_bool()
+    }
+}
+
+/// The system's choose-a-folder dialog (the Explorer one, as GetOpenFileNameW's for files).
+fn pick_folder(hwnd: HWND) -> Option<PathBuf> {
+    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoTaskMemFree};
+    use windows::Win32::UI::Shell::{FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, FileOpenDialog, IFileOpenDialog, SIGDN_FILESYSPATH};
+    unsafe {
+        let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
+        dialog.SetOptions(dialog.GetOptions().ok()? | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM).ok()?;
+        dialog.Show(Some(hwnd)).ok()?;
+        let name = dialog.GetResult().ok()?.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let path = PathBuf::from(String::from_utf16_lossy(name.as_wide()));
+        CoTaskMemFree(Some(name.0 as *const _));
+        Some(path)
     }
 }
 
@@ -498,9 +535,10 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
             WM_TIMER => {
                 with_app(|w| match wp.0 {
                     TIMER_CHROME => w.app.schedule(),
-                    TIMER_WATCH => {
+                    TIMER_POLL => w.app.changed(),
+                    TIMER_UNCLOAK => {
+                        KillTimer(Some(hwnd), TIMER_UNCLOAK).ok();
                         w.uncloak(); // in case no frame could be drawn
-                        w.app.watch()
                     }
                     TIMER_LAYOUT => w.app.continue_layout(),
                     _ => {}
@@ -618,7 +656,7 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 let n = DragQueryFileW(drop, 0, Some(&mut buf)) as usize;
                 DragFinish(drop);
                 let path = PathBuf::from(String::from_utf16_lossy(&buf[..n]));
-                with_app(|w| w.app.load(path));
+                with_app(|w| w.app.open(path));
                 LRESULT(0)
             }
             WM_DESTROY => {
@@ -696,7 +734,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             Some(job) => BackgroundDoc::join(job),
             None => crate::app::start_doc(&settings, sample),
         };
-        let mut app = App::new(WinHost { hwnd }, gfx, path, doc, settings, settings_path, sample);
+        let mut app = App::new(WinHost { hwnd, change: None }, gfx, path, doc, settings, settings_path, sample);
         let start_fullscreen = app.start_fullscreen();
         {
             let st = windows::Win32::System::SystemInformation::GetLocalTime();
@@ -711,7 +749,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         win.update_size(false);
         *APP.0.borrow_mut() = Some(win);
         with_app(|w| w.app.schedule());
-        SetTimer(Some(hwnd), TIMER_WATCH, 1000, None);
+        SetTimer(Some(hwnd), TIMER_UNCLOAK, 1000, None);
         // Cloaked until the first frame is drawn (Win::uncloak): no white client area.
         cloak(hwnd, true);
         // SW_SHOWDEFAULT: the show state the starter asked for (STARTUPINFO), e.g. a shortcut set to
@@ -721,10 +759,26 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             toggle_fullscreen(hwnd, Some(true));
         }
 
+        // The messages, and the change notification of what is watched (Host::watch).
         let mut msg = MSG::default();
-        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-            let _ = TranslateMessage(&msg);
-            DispatchMessageW(&msg);
+        'run: loop {
+            let change = with_app(|w| w.app.host.change).flatten();
+            let r = MsgWaitForMultipleObjectsEx(change.as_ref().map(core::slice::from_ref), u32::MAX, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+            if let Some(h) = change.filter(|_| r == WAIT_OBJECT_0) {
+                let _ = windows::Win32::Storage::FileSystem::FindNextChangeNotification(h);
+                with_app(|w| w.app.changed());
+                continue;
+            }
+            if r == WAIT_FAILED {
+                with_app(|w| w.app.host.change = None); // not to spin on a broken handle
+            }
+            while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                if msg.message == WM_QUIT {
+                    break 'run;
+                }
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
         }
         drop(APP.0.borrow_mut().take());
     }

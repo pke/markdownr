@@ -14,6 +14,7 @@ Résultat suivant / précédent
 Fermer la recherche
 Fichier
 Ouvrir (ou glisser-déposer)
+Ouvrir un dossier (ou glisser-déposer)
 Recharger (les modifications se chargent aussi d’elles-mêmes)
 Quitter
 Ligne de commande
@@ -49,3 +50,5 @@ Ouvrir un fichier …
 Document d’exemple
 Aussi par glisser-déposer ou `{Ctrl}+O`. `{Full}` plein écran, `{Ctrl}+F` rechercher, `{Ctrl}+T` sommaire, `F1` tous les raccourcis.
 Ouverts récemment
+Ouvrir un dossier …
+Aucun fichier Markdown dans ce dossier.

@@ -14,6 +14,7 @@ Next / previous match
 Close the search
 File
 Open (or drag and drop)
+Open a folder (or drag and drop)
 Reload (changes also load by themselves)
 Quit
 Command line
@@ -49,3 +50,5 @@ Open file …
 Sample document
 Also by drag and drop or `{Ctrl}+O`. `{Full}` full screen, `{Ctrl}+F` search, `{Ctrl}+T` contents, `F1` all shortcuts.
 Recently opened
+Open folder …
+No Markdown files in this folder.

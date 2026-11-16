@@ -46,8 +46,10 @@ struct XHost {
     atoms: Atoms,
     /// A repaint is due (painted once the event queue is empty).
     dirty: Cell<bool>,
-    /// Chrome and layout timers: (next firing, period).
-    timers: [Option<(Instant, Duration)>; 2],
+    /// Chrome, layout and poll timers: (next firing, period).
+    timers: [Option<(Instant, Duration)>; 3],
+    /// inotify instance with the watched directories (`Host::watch`), read by the event loop.
+    notify: Option<std::fs::File>,
 }
 
 impl Host for XHost {
@@ -63,14 +65,41 @@ impl Host for XHost {
         self.timers[timer as usize] = every.map(|d| (Instant::now() + d, d));
     }
 
-    fn open_dialog(&mut self) -> Option<PathBuf> {
+    fn open_dialog(&mut self, folder: bool) -> Option<PathBuf> {
         // No toolkit, so the desktop's own dialog tools: zenity (GNOME and most others), kdialog (KDE).
         let run = |cmd: &str, args: &[&str]| std::process::Command::new(cmd).args(args).output().ok().filter(|o| o.status.success());
-        let out = run("zenity", &["--file-selection", "--title=Markdownr", "--file-filter=Markdown | *.md *.markdown *.mdown *.mkd *.txt", "--file-filter=* | *"])
-            .or_else(|| run("kdialog", &["--getopenfilename", ".", "*.md *.markdown *.mdown *.mkd *.txt"]))?;
+        let out = if folder {
+            run("zenity", &["--file-selection", "--directory", "--title=Markdownr"]).or_else(|| run("kdialog", &["--getexistingdirectory", "."]))?
+        } else {
+            run("zenity", &["--file-selection", "--title=Markdownr", "--file-filter=Markdown | *.md *.markdown *.mdown *.mkd *.txt", "--file-filter=* | *"])
+                .or_else(|| run("kdialog", &["--getopenfilename", ".", "*.md *.markdown *.mdown *.mkd *.txt"]))?
+        };
         let path = String::from_utf8(out.stdout).ok()?;
         let path = path.trim_end_matches('\n');
         (!path.is_empty()).then(|| PathBuf::from(path))
+    }
+
+    fn watch(&mut self, dirs: &[PathBuf], _tree: bool) -> bool {
+        use std::os::fd::FromRawFd;
+        // A new instance for each set (closing the old one ends its watches); inotify watches
+        // one directory, so a tree comes as all its directories.
+        self.notify = None;
+        if dirs.is_empty() {
+            return true;
+        }
+        let fd = unsafe { inotify_init1(IN_NONBLOCK | IN_CLOEXEC) };
+        if fd < 0 {
+            return false;
+        }
+        let file = unsafe { std::fs::File::from_raw_fd(fd) };
+        for d in dirs {
+            let Ok(path) = std::ffi::CString::new(d.as_os_str().as_encoded_bytes()) else { continue };
+            if unsafe { inotify_add_watch(fd, path.as_ptr(), IN_CHANGES) } < 0 && d == &dirs[0] {
+                return false;
+            }
+        }
+        self.notify = Some(file);
+        true
     }
 
     fn open_external(&mut self, target: &str) {
@@ -467,7 +496,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             Some(p) => crate::app::read_doc(p),
             None => crate::app::start_doc(&settings, sample),
         };
-        let host = XHost { dpy, win, atoms, dirty: Cell::new(true), timers: [None, None] };
+        let host = XHost { dpy, win, atoms, dirty: Cell::new(true), timers: [None, None, None], notify: None };
         let mut app = App::new(host, gfx, path, doc, settings, settings_path, sample);
         let start_fullscreen = app.start_fullscreen();
         let mut tm = Tm::default();
@@ -499,7 +528,6 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         if start_fullscreen {
             lx.set_fullscreen(true);
         }
-        let mut watch = Instant::now() + Duration::from_secs(1);
         let xfd = XConnectionNumber(dpy);
         let mut ev = XEvent::zeroed();
         while !lx.quit {
@@ -530,20 +558,28 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             }
             // Timers.
             let now = Instant::now();
-            for t in [Timer::Chrome, Timer::Layout] {
+            for t in [Timer::Chrome, Timer::Layout, Timer::Poll] {
                 if let Some((due, every)) = lx.app.host.timers[t as usize] {
                     if due <= now {
                         lx.app.host.timers[t as usize] = Some((now + every, every));
                         match t {
                             Timer::Chrome => lx.app.schedule(),
                             Timer::Layout => lx.app.continue_layout(),
+                            Timer::Poll => lx.app.changed(),
                         }
                     }
                 }
             }
-            if watch <= now {
-                watch = now + Duration::from_secs(1);
-                lx.app.watch();
+            // Changes where the app watches: the events only say that something changed.
+            if let Some(n) = &mut lx.app.host.notify {
+                let mut changed = false;
+                let mut events = [0u8; 4096]; // room for an event with the longest name
+                while matches!(n.read(&mut events), Ok(k) if k > 0) {
+                    changed = true;
+                }
+                if changed {
+                    lx.app.changed();
+                }
             }
             if lx.app.host.dirty.get() {
                 lx.paint();
@@ -552,10 +588,13 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
             if XPending(dpy) > 0 {
                 continue;
             }
-            let next = lx.app.host.timers.iter().flatten().map(|t| t.0).chain([watch]).min().unwrap_or(watch);
-            let timeout = next.saturating_duration_since(Instant::now()).as_millis().min(60_000) as c_int;
-            let mut fds = [PollFd { fd: xfd, events: 1, revents: 0 }, PollFd { fd: wake_rx.as_raw_fd(), events: 1, revents: 0 }];
-            poll(fds.as_mut_ptr(), 2, timeout.max(if lx.app.host.dirty.get() { 0 } else { 1 }));
+            let timeout = match lx.app.host.timers.iter().flatten().map(|t| t.0).min() {
+                Some(next) => next.saturating_duration_since(Instant::now()).as_millis().min(60_000) as c_int,
+                None => -1,
+            };
+            let notify = lx.app.host.notify.as_ref().map_or(-1, |n| n.as_raw_fd()); // poll skips -1
+            let mut fds = [PollFd { fd: xfd, events: 1, revents: 0 }, PollFd { fd: wake_rx.as_raw_fd(), events: 1, revents: 0 }, PollFd { fd: notify, events: 1, revents: 0 }];
+            poll(fds.as_mut_ptr(), 3, if lx.app.host.dirty.get() { 0 } else if timeout < 0 { -1 } else { timeout.max(1) });
         }
         lx.app.save_settings();
         XDestroyWindow(dpy, win);

@@ -14,6 +14,7 @@ Następne / poprzednie trafienie
 Zamknij wyszukiwanie
 Plik
 Otwórz (również przeciągnij i upuść)
+Otwórz folder (również przeciągnij i upuść)
 Wczytaj ponownie (zmiany wczytują się też same)
 Zakończ
 Wiersz poleceń
@@ -49,3 +50,5 @@ Otwórz plik …
 Przykładowy dokument
 Także przez przeciągnij i upuść lub `{Ctrl}+O`. `{Full}` pełny ekran, `{Ctrl}+F` szukaj, `{Ctrl}+T` spis treści, `F1` wszystkie skróty.
 Ostatnio otwierane
+Otwórz folder …
+Brak plików Markdown w tym folderze.
