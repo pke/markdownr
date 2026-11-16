@@ -1,10 +1,10 @@
 import {useCallback, useContext} from 'react';
-import {File} from 'expo-file-system/next';
 import {MarkdownContext} from './MarkdownContext';
 import {pickFile, readPickedFile} from 'file-picker';
-import {pickFolder, restoreFolder, type FolderFile, type FolderResult} from 'folder-picker';
+import {pickFolder, type FolderResult} from 'folder-picker';
 import {Storage, StorageKeys} from './settings';
 import type {FileSource} from './fileChangeDetection';
+import {readFolderDocumentOrIndex, sortFiles, type OpenDocument} from './folderNavigation';
 
 export function useFileOpener(onOpen?: () => void) {
   const {openFile} = useContext(MarkdownContext);
@@ -30,70 +30,13 @@ export function useFileOpener(onOpen?: () => void) {
 }
 
 /**
- * Sort files by natural order: numeric prefix first (00, 01, 02...), then by relativePath.
+ * Only a newly picked folder auto-opens a numeric or sole file.
  */
-export function sortFiles(files: FolderFile[]): FolderFile[] {
-  return [...files].sort((a, b) => {
-    const nameA = a.name.toLowerCase();
-    const nameB = b.name.toLowerCase();
-    const numA = parseInt(nameA.match(/^(\d+)/)?.[1] ?? '', 10);
-    const numB = parseInt(nameB.match(/^(\d+)/)?.[1] ?? '', 10);
-    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-    if (!isNaN(numA)) return -1;
-    if (!isNaN(numB)) return 1;
-    return a.relativePath.localeCompare(b.relativePath);
-  });
-}
-
-/**
- * Build a markdown index page linking to all files in the folder.
- */
-export function buildFolderIndex(files: FolderFile[], folderName: string, baseUri: string): {content: string; uri: string} {
-  const lines = [`# ${folderName}`, ''];
-  for (const file of files) {
-    const label = file.name.replace(/\.(md|markdown)$/i, '');
-    // Use relativePath so links resolve correctly from the base URI
-    lines.push(`- [${label}](${file.relativePath})`);
-  }
-  return {content: lines.join('\n'), uri: baseUri};
-}
-
-type OpenFile = (content: string, name: string | null, uri: string, source?: FileSource | null) => void;
-
-/**
- * Open a folder result: auto-open first numerically named file, or show index.
- */
-export function openFolderResult(result: FolderResult, openFile: OpenFile) {
+export async function openFolderResult(result: FolderResult, openFile: OpenDocument) {
   const sorted = sortFiles(result.files);
-  if (sorted.length === 0) return;
-
-  // Persist folder URI for restore on next launch
-  Storage.setString(StorageKeys.LAST_FOLDER_URI, result.folderUri);
-
-  const firstName = sorted[0].name.toLowerCase();
-  const hasNumericStart = /^\d+/.test(firstName);
-
-  if (hasNumericStart || sorted.length === 1) {
-    // Open first file directly; content will be read via File API using the URI
-    readAndOpen(sorted[0].uri, sorted[0].name, openFile);
-  } else {
-    // No obvious entry point — show a file browser as markdown
-    // The uri is only the base for resolving the index's relative links. The
-    // index is generated, so there is no source to watch (null, not derived
-    // from the uri: that would watch the first file and Reload would replace
-    // the index with it).
-    const {content, uri} = buildFolderIndex(sorted, result.folderName, sorted[0].uri);
-    openFile(content, null, uri, null);
-  }
-}
-
-async function readAndOpen(uri: string, name: string, openFile: OpenFile) {
-  try {
-    const content = await new File(uri).text();
-    openFile(content, name, uri);
-  } catch (err) {
-    console.error('Error reading file:', uri, err);
-  }
+  const first = sorted[0];
+  const direct = first && (sorted.length === 1 || /^\d/.test(first.name)) ? first : undefined;
+  openFile(...await readFolderDocumentOrIndex(result, direct));
 }
 
 export function useFolderOpener(onOpen?: () => void) {
@@ -105,35 +48,12 @@ export function useFolderOpener(onOpen?: () => void) {
     try {
       const result = await pickFolder();
       if (result) {
-        openFolderResult(result, openFile);
+        await openFolderResult(result, openFile);
       }
     } catch (err) {
       console.error('Error picking folder:', err);
     }
   }, [openFile, onOpen]);
-}
-
-/**
- * Try to restore the last opened folder on app startup.
- * Returns true if restored successfully.
- */
-export async function tryRestoreFolder(
-  openFile: OpenFile
-): Promise<boolean> {
-  const folderUri = Storage.getString(StorageKeys.LAST_FOLDER_URI);
-  if (!folderUri) return false;
-
-  try {
-    const result = await restoreFolder(folderUri);
-    if (result) {
-      openFolderResult(result, openFile);
-      return true;
-    }
-  } catch {
-    // Permission expired or folder gone — clear stored URI
-    Storage.setString(StorageKeys.LAST_FOLDER_URI, '');
-  }
-  return false;
 }
 
 /**

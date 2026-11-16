@@ -6,17 +6,19 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createDrawerNavigator} from '@react-navigation/drawer';
 import {File, Paths} from 'expo-file-system/next';
 import * as Linking from 'expo-linking';
+import {observeFolder} from 'folder-picker';
 
 import './i18n'; // initialize i18next before any screen renders
-import {openDeepLink} from './deepLink';
+import {openDeepLink, parseDeepLinkFileUri} from './deepLink';
 import {
   createChangeTracker, readFileSource, reloadFromSource, sourceForUri, type FileSource,
 } from './fileChangeDetection';
 import {getWelcomeMarkdown} from './example';
 import {Settings, SettingsKeys, Storage, StorageKeys, addSettingsListener} from './settings';
 import {
-  addRecentFile, getRecentFiles, loadRecentFile, clearAllRecentFiles, getCachedFileMtime, restoreSourceFor,
+  addRecentFile, getRecentFiles, clearAllRecentFiles, getCachedFileMtime, restoreRecentDocument,
 } from './recentFiles';
+import {folderHandle, folderIndex, readFolder, updateFolderLocation, type FolderLocation, type ViewerDocument} from './folderNavigation';
 import {MarkdownContext, type SearchMatch, type TocHeading} from './MarkdownContext';
 import {customThemes, themeNames, type ThemeName, type ThemeConfig} from './themes';
 import {ViewerScreen} from './ViewerScreen';
@@ -57,19 +59,17 @@ export default function App() {
 
   const initialRecent = useMemo(() => getRecentFiles()[0] ?? null, []);
   const [markdownContent, setMarkdownContent] = useState<string>(initialRecent ? '' : getWelcomeMarkdown());
-  const [fileName, setFileName] = useState<string | null>(initialRecent?.subtitle ?? null);
-  const [currentFileUri, setCurrentFileUri] = useState<string | null>(() =>
-    Storage.getString(StorageKeys.LAST_FILE_URI) || null
-  );
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [currentFileUri, setCurrentFileUri] = useState<string | null>(null);
+  const [folderLocation, setFolderLocation] = useState<FolderLocation>();
+  const folderLocationRef = useRef<FolderLocation | undefined>(undefined);
+  const documentRevision = useRef(0);
   const [frontMatterTheme, setFrontMatterTheme] = useState<ThemeConfig | null>(null);
   const [frontMatterThemeApplied, setFrontMatterThemeApplied] = useState(false);
 
   useEffect(() => {
-    if (fileName === null) {
-      setMarkdownContent(getWelcomeMarkdown());
-    }
     setFrontMatterThemeApplied(false);
-  }, [fileName]);
+  }, [fileName, currentFileUri]);
 
   const [scrollToPercent, setScrollToPercent] = useState<number | null>(null);
   const [highlightText, setHighlightText] = useState<string | null>(null);
@@ -112,48 +112,91 @@ export default function App() {
   const changeTrackerRef = useRef(createChangeTracker());
   const [externalChangeDetected, setExternalChangeDetected] = useState(false);
 
-  const openFile = useCallback((content: string, name: string | null, fileUri?: string | null, sourceOverride?: FileSource | null) => {
-    const uri = fileUri ?? null;
-    // undefined: derive the source from the uri; null: nothing to watch
-    // (generated content such as a folder index).
-    const source = sourceOverride !== undefined ? sourceOverride : sourceForUri(uri);
-    addRecentFile(content, name, source ?? undefined);
+  const displayDocument = useCallback(([content, name, uri, source, folder]: ViewerDocument, baseline?: number | null) => {
+    documentRevision.current++;
+    folderLocationRef.current = folder;
+    setFolderLocation(folder);
     setMarkdownContent(content);
     setFileName(name);
     setCurrentFileUri(uri);
-    Storage.setString(StorageKeys.LAST_FILE_URI, uri ?? '');
-    Storage.setString(StorageKeys.LAST_FILE_SOURCE, source ? JSON.stringify(source) : '');
-
-    changeTrackerRef.current.track(source);
+    changeTrackerRef.current.track(source, baseline);
     setExternalChangeDetected(false);
   }, []);
 
-  const openedViaDeepLink = useRef(false);
+  const openFile = useCallback((content: string, name: string | null, uri: string | null = null,
+    source: FileSource | null = sourceForUri(uri), folder?: FolderLocation,
+  ) => {
+    addRecentFile(content, name, source ?? undefined, folder);
+    Storage.setString(StorageKeys.LAST_FILE_URI, uri ?? '');
+    Storage.setString(StorageKeys.LAST_FILE_SOURCE, source ? JSON.stringify(source) : '');
+    displayDocument([content, name, uri, source, folder]);
+  }, [displayDocument]);
 
-  const handleInitialUrl = useCallback(
-    async (url: string | null) => {
-      if (!url) return;
-
-      try {
-        const opened = await openDeepLink(url, (uri) => new File(uri).text(), openFile);
-        if (opened) openedViaDeepLink.current = true;
-      } catch (err) {
-        console.error('Error reading file from URL:', err);
-      }
-    },
-    [openFile],
-  );
+  const showLocalDocument = useCallback((content: string, name: string | null) => {
+    displayDocument([content, name, null, null]);
+  }, [displayDocument]);
 
   const runExternalChangeCheck = useCallback(async () => {
-    if (await changeTrackerRef.current.check()) setExternalChangeDetected(true);
+    const revision = documentRevision.current;
+    if (await changeTrackerRef.current.check() && documentRevision.current === revision) {
+      setExternalChangeDetected(true);
+    }
   }, []);
 
+  const activeFolder = folderLocation && folderHandle(folderLocation.result);
+  const activeBookmark = folderLocation?.result.bookmarkKey;
   useEffect(() => {
+    let disposed = false;
+    let refreshing = false;
+    let refreshAgain = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const refresh = async () => {
+      if (disposed || AppState.currentState !== 'active') return;
+      if (refreshing) { refreshAgain = true; return; }
+      refreshing = true;
+      try {
+        if (activeFolder) {
+          const result = await readFolder(activeFolder);
+          if (disposed || AppState.currentState !== 'active') return;
+          const next = result && updateFolderLocation(folderLocationRef.current, result);
+          if (next) {
+            folderLocationRef.current = next;
+            setFolderLocation(next);
+            if (!next.relativePath) {
+              setMarkdownContent(folderIndex(next.result)[0]);
+              setFileName(next.result.folderName);
+            }
+          }
+        }
+        await runExternalChangeCheck();
+      } finally {
+        refreshing = false;
+        if (refreshAgain) {
+          refreshAgain = false;
+          void refresh();
+        }
+      }
+    };
+
+    const stopWatching = activeBookmark ? observeFolder(activeBookmark, () => {
+      clearTimeout(timer);
+      timer = setTimeout(refresh, 180);
+    }) : undefined;
+    // SAF providers are not required to notify observers of tree changes.
+    const poll = activeFolder && Platform.OS === 'android' ? setInterval(refresh, 3000) : undefined;
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') runExternalChangeCheck();
+      if (state === 'active') void refresh();
     });
-    return () => sub.remove();
-  }, [runExternalChangeCheck]);
+    if (activeFolder) void refresh();
+    return () => {
+      disposed = true;
+      stopWatching?.();
+      clearInterval(poll);
+      clearTimeout(timer);
+      sub.remove();
+    };
+  }, [activeFolder, activeBookmark, runExternalChangeCheck]);
 
   const dismissExternalChange = useCallback(() => {
     changeTrackerRef.current.dismiss();
@@ -162,44 +205,66 @@ export default function App() {
 
   const reloadCurrentFile = useCallback(async () => {
     const source = changeTrackerRef.current.source;
-    if (!source) { setExternalChangeDetected(false); return; }
-    const ok = await reloadFromSource(source, fileName, openFile, readFileSource);
-    if (!ok) dismissExternalChange(); // read failed: keep content, stop nagging
+    if (!source) return false;
+    const revision = documentRevision.current;
+    const ok = await reloadFromSource(source, fileName, (content, name, uri, reloadedSource) => {
+      if (documentRevision.current === revision) {
+        openFile(content, name, uri, reloadedSource, folderLocationRef.current);
+      }
+    }, readFileSource);
+    if (!ok && documentRevision.current === revision) dismissExternalChange();
+    return ok && documentRevision.current === revision + 1 && changeTrackerRef.current.source === source;
   }, [fileName, openFile, dismissExternalChange]);
 
   useEffect(() => {
-    Linking.getInitialURL().then((url) => {
-      handleInitialUrl(url).then(() => {
-        if (!openedViaDeepLink.current && initialRecent) {
-          loadRecentFile(initialRecent).then((content) => {
-            if (content) {
-              const source = restoreSourceFor(initialRecent);
-              setMarkdownContent(content);
-              setCurrentFileUri(source?.uri ?? null);
-              // The displayed snapshot is the recents cache copy; its mtime is
-              // the baseline. An edit made while the app was quit is offered
-              // for reload right away. The source must be this entry's own:
-              // the last-opened file can be a different one (e.g. after it was
-              // deleted from recents).
-              changeTrackerRef.current.track(source, getCachedFileMtime(initialRecent.id));
-              runExternalChangeCheck();
-            } else {
-              // Cached file was purged — fall back to welcome screen
-              setFileName(null);
-            }
-          });
-        }
-      });
-    });
+    let disposed = false;
+    let linkRequest = 0;
+    let pendingLink = Promise.resolve(false);
+    const launchRevision = documentRevision.current;
 
-    const subscription = Linking.addEventListener('url', ({url}) => {
-      handleInitialUrl(url);
-    });
+    const receiveLink = (url: string | null) => {
+      if (disposed || !parseDeepLinkFileUri(url)) return;
+      const request = ++linkRequest;
+      pendingLink = openDeepLink(url, (uri) => new File(uri).text(), (content, name, uri) => {
+        if (!disposed && request === linkRequest) openFile(content, name, uri);
+      }).catch((error: unknown) => {
+        console.error('Error reading file from URL:', error);
+        return false;
+      });
+    };
+
+    const subscription = Linking.addEventListener('url', ({url}) => receiveLink(url));
+    const restoreAtLaunch = async () => {
+      const url = await Linking.getInitialURL().catch(() => null);
+      if (!linkRequest) receiveLink(url);
+      await pendingLink;
+      if (disposed || documentRevision.current !== launchRevision || !initialRecent) return;
+
+      const document = await restoreRecentDocument(initialRecent, Storage.getString(StorageKeys.LAST_FOLDER_URI));
+      // A Linking event can arrive while the folder provider is being read.
+      let waitFor: typeof pendingLink;
+      do {
+        waitFor = pendingLink;
+        await waitFor;
+      } while (waitFor !== pendingLink);
+      if (disposed || documentRevision.current !== launchRevision) return;
+
+      if (document?.[4]) {
+        openFile(...document);
+      } else if (document) {
+        displayDocument(document, getCachedFileMtime(initialRecent.id));
+        void runExternalChangeCheck();
+      } else {
+        showLocalDocument(getWelcomeMarkdown(), null);
+      }
+    };
+    void restoreAtLaunch();
 
     return () => {
+      disposed = true;
       subscription.remove();
     };
-  }, [handleInitialUrl, initialRecent, runExternalChangeCheck]);
+  }, [displayDocument, initialRecent, openFile, runExternalChangeCheck, showLocalDocument]);
 
   // DEBUG-only hook so UI tests can seed recent files without the native picker.
   // A test drops an empty sentinel file into the app's documents dir; on launch
@@ -236,11 +301,10 @@ export default function App() {
 
   const contextValue = useMemo(() => ({
     markdownContent,
-    setMarkdownContent,
     fileName,
-    setFileName,
     currentFileUri,
-    setCurrentFileUri,
+    folderLocation,
+    showLocalDocument,
     scrollToPercent,
     setScrollToPercent,
     highlightText,
@@ -272,7 +336,7 @@ export default function App() {
     reloadCurrentFile,
     dismissExternalChange,
   }), [
-    markdownContent, fileName, currentFileUri, scrollToPercent, highlightText,
+    markdownContent, fileName, currentFileUri, folderLocation, showLocalDocument, scrollToPercent, highlightText,
     searchMatches, currentMatchIndex, theme, backgroundColor,
     isDarkMode, colorMode, toggleDarkMode, themeName, cycleTheme, showFrontMatterSetting,
     scrollToHeadingIndex, frontMatterTheme, frontMatterThemeApplied,

@@ -20,7 +20,8 @@ export const en = {
     toAutoMode: ' auto mode ⚙️',
     colorThemes: ' color themes:',
   },
-  alert: {openFolderMessage: 'Select all files in this folder to enable link navigation.'},
+  alert: {openFolderMessage: 'Select the original folder to follow links between its files.'},
+  folder: {backToIndex: 'Back to {{name}}', unavailableTitle: 'Folder unavailable', unavailableMessage: 'Select the original folder again to restore access.', fileUnavailable: 'This file could not be opened in the folder.'},
   search: {
     title: 'Search',
     placeholder: 'Search in markdown...',
@@ -65,7 +66,8 @@ const de: Translations<typeof en> = {
     toAutoMode: ' Automatik ⚙️',
     colorThemes: ' Farbthemen:',
   },
-  alert: {openFolderMessage: 'Wähle alle Dateien in diesem Ordner aus, um die Link-Navigation zu aktivieren.'},
+  alert: {openFolderMessage: 'Wähle den Originalordner aus, um Links zwischen seinen Dateien zu öffnen.'},
+  folder: {backToIndex: 'Zurück zu {{name}}', unavailableTitle: 'Ordner nicht verfügbar', unavailableMessage: 'Wähle den Originalordner erneut aus, um den Zugriff wiederherzustellen.', fileUnavailable: 'Diese Datei konnte im Ordner nicht geöffnet werden.'},
   search: {
     title: 'Suchen',
     placeholder: 'In Markdown suchen …',
@@ -105,7 +107,8 @@ const ru: Translations<typeof en> = {
     toAutoMode: ' авторежим ⚙️',
     colorThemes: ' цветовые темы:',
   },
-  alert: {openFolderMessage: 'Выберите все файлы в этой папке, чтобы включить переходы по ссылкам.'},
+  alert: {openFolderMessage: 'Выберите исходную папку, чтобы переходить по ссылкам между файлами.'},
+  folder: {backToIndex: 'Вернуться к папке «{{name}}»', unavailableTitle: 'Папка недоступна', unavailableMessage: 'Выберите исходную папку снова, чтобы восстановить доступ.', fileUnavailable: 'Не удалось открыть этот файл в папке.'},
   search: {
     title: 'Поиск',
     placeholder: 'Поиск в Markdown…',

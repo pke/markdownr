@@ -4,6 +4,7 @@ import {defaultMarkdownTheme, type MarkdownTheme} from 'react-native-nitro-markd
 import {EXAMPLE_MARKDOWN} from './example';
 import type {ThemeName, ThemeConfig} from './themes';
 import type {FileSource} from './fileChangeDetection';
+import type {FolderLocation} from './folderNavigation';
 
 export type TocHeading = {
   index: number;
@@ -19,11 +20,10 @@ export type SearchMatch = {
 
 export type MarkdownContextType = {
   markdownContent: string;
-  setMarkdownContent: (content: string) => void;
   fileName: string | null;
-  setFileName: (name: string | null) => void;
   currentFileUri: string | null;
-  setCurrentFileUri: (uri: string | null) => void;
+  folderLocation?: FolderLocation;
+  showLocalDocument: (content: string, name: string | null) => void;
   scrollToPercent: number | null;
   setScrollToPercent: (percent: number | null) => void;
   highlightText: string | null;
@@ -50,9 +50,9 @@ export type MarkdownContextType = {
   frontMatterThemeApplied: boolean;
   setFrontMatterThemeApplied: (applied: boolean) => void;
   applyTheme: (name: ThemeName) => void;
-  openFile: (content: string, fileName: string | null, fileUri?: string | null, source?: FileSource | null) => void;
+  openFile: (content: string, fileName: string | null, fileUri?: string | null, source?: FileSource | null, folder?: FolderLocation) => void;
   externalChangeDetected: boolean;
-  reloadCurrentFile: () => Promise<void>;
+  reloadCurrentFile: () => Promise<boolean>;
   dismissExternalChange: () => void;
 };
 
@@ -62,11 +62,9 @@ const nullScrollRef = {current: null};
 
 export const MarkdownContext = React.createContext<MarkdownContextType>({
   markdownContent: EXAMPLE_MARKDOWN,
-  setMarkdownContent: () => {},
   fileName: null,
-  setFileName: () => {},
   currentFileUri: null,
-  setCurrentFileUri: () => {},
+  showLocalDocument: () => {},
   scrollToPercent: null,
   setScrollToPercent: () => {},
   highlightText: null,
@@ -95,6 +93,6 @@ export const MarkdownContext = React.createContext<MarkdownContextType>({
   applyTheme: () => {},
   openFile: () => {},
   externalChangeDetected: false,
-  reloadCurrentFile: async () => {},
+  reloadCurrentFile: async () => false,
   dismissExternalChange: () => {},
 });

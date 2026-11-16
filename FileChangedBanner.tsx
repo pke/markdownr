@@ -29,8 +29,7 @@ export function FileChangedBanner({bottomInset, getScrollPercent}: FileChangedBa
 
   const handleReload = useCallback(async () => {
     const percent = getScrollPercent?.() ?? null;
-    await reloadCurrentFile();
-    if (percent !== null) setScrollToPercent(percent);
+    if (await reloadCurrentFile() && percent !== null) setScrollToPercent(percent);
   }, [getScrollPercent, reloadCurrentFile, setScrollToPercent]);
 
   if (!externalChangeDetected) return null;

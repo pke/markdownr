@@ -49,10 +49,11 @@ import {getLocales} from 'expo-localization';
 import {useTranslation} from 'react-i18next';
 import {ZoomableView} from './ZoomableView';
 import {useFileOpener, useFolderOpener, resolveRelativeMarkdownLink} from './useFileOpener';
+import {folderHandle, folderIndex, readFolderDocument, resolveFolderLink} from './folderNavigation';
 import {File} from 'expo-file-system/next';
 import {ParticleOverlayProvider, ParticleOverlayBackground, ParticleOverlayForeground} from './ParticleOverlay';
 import {SantaHat} from './SantaHat';
-import {OCEAN_THEMED_SAMPLE} from './example';
+import {getWelcomeMarkdown, OCEAN_THEMED_SAMPLE} from './example';
 import {getAboutMarkdown} from './about';
 import {ThemeSuggestion} from './ThemeSuggestion';
 import {FileChangedBanner} from './FileChangedBanner';
@@ -532,9 +533,8 @@ export function ViewerScreen() {
   const navigation = useNavigation();
   const {
     markdownContent,
-    setMarkdownContent,
     fileName,
-    setFileName,
+    showLocalDocument,
     scrollToPercent,
     setScrollToPercent,
     highlightText,
@@ -559,15 +559,38 @@ export function ViewerScreen() {
     frontMatterTheme,
     frontMatterThemeApplied,
     currentFileUri,
+    folderLocation,
     openFile,
   } = React.useContext(MarkdownContext);
 
   const openFilePicker = useFileOpener();
   const openFolderPicker = useFolderOpener();
+  const folderId = folderLocation && folderHandle(folderLocation.result);
+  const containingFolder = folderLocation?.relativePath ? folderLocation.result : undefined;
+  const openFolderIndex = useCallback(() => {
+    if (containingFolder) openFile(...folderIndex(containingFolder));
+  }, [containingFolder, openFile]);
 
   const handleLinkPress = useCallback(async (href: string): Promise<boolean> => {
-    // Try to resolve relative .md links against the current file's URI
-    const resolved = resolveRelativeMarkdownLink(href, currentFileUri);
+    if (folderLocation) {
+      const file = resolveFolderLink(href, folderLocation);
+      if (file) {
+        try {
+          openFile(...await readFolderDocument(folderLocation.result, file));
+        } catch {
+          Alert.alert(file.name, t('folder.fileUnavailable'));
+        }
+        return false;
+      }
+    }
+
+    const relativeDocument = !/^(?:[#/]|[a-z][a-z0-9+.-]*:)/i.test(href) && /\.(?:md|markdown|txt)$/i.test(href.split(/[?#]/, 1)[0]);
+    if (!relativeDocument) return true;
+    if (folderLocation) {
+      Alert.alert(folderLocation.result.folderName, t('folder.fileUnavailable'));
+      return false;
+    }
+    const resolved = resolveRelativeMarkdownLink(href.split(/[?#]/, 1)[0], currentFileUri);
     if (resolved) {
       try {
         const content = await new File(resolved).text();
@@ -586,8 +609,42 @@ export function ViewerScreen() {
         return false;
       }
     }
-    return true; // let non-md links open normally
-  }, [currentFileUri, openFile, openFolderPicker, t]);
+    return true;
+  }, [currentFileUri, folderLocation, openFile, openFolderPicker, t]);
+
+  const followLink = useCallback(async (href: string) => {
+    if (await handleLinkPress(href)) void Linking.openURL(href).catch(() => {});
+  }, [handleLinkPress]);
+
+  const renderFolderLinkRow = useCallback(({node, Renderer}: EnhancedRendererProps) => {
+    const link = node.children?.length === 1 ? node.children[0] : undefined;
+    const href = link?.href;
+    if (!folderLocation || link?.type !== 'link' || !href ||
+        !isTextOnlyNode(link) || !resolveFolderLink(href, folderLocation)) return undefined;
+
+    // Tight Markdown lists contain the link directly in the list item.
+    // Use the whole line as the native and accessibility tap target.
+    return (
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={getTextContent(link)}
+        onPress={() => followLink(href)}
+        onLongPress={() => Share.share({url: href})}
+        style={folderLocation.relativePath ? {marginBottom: node.type === 'paragraph' ? theme.spacing.l : 0} : styles.folderIndexLink}>
+        <Text style={{
+          color: theme.colors.link,
+          fontFamily: theme.fontFamilies.regular,
+          fontSize: theme.fontSizes.m,
+          lineHeight: theme.fontSizes.m * 1.6,
+          textDecorationLine: 'underline',
+        }}>
+          {link.children?.map((child, index) => (
+            <Renderer key={index} node={child} depth={1} inListItem={false} parentIsText />
+          ))}
+        </Text>
+      </Pressable>
+    );
+  }, [folderLocation, followLink, theme.colors.link, theme.fontFamilies.regular, theme.fontSizes.m, theme.spacing.l]);
 
   const openSearch = useCallback(() => {
     navigation.navigate('Search' as never);
@@ -625,7 +682,7 @@ export function ViewerScreen() {
 
   useEffect(() => {
     scrollViewRef.current?.scrollTo({y: 0, animated: false});
-  }, [markdownContent, scrollViewRef]);
+  }, [currentFileUri, fileName, folderId, scrollViewRef]);
 
   const handleHideFrontMatter = () => {
     setShowFrontMatter(false);
@@ -804,7 +861,7 @@ export function ViewerScreen() {
             </View>
           )}
           {singleLinkChild ? (
-            <Pressable onPress={() => handleLinkPress(singleLinkChild.href ?? '')}>
+            <Pressable onPress={() => followLink(singleLinkChild.href ?? '')}>
               {headingContent}
             </Pressable>
           ) : headingContent}
@@ -829,6 +886,8 @@ export function ViewerScreen() {
       const content = node.content || '';
       return <HighlightedText content={content} highlight={highlightText} style={{color: theme.colors.text}} />;
     } : undefined,
+    paragraph: renderFolderLinkRow,
+    list_item: renderFolderLinkRow,
     link: ({node, href, children}: {node: MarkdownNode; href?: string; children?: React.ReactNode}) => {
       // Footnote reference in body: #footnote-N@O → scrolls to footnote-N, registers as footnote-ref-N-O
       const refMatch = href?.match(/^#footnote-(\d+)@(\d+)$/);
@@ -924,15 +983,13 @@ export function ViewerScreen() {
               openSearch();
               break;
             case 'sample-ocean':
-              setMarkdownContent(OCEAN_THEMED_SAMPLE);
-              setFileName('ocean-demo.md');
+              showLocalDocument(OCEAN_THEMED_SAMPLE, 'ocean-demo.md');
               break;
             case 'home':
-              setFileName(null);
+              showLocalDocument(getWelcomeMarkdown(), null);
               break;
             case 'about':
-              setMarkdownContent(getAboutMarkdown());
-              setFileName('about.md');
+              showLocalDocument(getAboutMarkdown(), 'about.md');
               break;
           }
         };
@@ -959,7 +1016,7 @@ export function ViewerScreen() {
         const content = getTextContent(node);
         return (
           <Text
-            onPress={() => { if (href) Linking.openURL(href); }}
+            onPress={() => { if (href) void followLink(href); }}
             onLongPress={() => { if (href) Share.share({url: href}); }}
             style={{color: theme.colors.link}}>
             {content}
@@ -971,7 +1028,7 @@ export function ViewerScreen() {
       if (href) {
         return (
           <Text
-            onPress={() => Linking.openURL(href)}
+            onPress={() => followLink(href)}
             onLongPress={() => Share.share({url: href})}
             style={{color: theme.colors.link, textDecorationLine: 'underline'}}>
             {children}
@@ -1010,7 +1067,7 @@ export function ViewerScreen() {
           return undefined;
       }
     },
-  }), [highlightText, theme.colors.text, theme.colors.link, theme.colors.border, setIsMenuVisible, setIsMenuOpen, showFrontMatter, setShowFrontMatter, setScrollToPercent, navigation, toggleDarkMode, cycleTheme, colorMode, themeName, rendererConfig, openFilePicker, openSearch, headingRefsMap, scrollToAnchor, handleImageLongPress, handleLinkPress, setFileName, setMarkdownContent, t]);
+  }), [highlightText, theme.colors.text, theme.colors.link, theme.colors.border, renderFolderLinkRow, setIsMenuVisible, setIsMenuOpen, showFrontMatter, setShowFrontMatter, setScrollToPercent, navigation, toggleDarkMode, cycleTheme, colorMode, themeName, rendererConfig, openFilePicker, openSearch, headingRefsMap, scrollToAnchor, handleImageLongPress, followLink, showLocalDocument, t]);
 
   const shouldShowFrontMatter = showFrontMatter && frontMatter;
 
@@ -1018,11 +1075,25 @@ export function ViewerScreen() {
     <Animated.View style={[styles.container, animatedBgStyle]}>
       <GestureHandlerRootView style={styles.container}>
         {overlayConfig && <ParticleOverlayBackground color={overlayColor} />}
+        {containingFolder && (
+          <View style={{paddingTop: insets.top}}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={t('folder.backToIndex', {name: containingFolder.folderName})}
+              testID="folderIndexButton"
+              onPress={openFolderIndex}
+              style={styles.folderBack}>
+              <Text style={[styles.folderBackLabel, {color: theme.colors.link}]} numberOfLines={1}>
+                {`‹ ${containingFolder.folderName}`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <ZoomableView>
           <ScrollView
             ref={scrollViewRef}
             style={styles.scrollView}
-            contentContainerStyle={[styles.scrollContent, {paddingTop: insets.top + 16}]}
+            contentContainerStyle={[styles.scrollContent, {paddingTop: containingFolder ? 16 : insets.top + 16}]}
             onContentSizeChange={handleContentSizeChange}
             onScroll={handleScroll}
             scrollEventThrottle={16}>
@@ -1120,6 +1191,21 @@ export function ViewerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  folderBack: {
+    alignSelf: 'flex-start',
+    maxWidth: '85%',
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  folderBackLabel: {
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  folderIndexLink: {
+    minHeight: 44,
+    justifyContent: 'center',
   },
   scrollView: {
     flex: 1,

@@ -28,7 +28,7 @@ import * as Haptics from 'expo-haptics';
 import {SymbolView} from 'expo-symbols';
 
 import {MarkdownContext} from './MarkdownContext';
-import {getRecentFiles, openRecentEntry, deleteRecentFile, clearAllRecentFiles, type RecentFileEntry} from './recentFiles';
+import {getRecentFiles, openRecentEntry, deleteRecentFile, clearAllRecentFiles, type RecentFileEntry, type RecentTarget} from './recentFiles';
 
 const PREVIEW_DELAY_MS = 420;
 const PREVIEW_HOLD_MS = 1200;
@@ -99,12 +99,12 @@ function RecentFileRow({
   removeLabel: string;
   reduceMotion: boolean;
   swipeableRef?: React.RefObject<SwipeableMethods | null>;
-  onOpen: (entry: RecentFileEntry) => void;
+  onOpen: (entry: RecentFileEntry, target?: RecentTarget) => void;
   onRemove: (id: string) => void;
   onSwipeStart: (id: string) => void;
 }) {
   const {theme, backgroundColor} = React.useContext(MarkdownContext);
-  const open = useCallback(() => onOpen(entry), [entry, onOpen]);
+  const open = useCallback(() => onOpen(entry, entry.folder ? 'folder' : 'file'), [entry, onOpen]);
   const remove = useCallback(() => onRemove(entry.id), [entry.id, onRemove]);
   const beginSwipe = useCallback(() => onSwipeStart(entry.id), [entry.id, onSwipeStart]);
   const opacity = useSharedValue(1);
@@ -157,10 +157,10 @@ function RecentFileRow({
         )}>
         <GestureDetector gesture={tap}>
           <Animated.View
-            testID="recentFileRow"
+            testID={entry.folder ? 'recentFolderRow' : 'recentFileRow'}
             accessible
             accessibilityRole="button"
-            accessibilityLabel={`${entry.title}, ${entry.subtitle}`}
+            accessibilityLabel={entry.folder ? entry.title : `${entry.title}, ${entry.subtitle}`}
             accessibilityActions={[{name: 'activate'}]}
             onAccessibilityAction={event => {
               if (event.nativeEvent.actionName === 'activate') {
@@ -170,21 +170,32 @@ function RecentFileRow({
             onAccessibilityTap={open}
             style={[
               styles.item,
-              {backgroundColor, borderBottomColor: theme.colors.border},
+              {backgroundColor, borderBottomColor: entry.folder && entry.subtitle ? 'transparent' : theme.colors.border},
               pressedStyle,
             ]}>
-            <Text style={[styles.itemIcon, {color: theme.colors.textMuted}]}>📄</Text>
+            <Text style={[styles.itemIcon, {color: theme.colors.textMuted}]}>{entry.folder ? '📁' : '📄'}</Text>
             <View style={styles.itemContent}>
               <Text style={[styles.itemTitle, {color: theme.colors.heading}]} numberOfLines={1}>
                 {entry.title}
               </Text>
-              <Text style={[styles.itemSubtitle, {color: theme.colors.textMuted}]} numberOfLines={1}>
-                {entry.subtitle}
-              </Text>
+              {!entry.folder && (
+                <Text style={[styles.itemSubtitle, {color: theme.colors.textMuted}]} numberOfLines={1}>
+                  {entry.subtitle}
+                </Text>
+              )}
             </View>
           </Animated.View>
         </GestureDetector>
       </ReanimatedSwipeable>
+      {entry.folder && !!entry.subtitle && (
+        <TouchableOpacity
+          testID="recentFolderFileRow"
+          accessibilityRole="button"
+          style={[styles.folderFile, {backgroundColor, borderBottomColor: theme.colors.border}]}
+          onPress={() => onOpen(entry, 'file')}>
+          <Text style={[styles.itemSubtitle, {color: theme.colors.link}]} numberOfLines={1}>{entry.subtitle}</Text>
+        </TouchableOpacity>
+      )}
     </Animated.View>
   );
 
@@ -256,9 +267,11 @@ export function RecentFilesScreen() {
     cancelPreview();
   }, [firstEntryId, cancelPreview]);
 
-  const handleOpenRecentFile = useCallback(async (entry: RecentFileEntry) => {
-    if (await openRecentEntry(entry, openFile)) {
+  const handleOpenRecentFile = useCallback(async (entry: RecentFileEntry, target?: RecentTarget) => {
+    if (await openRecentEntry(entry, openFile, {target})) {
       navigation.goBack();
+    } else if (entry.folder) {
+      Alert.alert(t('folder.unavailableTitle'), t('folder.unavailableMessage'));
     } else {
       Alert.alert(t('recentFiles.unavailableTitle'), t('recentFiles.unavailableMessage'));
       setRecentFiles(prev => prev.filter(e => e.id !== entry.id));
@@ -369,6 +382,12 @@ const styles = StyleSheet.create({
   itemIcon: {
     fontSize: 24,
     marginRight: 12,
+  },
+  folderFile: {
+    minHeight: 44,
+    paddingLeft: 44,
+    justifyContent: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   itemContent: {
     flex: 1,

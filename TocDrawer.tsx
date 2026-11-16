@@ -1,5 +1,5 @@
 import React, {useCallback} from 'react';
-import {ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import {Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import {type DrawerContentComponentProps} from '@react-navigation/drawer';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
@@ -8,13 +8,13 @@ import {useTranslation} from 'react-i18next';
 import {MarkdownContext} from './MarkdownContext';
 import {getAboutMarkdown} from './about';
 import {ThemeSuggestion} from './ThemeSuggestion';
-import {getRecentFiles, openRecentEntry, type RecentFileEntry} from './recentFiles';
+import {getRecentFiles, openRecentEntry, type RecentFileEntry, type RecentTarget} from './recentFiles';
 
 export function TocDrawerContent({navigation}: DrawerContentComponentProps) {
   const {t} = useTranslation();
   const stackNavigation = useNavigation();
   const {
-    tocHeadingsRef, setScrollToHeadingIndex, openFile, setMarkdownContent, setFileName,
+    tocHeadingsRef, setScrollToHeadingIndex, openFile, showLocalDocument,
     theme, backgroundColor,
   } = React.useContext(MarkdownContext);
   const tocHeadings = tocHeadingsRef.current;
@@ -27,16 +27,17 @@ export function TocDrawerContent({navigation}: DrawerContentComponentProps) {
     navigation.closeDrawer();
   };
 
-  const handleOpenRecentFile = useCallback(async (entry: RecentFileEntry) => {
-    // Same path as the recents screen: live source first, cache copy as a
-    // fallback, and the entry keeps its source either way.
-    await openRecentEntry(entry, openFile);
+  const handleOpenRecentFile = useCallback(async (entry: RecentFileEntry, target?: RecentTarget) => {
+    const opened = await openRecentEntry(entry, openFile, {target});
+    if (!opened && entry.folder) {
+      Alert.alert(t('folder.unavailableTitle'), t('folder.unavailableMessage'));
+      return;
+    }
     navigation.closeDrawer();
-  }, [openFile, navigation]);
+  }, [openFile, navigation, t]);
 
   const handleAbout = () => {
-    setMarkdownContent(getAboutMarkdown());
-    setFileName('about.md');
+    showLocalDocument(getAboutMarkdown(), 'about.md');
     navigation.closeDrawer();
   };
 
@@ -74,21 +75,35 @@ export function TocDrawerContent({navigation}: DrawerContentComponentProps) {
           <>
             <Text style={[styles.sectionTitle, {color: theme.colors.heading}]}>{t('recentFiles.title')}</Text>
             {recentFiles.slice(0, 2).map((entry) => (
-              <TouchableOpacity
-                key={entry.id}
-                style={styles.recentItem}
-                onPress={() => handleOpenRecentFile(entry)}
-                activeOpacity={0.7}>
-                <Text style={[styles.recentIcon, {color: theme.colors.textMuted}]}>📄</Text>
-                <View style={styles.recentContent}>
-                  <Text style={[styles.recentTitle, {color: theme.colors.text}]} numberOfLines={1}>
-                    {entry.title}
-                  </Text>
-                  <Text style={[styles.recentSubtitle, {color: theme.colors.textMuted}]} numberOfLines={1}>
-                    {entry.subtitle}
-                  </Text>
-                </View>
-              </TouchableOpacity>
+              <View key={entry.id} style={styles.recentEntry}>
+                <TouchableOpacity
+                  style={styles.recentItem}
+                  accessibilityRole="button"
+                  testID={entry.folder ? 'drawerRecentFolder' : undefined}
+                  onPress={() => handleOpenRecentFile(entry, entry.folder ? 'folder' : 'file')}
+                  activeOpacity={0.7}>
+                  <Text style={[styles.recentIcon, {color: theme.colors.textMuted}]}>{entry.folder ? '📁' : '📄'}</Text>
+                  <View style={styles.recentContent}>
+                    <Text style={[styles.recentTitle, {color: theme.colors.text}]} numberOfLines={1}>
+                      {entry.title}
+                    </Text>
+                    {!entry.folder && (
+                      <Text style={[styles.recentSubtitle, {color: theme.colors.textMuted}]} numberOfLines={1}>
+                        {entry.subtitle}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+                {entry.folder && !!entry.subtitle && (
+                  <TouchableOpacity
+                    style={styles.recentFolderFile}
+                    testID="drawerRecentFolderFile"
+                    accessibilityRole="button"
+                    onPress={() => handleOpenRecentFile(entry, 'file')}>
+                    <Text style={[styles.recentSubtitle, {color: theme.colors.link}]} numberOfLines={1}>{entry.subtitle}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             ))}
             <TouchableOpacity
               style={styles.manageButton}
@@ -165,8 +180,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
+    minHeight: 44,
+  },
+  recentEntry: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(128,128,128,0.2)',
+  },
+  recentFolderFile: {
+    paddingHorizontal: 16,
+    paddingLeft: 45,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   recentIcon: {
     fontSize: 18,
