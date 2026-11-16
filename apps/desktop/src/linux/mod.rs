@@ -378,8 +378,8 @@ impl Lx {
                 let (x, y, m) = (ev.i32(64) as f32 / s, ev.i32(68) as f32 / s, mods(ev.u32(80)));
                 match ev.u32(84) {
                     1 => self.app.press(x, y, m, Duration::from_millis(400)),
-                    4 => self.app.wheel(-1.0, m, x, y),
-                    5 => self.app.wheel(1.0, m, x, y),
+                    4 => self.app.wheel(-1.0, true, m, x, y),
+                    5 => self.app.wheel(1.0, true, m, x, y),
                     _ => {}
                 }
             }
@@ -471,6 +471,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         if !localtime_r(&now, &mut tm).is_null() {
             app.viewer.today = (tm.year + 1900, (tm.mon + 1) as u32, tm.mday as u32);
         }
+        app.viewer.pixel = scale;
         app.set_title();
         app.resize(w as f32 / scale, h as f32 / scale, false);
         let mut lx = Lx {

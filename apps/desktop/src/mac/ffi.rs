@@ -112,6 +112,8 @@ unsafe extern "C" {
     pub fn CFURLCreateWithBytes(alloc: *const c_void, bytes: *const u8, len: CFIndex, encoding: u32, base: CFURLRef) -> CFURLRef;
     pub fn CFDictionaryCreate(alloc: *const c_void, keys: *const CFTypeRef, values: *const CFTypeRef, n: CFIndex, kcb: *const c_void, vcb: *const c_void) -> CFDictionaryRef;
     pub static kCFBooleanTrue: CFTypeRef;
+    /// The common run loop modes (compared by pointer: a string of the same name is another mode).
+    pub static kCFRunLoopCommonModes: CFStringRef;
 }
 
 pub const kCFStringEncodingUTF8: u32 = 0x0800_0100;

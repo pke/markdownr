@@ -24,6 +24,34 @@ struct MacHost {
     view: Id,
     /// The NSTimers of Timer::Chrome and Timer::Layout.
     timers: [Id; 2],
+    /// The view's display link (macOS 14+) for animation frames: they come in step with
+    /// the display (120 Hz on ProMotion) instead of from a 16 ms timer. Null until needed
+    /// or where there is none.
+    link: Id,
+}
+
+impl MacHost {
+    /// Run animation frames from the display link; false where there is none.
+    fn frames(&mut self, on: bool) -> bool {
+        if self.link.is_null() {
+            if !on || !msg!(self.view, c"respondsToSelector:", sel(c"displayLinkWithTarget:selector:") => bool) {
+                return false;
+            }
+            self.link = msg!(msg!(self.view, c"displayLinkWithTarget:selector:", self.view, sel(c"frameTick:") => Id), c"retain" => Id);
+            if self.link.is_null() {
+                return false;
+            }
+            let rl = msg!(class(c"NSRunLoop"), c"mainRunLoop" => Id);
+            msg!(self.link, c"addToRunLoop:forMode:", rl, unsafe { kCFRunLoopCommonModes } as Id);
+            // CAFrameRateRange (minimum, maximum, preferred): the display's full rate, not
+            // the 60 Hz a link gets by default.
+            #[repr(C)]
+            struct FrameRateRange(f32, f32, f32);
+            msg!(self.link, c"setPreferredFrameRateRange:", FrameRateRange(60.0, 120.0, 120.0));
+        }
+        msg!(self.link, c"setPaused:", !on);
+        true
+    }
 }
 
 impl Host for MacHost {
@@ -36,6 +64,12 @@ impl Host for MacHost {
     }
 
     fn set_timer(&mut self, timer: Timer, every: Option<Duration>) {
+        // Animation frames (FRAME) from the display link, longer waits from a timer.
+        let frames = timer == Timer::Chrome && every.is_some_and(|d| d <= crate::view::FRAME) && self.frames(true);
+        if timer == Timer::Chrome && !frames {
+            self.frames(false);
+        }
+        let every = if frames { None } else { every };
         let slot = &mut self.timers[timer as usize];
         if !slot.is_null() {
             msg!(*slot, c"invalidate");
@@ -190,6 +224,7 @@ extern "C" fn draw_rect(view: Id, _: Sel, _dirty: CGRect) {
         if (frame.size.width as f32, frame.size.height as f32) != (m.app.viewer.view_w, m.app.viewer.view_h) {
             m.app.resize(frame.size.width as f32, frame.size.height as f32, true);
         }
+        m.app.viewer.pixel = msg!(m.app.host.window, c"backingScaleFactor" => f64).max(1.0) as f32;
         m.app.gfx.ctx = ctx;
         m.app.layout();
         m.app.draw();
@@ -261,9 +296,11 @@ extern "C" fn mouse_exited(_: Id, _: Sel, _event: Id) {
 extern "C" fn scroll_wheel(view: Id, _: Sel, event: Id) {
     let (x, y) = point(view, event);
     let dy = msg!(event, c"scrollingDeltaY" => f64) as f32;
+    // Trackpad and Magic Mouse: points as they come (momentum included; the system eases
+    // them out). A wheel: its (accelerated) lines glide.
     let precise = msg!(event, c"hasPreciseScrollingDeltas" => bool);
     let m = mods(event);
-    with_app(|a| if precise { a.app.scroll(-dy, m, x, y) } else { a.app.wheel(-dy, m, x, y) });
+    with_app(|a| if precise { a.app.scroll(-dy, m, x, y) } else { a.app.wheel(-dy, true, m, x, y) });
 }
 
 extern "C" fn magnify(_: Id, _: Sel, event: Id) {
@@ -368,6 +405,7 @@ fn view_class() -> Class {
         add(c"scrollWheel:", scroll_wheel as *const c_void, c"v@:@");
         add(c"magnifyWithEvent:", magnify as *const c_void, c"v@:@");
         add(c"chromeTick:", chrome_tick as *const c_void, c"v@:@");
+        add(c"frameTick:", chrome_tick as *const c_void, c"v@:@");
         add(c"layoutTick:", layout_tick as *const c_void, c"v@:@");
         add(c"watchTick:", watch_tick as *const c_void, c"v@:@");
         add(c"viewDidChangeEffectiveAppearance", appearance_changed as *const c_void, c"v@:");
@@ -440,7 +478,7 @@ pub fn run(path: Option<PathBuf>, sample: &'static str) {
         None => crate::app::start_doc(&settings, sample),
     };
     let gfx = Gfx::new(images::Images::new(images_ready));
-    let host = MacHost { window, view, timers: [core::ptr::null_mut(); 2] };
+    let host = MacHost { window, view, timers: [core::ptr::null_mut(); 2], link: core::ptr::null_mut() };
     let mut a = App::new(host, gfx, path, doc, settings, settings_path, sample);
     a.viewer.bar_inset = LIGHTS_INSET;
     let start_fullscreen = a.start_fullscreen();

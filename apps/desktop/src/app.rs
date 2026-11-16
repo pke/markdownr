@@ -225,9 +225,9 @@ impl<G: Gfx, H: Host> App<G, H> {
 
     /// Paint the frame laid out by `layout`.
     pub fn draw(&mut self) {
-        if !self.chrome_timer {
-            // The layout just made may animate (particles, quote crossfades): arm the
-            // timer now rather than at the next input.
+        if !self.chrome_timer || self.viewer.scroll_moved() {
+            // The layout just made may animate (particles, quote crossfades), or the view
+            // scrolled (the scroll bar shows): arm the timer now rather than at the next input.
             self.schedule();
         }
         let v = &self.viewer;
@@ -238,8 +238,10 @@ impl<G: Gfx, H: Host> App<G, H> {
             selection: v.selection.as_ref(),
             finds: &finds,
             theme: &v.theme,
-            scroll: v.scroll,
+            // Whole device pixels: steps of 1/pixel DIP (half a point on a Retina display).
+            scroll: (v.scroll * v.pixel).round() / v.pixel,
             view_h: v.view_h,
+            scroll_bar: v.scroll_bar(),
             chrome: v.chrome_visible().then_some((&v.chrome, v.chrome_alpha)),
             particles: v.particles.as_ref().map(|p| (p, sprites.as_slice())),
             tip: &v.tip_layout,
@@ -392,15 +394,22 @@ impl<G: Gfx, H: Host> App<G, H> {
         }
     }
 
-    /// `notches` of the wheel (positive: towards the user, i.e. down).
-    pub fn wheel(&mut self, notches: f32, mods: Mods, x: f32, y: f32) {
-        let step = self.viewer.font_size * 3.0;
-        self.scroll(notches * step, mods, x, y);
+    /// `notches` of the wheel (positive: towards the user, i.e. down). `glide`: the view
+    /// glides there (whole notches of a wheel) rather than jumping.
+    pub fn wheel(&mut self, notches: f32, glide: bool, mods: Mods, x: f32, y: f32) {
+        let dy = notches * self.viewer.font_size * 3.0;
+        if !glide {
+            return self.scroll(dy, mods, x, y);
+        }
+        self.viewer.wheel(dy, mods, x, y, Some(Instant::now()));
+        self.schedule();
+        self.invalidate();
     }
 
-    /// Scrolled by `dy` DIPs (precise trackpad deltas; positive: down).
+    /// Scrolled by `dy` DIPs at once (precise trackpad deltas; positive: down).
     pub fn scroll(&mut self, dy: f32, mods: Mods, x: f32, y: f32) {
-        self.viewer.wheel(dy, mods, x, y);
+        self.viewer.wheel(dy, mods, x, y, None);
+        self.schedule();
         self.invalidate();
     }
 

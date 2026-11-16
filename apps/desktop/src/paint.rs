@@ -68,6 +68,8 @@ pub struct Frame<'a, P> {
     pub theme: &'a Theme,
     pub scroll: f32,
     pub view_h: f32,
+    /// The overlay scroll bar's knob while it shows, in window coordinates.
+    pub scroll_bar: Option<(RectF, Ink)>,
     /// Toolbar and drawer with their fade.
     pub chrome: Option<(&'a DocLayout<P>, f32)>,
     /// Particles drawn into the frame (not where the compositor animates them).
@@ -79,7 +81,8 @@ pub struct Frame<'a, P> {
 }
 
 pub fn frame<C: Canvas>(c: &mut C, f: &Frame<C::Para>) {
-    let doc_m = translate(0.0, -f.scroll.round());
+    // `scroll` is already at whole device pixels.
+    let doc_m = translate(0.0, -f.scroll);
     c.transform(doc_m);
     c.clear(f.theme.background);
     layout(c, f.doc, f.selection, f.finds, f.theme, f.scroll, f.view_h, f.now_ms, doc_m);
@@ -91,6 +94,9 @@ pub fn frame<C: Canvas>(c: &mut C, f: &Frame<C::Para>) {
             let (ink, fade) = particle_ink(tint, p);
             c.sprite(p.text, p.size, ink, fade, s.x, s.y, s.rotation);
         }
+    }
+    if let Some((r, ink)) = f.scroll_bar {
+        c.fill(r, ink, r.w / 2.0);
     }
     if let Some((chrome, alpha)) = f.chrome {
         c.push_opacity(alpha);

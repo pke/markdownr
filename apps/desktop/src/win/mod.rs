@@ -271,6 +271,7 @@ impl Win {
         let (w, h) = client_size(self.hwnd);
         let s = dpi_scale(self.hwnd);
         self.app.gfx.resize(w, h);
+        self.app.viewer.pixel = s;
         self.app.resize(w as f32 / s, h as f32 / s, live);
     }
 
@@ -520,12 +521,14 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 LRESULT(0)
             }
             WM_MOUSEWHEEL => {
-                let delta = ((wp.0 >> 16) & 0xffff) as i16 as f32 / 120.0;
+                // Whole notches (a wheel) glide; a precision touchpad's small steps apply at once.
+                let raw = ((wp.0 >> 16) & 0xffff) as i16;
+                let delta = raw as f32 / 120.0;
                 let mut pt = POINT { x: lparam_point(lp).0, y: lparam_point(lp).1 };
                 ScreenToClient(hwnd, &mut pt).ok().ok();
                 with_app(|w| {
                     let s = dpi_scale(hwnd);
-                    w.app.wheel(-delta, mods(), pt.x as f32 / s, pt.y as f32 / s);
+                    w.app.wheel(-delta, raw % 120 == 0, mods(), pt.x as f32 / s, pt.y as f32 / s);
                 });
                 LRESULT(0)
             }

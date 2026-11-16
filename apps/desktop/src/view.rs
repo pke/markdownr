@@ -21,6 +21,14 @@ const UI_SIZE: f32 = 14.0;
 const SHOW_FOR: Duration = Duration::from_millis(2500);
 const FADE_IN: f32 = 0.12; // seconds
 const FADE_OUT: f32 = 0.35;
+/// Animation frames while something moves (a display link may pace them instead).
+pub const FRAME: Duration = Duration::from_millis(16);
+/// Wheel notches glide to their target in this time (ease-out).
+const GLIDE: f32 = 0.18; // seconds
+/// The overlay scroll bar stays this long after the last scroll, then fades out.
+const BAR_FOR: Duration = Duration::from_millis(800);
+const BAR_FADE_IN: f32 = 0.1; // seconds
+const BAR_FADE_OUT: f32 = 0.3;
 
 /// F1 overlay: (column, advanced, [keys of each row]); advanced sections show only after
 /// "Advanced usage" is opened. In the keys, `{Ctrl}`, `{PgDn}` … are keys the system names
@@ -203,6 +211,8 @@ pub struct Viewer<P> {
     pub font_size: f32,
     pub layout: DocLayout<P>,
     pub scroll: f32,
+    /// Device pixels per DIP: the document is drawn at whole device pixels.
+    pub pixel: f32,
     pub view_w: f32,
     pub view_h: f32,
     pub selection: Option<DocSelection>,
@@ -262,6 +272,22 @@ pub struct Viewer<P> {
     /// Exact layout from the top being built behind a provisional one (after a relayout
     /// while scrolled down).
     rebuild: Option<Rebuild<P>>,
+    /// A wheel glide in progress.
+    glide: Option<Glide>,
+    /// Overlay scroll bar: opacity, shown until, the scroll position it last saw.
+    pub bar_alpha: f32,
+    bar_until: Option<Instant>,
+    bar_seen: f32,
+}
+
+/// Scrolling from `from` to `to` (ease-out over GLIDE from `start`); `at` is where it
+/// put the view last (anything else moving the view ends it).
+#[derive(Clone, Copy)]
+struct Glide {
+    from: f32,
+    to: f32,
+    start: Instant,
+    at: f32,
 }
 
 /// The exact layout from the top, built in idle time behind a provisional layout that
@@ -304,6 +330,7 @@ impl<P: Paragraph> Viewer<P> {
             font_size: DEFAULT_FONT_SIZE,
             layout: DocLayout::default(),
             scroll: 0.0,
+            pixel: 1.0,
             view_w: 800.0,
             view_h: 600.0,
             selection: None,
@@ -346,6 +373,10 @@ impl<P: Paragraph> Viewer<P> {
             last_layout_time: Duration::ZERO,
             resume: None,
             rebuild: None,
+            glide: None,
+            bar_alpha: 0.0,
+            bar_until: None,
+            bar_seen: 0.0,
         };
         v.title = v.display_title(title);
         v
@@ -478,7 +509,7 @@ impl<P: Paragraph> Viewer<P> {
                     self.resume = (!done).then_some(at);
                     if let Some((node, y0)) = anchor {
                         if let Some(t) = self.layout.tops.iter().find(|t| t.0 >= node) {
-                            self.scroll += t.1 - y0;
+                            self.shift_scroll(t.1 - y0);
                         }
                     }
                 }
@@ -537,7 +568,7 @@ impl<P: Paragraph> Viewer<P> {
         }
         let Some(r) = self.rebuild.take() else { return };
         let head = r.layout.blocks.len();
-        self.scroll += r.at.y - r.y0;
+        self.shift_scroll(r.at.y - r.y0);
         self.selection = self.selection.map(|s| {
             let shift = |p: DocPos| DocPos { block: p.block + head, ..p };
             DocSelection { anchor: shift(s.anchor), focus: shift(s.focus) }
@@ -570,13 +601,29 @@ impl<P: Paragraph> Viewer<P> {
         self.extend_layout(ts, f32::INFINITY, None);
     }
 
-    fn clamp_scroll(&mut self) {
+    fn max_scroll(&self) -> f32 {
         // While the layout is incomplete the end is not known yet.
-        let max = if self.resume.is_some() || self.rebuild.is_some() { f32::INFINITY } else { (self.layout.height - self.view_h).max(0.0) };
-        self.scroll = self.scroll.clamp(0.0, max);
+        if self.resume.is_some() || self.rebuild.is_some() { f32::INFINITY } else { (self.layout.height - self.view_h).max(0.0) }
+    }
+
+    fn clamp_scroll(&mut self) {
+        self.scroll = self.scroll.clamp(0.0, self.max_scroll());
+    }
+
+    /// The same content moved by `d` (a relayout): the view and a glide move with it, and
+    /// the scroll bar does not take it for scrolling.
+    fn shift_scroll(&mut self, d: f32) {
+        self.scroll += d;
+        self.bar_seen += d;
+        if let Some(g) = &mut self.glide {
+            g.from += d;
+            g.to += d;
+            g.at += d;
+        }
     }
 
     pub fn scroll_by(&mut self, dy: f32) {
+        self.glide = None;
         let before = self.scroll;
         self.scroll += dy;
         self.clamp_scroll();
@@ -586,6 +633,61 @@ impl<P: Paragraph> Viewer<P> {
         if self.toc_open {
             self.chrome_dirty = true; // current-section highlight
         }
+    }
+
+    /// Scroll by `dy` gliding there (wheel notches): the target moves at once, the view
+    /// follows in `tick`. Turning the wheel back starts from where the view is.
+    pub fn glide_by(&mut self, dy: f32, now: Instant) {
+        let base = match self.glide {
+            Some(g) if (g.to - self.scroll) * dy > 0.0 => g.to,
+            _ => self.scroll,
+        };
+        let to = (base + dy).clamp(0.0, self.max_scroll());
+        self.glide = (to != self.scroll).then_some(Glide { from: self.scroll, to, start: now, at: self.scroll });
+        if self.glide.is_some() && self.tip.take().is_some() {
+            self.chrome_dirty = true; // the tooltip's line moves away
+        }
+    }
+
+    /// Advance a glide; true when the view moved.
+    fn step_glide(&mut self, now: Instant) -> bool {
+        let Some(mut g) = self.glide else { return false };
+        if self.scroll != g.at {
+            self.glide = None; // something else scrolled
+            return false;
+        }
+        let t = (now.saturating_duration_since(g.start).as_secs_f32() / GLIDE).min(1.0);
+        let y = g.from + (g.to - g.from) * (1.0 - (1.0 - t).powi(3));
+        let before = self.scroll;
+        self.scroll = y;
+        self.clamp_scroll();
+        g.at = self.scroll;
+        self.glide = (t < 1.0 && self.scroll == y).then_some(g);
+        if self.toc_open {
+            self.chrome_dirty = true;
+        }
+        self.scroll != before
+    }
+
+    /// The view scrolled since the scroll bar looked last (or glides).
+    pub fn scroll_moved(&self) -> bool {
+        self.scroll != self.bar_seen || self.glide.is_some()
+    }
+
+    /// The overlay scroll bar's knob and colour while it shows (scrolling).
+    pub fn scroll_bar(&self) -> Option<(RectF, Ink)> {
+        let max = self.layout.height - self.view_h;
+        if self.bar_alpha <= 0.0 || self.help || max <= 0.5 {
+            return None;
+        }
+        let (inset, w) = (3.0, 7.0);
+        let track = self.view_h - 2.0 * inset;
+        let len = (track * self.view_h / self.layout.height).max(32.0).min(track);
+        let y = inset + (track - len) * (self.scroll / max).clamp(0.0, 1.0);
+        let [r, g, b, _] = self.theme.background.0;
+        let (rgb, a) = if (r as u32 + g as u32 + b as u32) < 384 { (0xffffff, 0.5) } else { (0x000000, 0.45) };
+        let ink = Ink::rgba(rgb, (a * self.bar_alpha * 255.0).round() as u8);
+        Some((RectF { x: self.view_w - inset - w, y, w, h: len }, ink))
     }
 
     pub fn page(&mut self, down: bool) {
@@ -620,26 +722,43 @@ impl<P: Paragraph> Viewer<P> {
     pub fn tick(&mut self, now: Instant) -> (bool, Option<Duration>) {
         let dt = self.last_tick.map_or(0.0, |t| (now - t).as_secs_f32()).min(0.1);
         self.last_tick = Some(now);
+        // Fade `alpha` towards on (1) or off (0); true while it is not there yet.
+        let fade = |alpha: &mut f32, on: bool, fade_in: f32, fade_out: f32| {
+            *alpha = if on { (*alpha + dt / fade_in).min(1.0) } else { (*alpha - dt / fade_out).max(0.0) };
+            *alpha != if on { 1.0 } else { 0.0 }
+        };
+        let mut repaint = self.step_glide(now);
         let visible = self.pinned() || self.show_until.is_some_and(|t| t > now);
-        let target = if visible { 1.0 } else { 0.0 };
         let before = self.chrome_alpha;
-        if self.chrome_alpha < target {
-            self.chrome_alpha = (self.chrome_alpha + dt / FADE_IN).min(1.0);
-        } else if self.chrome_alpha > target {
-            self.chrome_alpha = (self.chrome_alpha - dt / FADE_OUT).max(0.0);
+        let chrome_fading = fade(&mut self.chrome_alpha, visible, FADE_IN, FADE_OUT);
+        // The overlay scroll bar shows while the view scrolls, by whatever means.
+        if self.scroll != self.bar_seen {
+            self.bar_seen = self.scroll;
+            if self.layout.height > self.view_h + 0.5 {
+                self.bar_until = Some(now + BAR_FOR);
+            }
         }
-        let animating = self.chrome_alpha != target;
+        let bar_on = self.bar_until.is_some_and(|t| t > now);
+        let bar_before = self.bar_alpha;
+        let bar_fading = fade(&mut self.bar_alpha, bar_on, BAR_FADE_IN, BAR_FADE_OUT);
+        repaint |= before != self.chrome_alpha || bar_before != self.bar_alpha;
+        let animating = chrome_fading || bar_fading || self.glide.is_some();
         if !animating {
             self.last_tick = None;
         }
-        let next = if animating {
-            Some(Duration::from_millis(16))
-        } else if visible && !self.pinned() {
-            self.show_until.map(|t| t.saturating_duration_since(now) + Duration::from_millis(1))
-        } else {
-            None
+        let mut next = animating.then_some(FRAME);
+        let mut wake = |at: Option<Instant>| {
+            if let Some(t) = at {
+                let d = t.saturating_duration_since(now) + Duration::from_millis(1);
+                next = Some(next.map_or(d, |n: Duration| n.min(d)));
+            }
         };
-        let mut repaint = before != self.chrome_alpha;
+        if visible && !self.pinned() {
+            wake(self.show_until);
+        }
+        if bar_on {
+            wake(self.bar_until);
+        }
         if !self.layout.cycles.is_empty() && !self.reduce_motion {
             // Wake for the next quote crossfade (every 10 s, 600 ms long).
             let t = (now - self.anim_start).as_millis() as u64 % 10_000;
@@ -1160,7 +1279,8 @@ impl<P: Paragraph> Viewer<P> {
         None
     }
 
-    pub fn wheel(&mut self, dy: f32, mods: Mods, x: f32, y: f32) {
+    /// Wheel or trackpad scrolling by `dy` DIPs: gliding (from `glide`, now) or at once.
+    pub fn wheel(&mut self, dy: f32, mods: Mods, x: f32, y: f32, glide: Option<Instant>) {
         if self.help {
             return;
         }
@@ -1170,6 +1290,8 @@ impl<P: Paragraph> Viewer<P> {
             let max = (self.chrome.height - (self.view_h - BAR_H)).max(0.0);
             self.toc_scroll = (self.toc_scroll + dy).clamp(0.0, max);
             self.chrome_dirty = true;
+        } else if let Some(now) = glide {
+            self.glide_by(dy, now);
         } else {
             self.scroll_by(dy);
         }
@@ -1507,6 +1629,9 @@ mod tests {
         assert!(v.tip.is_none(), "scrolling hides it");
         v.mouse_move(x, y - 10.0, now);
         assert!(v.tip.is_some());
+        v.wheel(48.0, Mods::default(), x, y - 10.0, Some(now));
+        assert!(v.tip.is_none(), "a wheel notch (gliding) hides it too");
+        v.mouse_move(x, y - 10.0, now);
         v.mouse_leave();
         assert!(v.tip.is_none());
     }
@@ -1564,6 +1689,85 @@ mod tests {
         v.ensure_layout(&mut Fake);
         assert!(v.rebuild.is_none());
         assert_eq!(v.layout.tops[0].0, 0);
+    }
+
+    fn laid_out() -> Viewer<FakePara> {
+        let mut v = viewer(900.0);
+        v.ensure_layout(&mut Fake);
+        v.finish_layout(&mut Fake);
+        v
+    }
+
+    #[test]
+    fn wheel_notches_glide_to_their_target() {
+        let mut v = laid_out();
+        let t0 = Instant::now();
+        let ms = |n: u64| t0 + Duration::from_millis(n);
+        v.wheel(100.0, Mods::default(), 400.0, 300.0, Some(t0));
+        assert_eq!(v.scroll, 0.0, "the view follows in tick");
+        v.wheel(100.0, Mods::default(), 400.0, 300.0, Some(t0));
+        let (repaint, next) = v.tick(ms(30));
+        assert!(repaint && next == Some(FRAME));
+        let a = v.scroll;
+        v.tick(ms(90));
+        assert!(0.0 < a && a < v.scroll && v.scroll < 200.0, "{a} {}", v.scroll);
+        v.tick(ms(400));
+        assert_eq!(v.scroll, 200.0, "both notches add up");
+        assert!(v.glide.is_none());
+        // Turning back starts from the view, not from the target ahead.
+        v.wheel(300.0, Mods::default(), 0.0, 0.0, Some(ms(400)));
+        v.tick(ms(450));
+        let at = v.scroll;
+        v.wheel(-100.0, Mods::default(), 0.0, 0.0, Some(ms(450)));
+        v.tick(ms(1000));
+        assert!((v.scroll - (at - 100.0)).abs() < 0.01, "{} vs {}", v.scroll, at - 100.0);
+        // Other scrolling ends a glide.
+        v.wheel(500.0, Mods::default(), 0.0, 0.0, Some(ms(1000)));
+        v.tick(ms(1030));
+        v.scroll_by(-10.0);
+        let at = v.scroll;
+        v.tick(ms(1100));
+        assert_eq!(v.scroll, at);
+        // A glide stops at the end of the document.
+        v.wheel(1e7, Mods::default(), 0.0, 0.0, Some(ms(2000)));
+        v.tick(ms(3000));
+        assert_eq!(v.scroll, v.layout.height - v.view_h);
+        assert!(v.glide.is_none());
+    }
+
+    #[test]
+    fn scroll_bar_shows_while_scrolling_then_fades() {
+        let mut v = laid_out();
+        let t0 = Instant::now();
+        let ms = |n: u64| t0 + Duration::from_millis(n);
+        v.tick(t0);
+        assert!(v.scroll_bar().is_none());
+        v.scroll_by(1000.0);
+        assert!(v.scroll_moved());
+        v.tick(ms(1));
+        v.tick(ms(200));
+        let (r, ink) = v.scroll_bar().expect("shown while scrolling");
+        assert!(ink.0[3] > 0 && r.x + r.w < v.view_w && r.h >= 32.0 && r.h < v.view_h);
+        let max = v.layout.height - v.view_h;
+        let track = v.view_h - 6.0 - r.h;
+        assert!((r.y - 3.0 - track * 1000.0 / max).abs() < 0.5, "knob at the scroll position");
+        // Still shown a little after the last scroll, gone a while later.
+        let (_, next) = v.tick(ms(500));
+        assert!(v.scroll_bar().is_some() && next.is_some());
+        for t in (520..=1800).step_by(20) {
+            v.tick(ms(t));
+        }
+        assert!(v.scroll_bar().is_none());
+        assert_eq!(v.bar_alpha, 0.0);
+        assert!(v.tick(ms(1900)).1.is_none_or(|d| d > Duration::from_millis(100)), "no frames once it is gone");
+        // A short document has none.
+        let mut short = Viewer::<FakePara>::new("t".into(), String::new(), crate::app::parse("# Hi"));
+        short.resize(900.0, 600.0);
+        short.ensure_layout(&mut Fake);
+        short.scroll_by(100.0);
+        short.tick(t0);
+        short.tick(ms(200));
+        assert!(short.scroll_bar().is_none());
     }
 }
 
