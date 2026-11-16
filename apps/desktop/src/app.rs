@@ -113,6 +113,18 @@ pub struct App<G: Gfx, H: Host> {
     pub fullscreen: bool,
     /// Last mouse position (DIPs), for the cursor shape.
     pub mouse: (f32, f32),
+    /// The documents left for others (the last one is the previous), and those gone
+    /// back from (the last one is the next).
+    back: Vec<Place>,
+    ahead: Vec<Place>,
+}
+
+/// A document of the history and how far it was scrolled.
+struct Place {
+    /// None: the start page or, with `sample`, the sample.
+    path: Option<PathBuf>,
+    sample: bool,
+    scroll: f32,
 }
 
 impl<G: Gfx, H: Host> App<G, H> {
@@ -131,7 +143,7 @@ impl<G: Gfx, H: Host> App<G, H> {
             viewer.anim_start = Instant::now() - Duration::from_millis(ms);
         }
         gfx.set_image_base(path.as_deref().map(|p| crate::util::path::parent(p).to_path_buf()).or_else(crate::util::env::current_dir));
-        App { host, gfx, viewer, modified: path.as_deref().and_then(crate::util::fs::modified), path, chrome_timer: false, sizing_until: None, settings, settings_path, sample, fullscreen: false, mouse: (0.0, 0.0) }
+        App { host, gfx, viewer, modified: path.as_deref().and_then(crate::util::fs::modified), path, chrome_timer: false, sizing_until: None, settings, settings_path, sample, fullscreen: false, mouse: (0.0, 0.0), back: Vec::new(), ahead: Vec::new() }
     }
 
     /// Start in full screen: the last session ended there and that is to be remembered.
@@ -253,9 +265,58 @@ impl<G: Gfx, H: Host> App<G, H> {
         }
     }
 
+    /// Where the reader is, for the history.
+    fn here(&self) -> Place {
+        Place { path: self.path.clone(), sample: self.path.is_none() && self.viewer.source == self.sample, scroll: self.viewer.scroll }
+    }
+
+    /// Leaving the current document for another: it goes on the history.
+    fn remember(&mut self) {
+        let here = self.here();
+        self.back.push(here);
+        self.ahead.clear();
+    }
+
+    /// The previous document of the history (mouse back button), where it was left; false at its start.
+    pub fn back(&mut self) -> bool {
+        self.step(true)
+    }
+
+    /// The next document of the history (mouse forward button); false at its end.
+    pub fn forward(&mut self) -> bool {
+        self.step(false)
+    }
+
+    fn step(&mut self, back: bool) -> bool {
+        let Some(to) = (if back { self.back.pop() } else { self.ahead.pop() }) else { return false };
+        let here = self.here();
+        if back { self.ahead.push(here) } else { self.back.push(here) }
+        match to.path {
+            Some(p) => self.show_file(p),
+            None if to.sample => self.show_text("Beispiel", self.sample),
+            None => {
+                let start = self.settings.start_page();
+                self.show_text("Markdownr", &start);
+            }
+        }
+        // Laid out from the top, then moved to where the reader left it (the rest of the
+        // layout follows as usual; while it is incomplete the scroll is not clamped).
+        self.viewer.ensure_layout(&mut self.gfx);
+        self.viewer.scroll_by(to.scroll);
+        true
+    }
+
     pub fn load(&mut self, path: PathBuf) {
-        let (title, source, doc) = read_doc(&path);
         let same = self.path.as_ref().is_some_and(|p| p.as_os_str() == path.as_os_str()); // (PathBuf == parses components)
+        if !same {
+            self.remember();
+        }
+        self.show_file(path);
+    }
+
+    fn show_file(&mut self, path: PathBuf) {
+        let (title, source, doc) = read_doc(&path);
+        let same = self.path.as_ref().is_some_and(|p| p.as_os_str() == path.as_os_str());
         self.gfx.set_image_base(Some(crate::util::path::parent(&path).to_path_buf()));
         self.viewer.set_document(title, source, doc, same);
         self.modified = crate::util::fs::modified(&path);
@@ -267,6 +328,11 @@ impl<G: Gfx, H: Host> App<G, H> {
     }
 
     fn load_text(&mut self, title: &str, text: &str) {
+        self.remember();
+        self.show_text(title, text);
+    }
+
+    fn show_text(&mut self, title: &str, text: &str) {
         self.path = None;
         self.modified = None;
         self.gfx.set_image_base(crate::util::env::current_dir());
@@ -462,5 +528,116 @@ impl<G: Gfx, H: Host> App<G, H> {
     pub fn set_fullscreen(&mut self, on: bool) {
         self.fullscreen = on;
         self.viewer.set_fullscreen(on);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::tests::{Fake, FakePara};
+
+    impl Gfx for Fake {
+        fn set_image_base(&mut self, _: Option<PathBuf>) {}
+        fn draw(&mut self, _: &Frame<FakePara>) -> bool {
+            true
+        }
+    }
+
+    struct NoHost;
+    impl Host for NoHost {
+        fn invalidate(&self) {}
+        fn set_title(&self, _: &str) {}
+        fn set_timer(&mut self, _: Timer, _: Option<Duration>) {}
+        fn open_dialog(&mut self) -> Option<PathBuf> {
+            None
+        }
+        fn open_external(&mut self, _: &str) {}
+    }
+
+    /// A fresh directory with a.md (long, links to b.md), b.md and c.md.
+    fn docs(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(["markdownr-", name, "-", &std::process::id().to_string()].concat());
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let long: String = (0..200).map(|i| format!("Absatz {i}\n\n")).collect();
+        std::fs::write(dir.join("a.md"), ["# A\n\n[nach B](b.md)\n\n", &long].concat()).unwrap();
+        std::fs::write(dir.join("b.md"), "# B\n\n[nach C](c.md)\n").unwrap();
+        std::fs::write(dir.join("c.md"), "# C\n").unwrap();
+        dir
+    }
+
+    fn app(dir: &Path, path: Option<PathBuf>) -> App<Fake, NoHost> {
+        let doc = match &path {
+            Some(p) => read_doc(p),
+            None => start_doc(&Settings::default(), "# Beispiel\n"),
+        };
+        let mut a = App::new(NoHost, Fake, path, doc, Settings::default(), dir.join("settings.ini"), "# Beispiel\n");
+        a.resize(800.0, 600.0, false);
+        a.layout();
+        a.settle();
+        a
+    }
+
+    fn at(a: &App<Fake, NoHost>) -> Option<String> {
+        a.path.as_deref().map(|p| crate::util::path::file_name(p).to_string_lossy().into_owned())
+    }
+
+    #[test]
+    fn back_and_forward_walk_the_followed_links() {
+        let dir = docs("history");
+        let mut a = app(&dir, Some(dir.join("a.md")));
+        assert!(!a.back(), "nothing to go back to yet");
+        a.viewer.scroll_by(700.0);
+        let read_to = a.viewer.scroll;
+        assert!(read_to > 0.0);
+
+        a.open_url("b.md");
+        assert_eq!(at(&a).as_deref(), Some("b.md"));
+        assert_eq!(a.viewer.scroll, 0.0);
+
+        assert!(a.back());
+        assert_eq!(at(&a).as_deref(), Some("a.md"));
+        a.layout();
+        assert_eq!(a.viewer.scroll, read_to, "back returns to where the reader was");
+        assert!(!a.back(), "the start of the history");
+
+        assert!(a.forward());
+        assert_eq!(at(&a).as_deref(), Some("b.md"));
+        assert!(!a.forward(), "the end of the history");
+
+        // Following a link after going back drops what lay ahead.
+        assert!(a.back());
+        a.open_url("b.md");
+        a.open_url("c.md");
+        assert!(!a.forward());
+        assert!(a.back());
+        assert_eq!(at(&a).as_deref(), Some("b.md"));
+        assert!(a.back());
+        assert_eq!(at(&a).as_deref(), Some("a.md"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reload_and_the_same_file_add_no_history() {
+        let dir = docs("same");
+        let mut a = app(&dir, Some(dir.join("a.md")));
+        a.reload();
+        a.open_url("a.md");
+        assert!(!a.back());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn back_returns_to_the_start_page() {
+        let dir = docs("start");
+        let mut a = app(&dir, None);
+        a.open_url(&dir.join("b.md").to_string_lossy());
+        assert_eq!(at(&a).as_deref(), Some("b.md"));
+        assert!(a.back());
+        assert_eq!(a.path, None);
+        assert_eq!(a.viewer.title, "Markdownr");
+        assert!(a.forward());
+        assert_eq!(at(&a).as_deref(), Some("b.md"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

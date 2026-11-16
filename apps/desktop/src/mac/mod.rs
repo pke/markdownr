@@ -275,6 +275,15 @@ extern "C" fn mouse_up(view: Id, _: Sel, event: Id) {
     }
 }
 
+/// The mouse's back and forward buttons (numbers 3 and 4) walk the history.
+extern "C" fn other_mouse_up(_: Id, _: Sel, event: Id) {
+    match msg!(event, c"buttonNumber" => isize) {
+        3 => _ = with_app(|a| a.app.back()),
+        4 => _ = with_app(|a| a.app.forward()),
+        _ => {}
+    }
+}
+
 extern "C" fn mouse_moved(view: Id, _: Sel, event: Id) {
     let (x, y) = point(view, event);
     let cursor = with_app(|a| {
@@ -399,6 +408,7 @@ fn view_class() -> Class {
         add(c"keyDown:", key_down as *const c_void, c"v@:@");
         add(c"mouseDown:", mouse_down as *const c_void, c"v@:@");
         add(c"mouseUp:", mouse_up as *const c_void, c"v@:@");
+        add(c"otherMouseUp:", other_mouse_up as *const c_void, c"v@:@");
         add(c"mouseMoved:", mouse_moved as *const c_void, c"v@:@");
         add(c"mouseDragged:", mouse_moved as *const c_void, c"v@:@");
         add(c"mouseExited:", mouse_exited as *const c_void, c"v@:@");

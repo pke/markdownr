@@ -563,6 +563,12 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRES
                 }
                 LRESULT(0)
             }
+            // The mouse's back and forward buttons (XBUTTON1, XBUTTON2) walk the history.
+            WM_XBUTTONUP => {
+                let back = (wp.0 >> 16) & 0xffff == 1;
+                with_app(|w| if back { w.app.back() } else { w.app.forward() });
+                LRESULT(1)
+            }
             WM_MOUSEMOVE => {
                 let (x, y) = lparam_point(lp);
                 let touch = from_touch();

@@ -380,6 +380,9 @@ impl Lx {
                     1 => self.app.press(x, y, m, Duration::from_millis(400)),
                     4 => self.app.wheel(-1.0, true, m, x, y),
                     5 => self.app.wheel(1.0, true, m, x, y),
+                    // The mouse's back and forward buttons walk the history.
+                    8 => _ = self.app.back(),
+                    9 => _ = self.app.forward(),
                     _ => {}
                 }
             }
