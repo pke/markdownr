@@ -29,6 +29,8 @@ const GLIDE: f32 = 0.18; // seconds
 const BAR_FOR: Duration = Duration::from_millis(800);
 const BAR_FADE_IN: f32 = 0.1; // seconds
 const BAR_FADE_OUT: f32 = 0.3;
+/// A page change of the history: both pages slide sideways, speeding up then slowing down.
+const SLIDE: f32 = 0.35; // seconds
 
 /// F1 overlay: (column, advanced, [keys of each row]); advanced sections show only after
 /// "Advanced usage" is opened. In the keys, `{Ctrl}`, `{PgDn}` … are keys the system names
@@ -278,6 +280,18 @@ pub struct Viewer<P> {
     pub bar_alpha: f32,
     bar_until: Option<Instant>,
     bar_seen: f32,
+    /// A page change of the history sliding sideways: the page leaving.
+    pub slide: Option<Slide<P>>,
+}
+
+/// The page leaving as it was drawn, sliding out while the new one slides in from the
+/// side `dir` (-1: from the left, going back; 1: from the right, going forward).
+pub struct Slide<P> {
+    pub layout: DocLayout<P>,
+    pub theme: Theme,
+    pub scroll: f32,
+    dir: f32,
+    start: Instant,
 }
 
 /// Scrolling from `from` to `to` (ease-out over GLIDE from `start`); `at` is where it
@@ -377,6 +391,7 @@ impl<P: Paragraph> Viewer<P> {
             bar_alpha: 0.0,
             bar_until: None,
             bar_seen: 0.0,
+            slide: None,
         };
         v.title = v.display_title(title);
         v
@@ -669,6 +684,28 @@ impl<P: Paragraph> Viewer<P> {
         self.scroll != before
     }
 
+    /// Before going `back` or forward in the history: the page shown is kept to slide out
+    /// while the next one (set and laid out after this) slides in.
+    pub fn slide(&mut self, back: bool, now: Instant) {
+        if self.reduce_motion || self.view_w <= 0.0 {
+            return;
+        }
+        // (The new layout then starts without the old one's tops as a scroll anchor.)
+        let layout = std::mem::take(&mut self.layout);
+        let scroll = (self.scroll * self.pixel).round() / self.pixel;
+        self.slide = Some(Slide { layout, theme: self.theme.clone(), scroll, dir: if back { -1.0 } else { 1.0 }, start: now });
+    }
+
+    /// While a page change slides: (x of the page shown, x of the one leaving), in whole
+    /// device pixels.
+    pub fn slide_x(&self, now: Instant) -> Option<(f32, f32)> {
+        let s = self.slide.as_ref()?;
+        let t = (now.saturating_duration_since(s.start).as_secs_f32() / SLIDE).min(1.0);
+        let eased = if t < 0.5 { 4.0 * t * t * t } else { 1.0 - (2.0 - 2.0 * t).powi(3) / 2.0 };
+        let x = (s.dir * self.view_w * (1.0 - eased) * self.pixel).round() / self.pixel;
+        Some((x, x - s.dir * self.view_w))
+    }
+
     /// The view scrolled since the scroll bar looked last (or glides).
     pub fn scroll_moved(&self) -> bool {
         self.scroll != self.bar_seen || self.glide.is_some()
@@ -742,7 +779,13 @@ impl<P: Paragraph> Viewer<P> {
         let bar_before = self.bar_alpha;
         let bar_fading = fade(&mut self.bar_alpha, bar_on, BAR_FADE_IN, BAR_FADE_OUT);
         repaint |= before != self.chrome_alpha || bar_before != self.bar_alpha;
-        let animating = chrome_fading || bar_fading || self.glide.is_some();
+        if let Some(s) = &self.slide {
+            repaint = true;
+            if now.saturating_duration_since(s.start).as_secs_f32() >= SLIDE {
+                self.slide = None;
+            }
+        }
+        let animating = chrome_fading || bar_fading || self.glide.is_some() || self.slide.is_some();
         if !animating {
             self.last_tick = None;
         }
@@ -1696,6 +1739,53 @@ mod tests {
         v.ensure_layout(&mut Fake);
         v.finish_layout(&mut Fake);
         v
+    }
+
+    /// `v` changes to a short document while sliding (`back`: the new page from the left).
+    fn change_page(v: &mut Viewer<FakePara>, back: bool, now: Instant) {
+        v.slide(back, now);
+        v.set_document("n".into(), String::new(), crate::app::parse("# Neu"), false);
+        v.ensure_layout(&mut Fake);
+    }
+
+    #[test]
+    fn going_back_slides_the_pages_sideways_with_acceleration() {
+        let mut v = laid_out();
+        v.scroll_by(500.0);
+        let old_blocks = v.layout.blocks.len();
+        let t0 = Instant::now();
+        let ms = |n: u64| t0 + Duration::from_millis(n);
+        change_page(&mut v, true, t0);
+        let s = v.slide.as_ref().expect("the pages slide");
+        assert_eq!((s.layout.blocks.len(), s.scroll), (old_blocks, 500.0), "the leaving page as it was");
+        assert!(v.layout.blocks.len() < old_blocks, "the new page laid out");
+        let w = v.view_w;
+        assert_eq!(v.slide_x(t0), Some((-w, 0.0)), "the previous page waits left of the view");
+        let (x, _) = v.slide_x(ms(87)).unwrap();
+        assert!(x + w < 0.1 * w, "it starts slowly: {x}");
+        let (x, old) = v.slide_x(ms(175)).unwrap();
+        assert!((x + w / 2.0).abs() < 1.0 && (old - w / 2.0).abs() < 1.0, "halfway at half time: {x} {old}");
+        let (x, _) = v.slide_x(ms(262)).unwrap();
+        assert!(-x < 0.1 * w, "and slows down at the end: {x}");
+        let (repaint, next) = v.tick(ms(100));
+        assert!(repaint && next == Some(FRAME), "frames while sliding");
+        v.tick(ms(400));
+        assert!(v.slide.is_none() && v.slide_x(ms(400)).is_none(), "done, the leaving page dropped");
+    }
+
+    #[test]
+    fn going_forward_slides_the_other_way_reduced_motion_not_at_all() {
+        let mut v = laid_out();
+        let t0 = Instant::now();
+        change_page(&mut v, false, t0);
+        let w = v.view_w;
+        assert_eq!(v.slide_x(t0), Some((w, 0.0)), "the next page waits right of the view");
+        let (x, old) = v.slide_x(t0 + Duration::from_millis(175)).unwrap();
+        assert!((x - w / 2.0).abs() < 1.0 && (old + w / 2.0).abs() < 1.0, "{x} {old}");
+        let mut v = laid_out();
+        v.reduce_motion = true;
+        change_page(&mut v, true, t0);
+        assert!(v.slide.is_none() && v.slide_x(t0).is_none());
     }
 
     #[test]

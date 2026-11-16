@@ -245,7 +245,11 @@ impl<G: Gfx, H: Host> App<G, H> {
         let v = &self.viewer;
         let finds = v.find_highlights();
         let sprites = v.sprites(Instant::now());
+        let slide = v.slide_x(Instant::now());
         let frame = Frame {
+            doc_x: slide.map_or(0.0, |s| s.0),
+            view_w: v.view_w,
+            leaving: v.slide.as_ref().zip(slide).map(|(s, (_, x))| (&s.layout, &s.theme, s.scroll, x)),
             doc: &v.layout,
             selection: v.selection.as_ref(),
             finds: &finds,
@@ -291,6 +295,7 @@ impl<G: Gfx, H: Host> App<G, H> {
         let Some(to) = (if back { self.back.pop() } else { self.ahead.pop() }) else { return false };
         let here = self.here();
         if back { self.ahead.push(here) } else { self.back.push(here) }
+        self.viewer.slide(back, Instant::now());
         match to.path {
             Some(p) => self.show_file(p),
             None if to.sample => self.show_text("Beispiel", self.sample),
@@ -303,7 +308,13 @@ impl<G: Gfx, H: Host> App<G, H> {
         // layout follows as usual; while it is incomplete the scroll is not clamped).
         self.viewer.ensure_layout(&mut self.gfx);
         self.viewer.scroll_by(to.scroll);
+        self.schedule();
         true
+    }
+
+    /// While a page change of the history slides: (x of the page shown, x of the one leaving).
+    pub fn slide_x(&self) -> Option<(f32, f32)> {
+        self.viewer.slide_x(Instant::now())
     }
 
     pub fn load(&mut self, path: PathBuf) {
@@ -595,13 +606,16 @@ mod tests {
         assert_eq!(at(&a).as_deref(), Some("b.md"));
         assert_eq!(a.viewer.scroll, 0.0);
 
+        assert!(a.slide_x().is_none(), "following a link does not slide");
         assert!(a.back());
+        assert!(a.slide_x().is_some_and(|(x, _)| x < 0.0), "the previous page slides in from the left");
         assert_eq!(at(&a).as_deref(), Some("a.md"));
         a.layout();
         assert_eq!(a.viewer.scroll, read_to, "back returns to where the reader was");
         assert!(!a.back(), "the start of the history");
 
         assert!(a.forward());
+        assert!(a.slide_x().is_some_and(|(x, _)| x > 0.0), "the next page slides in from the right");
         assert_eq!(at(&a).as_deref(), Some("b.md"));
         assert!(!a.forward(), "the end of the history");
 

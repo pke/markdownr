@@ -67,7 +67,12 @@ pub struct Frame<'a, P> {
     pub finds: &'a [(usize, Range<usize>, bool)],
     pub theme: &'a Theme,
     pub scroll: f32,
+    /// The document's x: off 0 while a page change of the history slides it in.
+    pub doc_x: f32,
+    pub view_w: f32,
     pub view_h: f32,
+    /// The page sliding out meanwhile: its layout, theme, scroll and x.
+    pub leaving: Option<(&'a DocLayout<P>, &'a Theme, f32, f32)>,
     /// The overlay scroll bar's knob while it shows, in window coordinates.
     pub scroll_bar: Option<(RectF, Ink)>,
     /// Toolbar and drawer with their fade.
@@ -82,10 +87,18 @@ pub struct Frame<'a, P> {
 
 pub fn frame<C: Canvas>(c: &mut C, f: &Frame<C::Para>) {
     // `scroll` is already at whole device pixels.
-    let doc_m = translate(0.0, -f.scroll);
+    let doc_m = translate(f.doc_x, -f.scroll);
     c.transform(doc_m);
     c.clear(f.theme.background);
     layout(c, f.doc, f.selection, f.finds, f.theme, f.scroll, f.view_h, f.now_ms, doc_m);
+    // The page leaving beside it, on its own background (its theme may differ).
+    if let Some((doc, theme, scroll, x)) = f.leaving {
+        c.transform(IDENTITY);
+        c.fill(RectF { x, y: 0.0, w: f.view_w, h: f.view_h }, theme.background, 0.0);
+        let m = translate(x, -scroll);
+        c.transform(m);
+        layout(c, doc, None, &[], theme, scroll, f.view_h, f.now_ms, m);
+    }
     c.transform(IDENTITY);
     if let Some((ps, sprites)) = f.particles {
         let tint = particle_tint(ps, f.theme);
