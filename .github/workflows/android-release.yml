@@ -46,7 +46,7 @@ jobs:
           CHANGED=$(git diff --name-only "$PREV".."$GITHUB_REF_NAME")
           echo "Changed since $PREV:"; echo "$CHANGED"
           # Keep in sync with the local .git/hooks/post-commit version gate
-          NON_APP='^www/|^docs/|^\.github/|^\.gitignore$|^version\.properties$|^package\.json$|^package-lock\.json$|^fastlane/|^Gemfile|^tools/|^\.maestro/|^modules/ui-tests/|^hooks/'
+          NON_APP='^www/|^\.github/|^hooks/|^apps/desktop/|^[^/]*$|^apps/mobile/(docs/|\.gitignore$|AGENTS\.md$|version\.properties$|package\.json$|package-lock\.json$|fastlane/|Gemfile|tools/|\.maestro/|modules/ui-tests/)'
           if [ -n "$CHANGED" ] && ! echo "$CHANGED" | grep -qvE "$NON_APP"; then
             echo "www_only=true" >> "$GITHUB_OUTPUT"
             echo "No app-relevant changes — skipping APK build for ${GITHUB_REF_NAME}"
@@ -59,6 +59,9 @@ jobs:
     if: needs.check.outputs.www_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mobile
     steps:
       - uses: actions/checkout@v4
 
@@ -66,6 +69,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
 
       - uses: actions/setup-java@v4
         with:
