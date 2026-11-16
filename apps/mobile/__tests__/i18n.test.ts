@@ -1,6 +1,8 @@
 import {describe, it, expect, afterEach} from 'vitest';
 import {resources, currentLanguage} from '../i18n';
-import {_setLanguageCode} from 'expo-localization';
+// The test helper lives in the mock that vitest.config.ts aliases expo-localization to
+// (the same module instance i18n.ts gets); the real package has no such export.
+import {_setLanguageCode} from './mocks/expo-localization';
 
 // Flatten a nested translation object into dot-separated keys.
 function flatten(obj: Record<string, unknown>, prefix = ''): Record<string, string> {
