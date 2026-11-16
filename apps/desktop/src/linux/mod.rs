@@ -262,10 +262,11 @@ impl Lx {
         }
     }
 
-    /// _GTK_THEME_VARIANT: window managers draw a dark title bar for a dark theme.
+    /// _GTK_THEME_VARIANT: window managers draw a dark title bar for a dark theme; dark as
+    /// Windows' title bar (`Theme::caption`: the page, or the toolbar while it shows).
     fn theme_variant(&mut self) {
-        let [r, g, b, _] = self.app.viewer.theme.background.0;
-        let dark = (r as u32 + g as u32 + b as u32) < 384;
+        let v = &self.app.viewer;
+        let dark = v.theme.caption(if self.app.fullscreen { 0.0 } else { v.chrome_alpha }).dark;
         if self.variant == Some(dark) {
             return;
         }
