@@ -185,6 +185,7 @@ enum Action {
     FindPrev,
     FindNext,
     FindClose,
+    FindClear,
 }
 
 /// A tooltip over a link or abbreviation, anchored to the line it explains
@@ -983,27 +984,46 @@ impl<P: Paragraph> Viewer<P> {
         // Centre: title or find field.
         let avail = (rx - left_end - 16.0).max(0.0);
         if let Some(find) = &self.find {
-            let count = if find.query.is_empty() {
-                String::new()
-            } else if find.matches.is_empty() {
-                ui(Ui::NoMatches).to_string()
-            } else {
-                [num(find.current as u64 + 1), num(find.matches.len() as u64)].join(" / ")
-            };
-            let mut cx = rx - 2.0;
-            cx -= button(ts, &mut out, &mut buttons, "✕", Action::FindClose, cx, true, false) + 2.0;
-            cx -= button(ts, &mut out, &mut buttons, "↓", Action::FindNext, cx, true, false) + 2.0;
-            cx -= button(ts, &mut out, &mut buttons, "↑", Action::FindPrev, cx, true, false) + 2.0;
-            let muted = BaseStyle { color: th.muted, ..style };
-            let (para, pw, ph) = label(ts, &count, &muted, 400.0);
-            cx -= pw + 8.0;
-            place(&mut out, para, &count, cx, (BAR_H - ph) / 2.0, pw, ph);
+            // Close button outside, right of the field; inside the field, right-aligned after
+            // the query: ↑ ↓ (only while there are matches), the count, and a clear ×
+            // (only while there is a query).
+            let cx = rx - 2.0 - button(ts, &mut out, &mut buttons, "✕", Action::FindClose, rx - 2.0, true, false);
             let field_x = left_end + 8.0;
-            let field_w = (cx - 8.0 - field_x).max(40.0);
+            let field_w = (cx - 2.0 - field_x).max(40.0);
             out.rects.push(Rect { r: RectF { x: field_x, y: by, w: field_w, h: bh }, color: th.border, radius: 6.0 });
             out.rects.push(Rect { r: RectF { x: field_x + 1.0, y: by + 1.0, w: field_w - 2.0, h: bh - 2.0 }, color: th.background, radius: 5.0 });
+            // Small buttons inside the field, laid out from its right edge.
+            let (ih, ipad) = (bh - 8.0, 7.0);
+            let mut inner = |ts: &mut T, out: &mut DocLayout<P>, text: &str, s: &BaseStyle, action: Action, x: f32| -> f32 {
+                let (para, pw, ph) = label(ts, text, s, 400.0);
+                let r = RectF { x: x - pw - 2.0 * ipad, y: by + 4.0, w: pw + 2.0 * ipad, h: ih };
+                if self.hover == Some(action) {
+                    out.rects.push(Rect { r, color: th.chrome_hover, radius: 4.0 });
+                }
+                place(out, para, text, r.x + ipad, by + (bh - ph) / 2.0, pw, ph);
+                buttons.push((r, action));
+                r.w
+            };
+            let muted = BaseStyle { color: th.muted, ..style };
+            let mut ix = field_x + field_w - 4.0;
+            if !find.query.is_empty() {
+                ix -= inner(ts, &mut out, "×", &muted, Action::FindClear, ix);
+                let count = if find.matches.is_empty() {
+                    ui(Ui::NoMatches).to_string()
+                } else {
+                    [num(find.current as u64 + 1), num(find.matches.len() as u64)].join(" / ")
+                };
+                let (para, pw, ph) = label(ts, &count, &muted, 400.0);
+                ix -= pw + 4.0;
+                place(&mut out, para, &count, ix, (BAR_H - ph) / 2.0, pw, ph);
+                if !find.matches.is_empty() {
+                    ix -= 4.0;
+                    ix -= inner(ts, &mut out, "↓", &style, Action::FindNext, ix);
+                    ix -= inner(ts, &mut out, "↑", &style, Action::FindPrev, ix);
+                }
+            }
             let text = ["⌕  ", &find.query, "▏"].concat();
-            let (para, pw, ph) = label(ts, &text, &style, field_w - 2.0 * pad);
+            let (para, pw, ph) = label(ts, &text, &style, (ix - 8.0 - field_x - pad).max(20.0));
             place(&mut out, para, &text, field_x + pad, by + (bh - ph) / 2.0, pw, ph);
         } else if avail > 60.0 {
             let title = if self.show_source { [&self.title, " (", ui(Ui::Source), ")"].concat() } else { self.title.clone() };
@@ -1248,6 +1268,12 @@ impl<P: Paragraph> Viewer<P> {
             Action::FindPrev => self.find_step(false),
             Action::FindNext => self.find_step(true),
             Action::FindClose => self.find = None,
+            Action::FindClear => {
+                if let Some(f) = &mut self.find {
+                    f.query.clear();
+                }
+                self.refind(false);
+            }
         }
         None
     }
@@ -2352,6 +2378,38 @@ mod tests {
         v.set_document("n".into(), String::new(), crate::app::parse("![n](near.png)"), false);
         v.ensure_layout(&mut ts);
         assert_eq!(ts.asked, ["near.png"]);
+    }
+
+    /// The find field: ↑ ↓ only while something matches, count and clear × only while
+    /// there is a query, all inside the field, arrows before the count; × clears the query
+    /// and keeps the bar open.
+    #[test]
+    fn find_field_controls() {
+        let mut v = viewer(900.0);
+        v.ensure_layout(&mut Fake);
+        v.finish_layout(&mut Fake);
+        v.open_find();
+        let actions = |v: &mut Viewer<FakePara>| {
+            v.build_chrome(&mut Fake);
+            v.buttons.iter().filter(|(_, a)| matches!(a, Action::FindPrev | Action::FindNext | Action::FindClear | Action::FindClose)).map(|(r, a)| (r.x, *a)).collect::<Vec<_>>()
+        };
+        let only = |v: &[(f32, Action)]| v.iter().map(|b| b.1).collect::<Vec<_>>();
+        assert_eq!(only(&actions(&mut v)), [Action::FindClose], "empty query: nothing in the field");
+        for c in "zzqx".chars() {
+            v.text_input(c);
+        }
+        assert_eq!(only(&actions(&mut v)), [Action::FindClose, Action::FindClear], "no matches: no arrows");
+        v.act(Action::FindClear, Instant::now());
+        assert!(v.find.as_ref().is_some_and(|f| f.query.is_empty() && f.matches.is_empty()), "cleared, bar stays");
+        for c in "markdown".chars() {
+            v.text_input(c);
+        }
+        let b = actions(&mut v);
+        assert_eq!(only(&b), [Action::FindClose, Action::FindClear, Action::FindNext, Action::FindPrev]);
+        let x = |a: Action| b.iter().find(|e| e.1 == a).unwrap().0;
+        assert!(x(Action::FindPrev) < x(Action::FindNext) && x(Action::FindNext) < x(Action::FindClear) && x(Action::FindClear) < x(Action::FindClose));
+        let count = v.chrome.blocks.iter().find(|bl| bl.text.contains(" / ")).expect("count shows");
+        assert!(x(Action::FindNext) < count.x && count.x < x(Action::FindClear), "arrows before the count");
     }
 }
 
